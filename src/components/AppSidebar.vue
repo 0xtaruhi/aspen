@@ -1,13 +1,6 @@
 <script setup lang="ts">
 import type { SidebarProps } from '@/components/ui/sidebar'
-import {
-  Cpu,
-  FolderCog,
-  FileCode2,
-  FlaskConical,
-  Zap,
-  Bug,
-} from "lucide-vue-next"
+import { Cpu, FolderCog, FileCode2, Zap, Bug } from 'lucide-vue-next'
 import NavMain from '@/components/NavMain.vue'
 import ProjectMenu from '@/components/ProjectMenu.vue'
 import ProjectExplorer from '@/components/project/ProjectExplorer.vue'
@@ -22,115 +15,82 @@ import {
 } from '@/components/ui/sidebar'
 
 const props = withDefaults(defineProps<SidebarProps>(), {
-  collapsible: "icon",
+  collapsible: 'icon',
 })
 
 import { uiStore } from '@/stores/ui'
 
-// This is sample data.
 const data = {
   teams: [
     {
-      name: "Aspen FPGA",
+      name: 'Aspen FPGA',
       logo: Cpu,
-      plan: "Pro",
+      plan: 'Pro',
     },
   ],
   navMain: [
     {
-      title: "Project Manager",
-      url: "#",
+      title: 'Workspace',
+      url: '#',
       icon: FolderCog,
       isActive: true,
       items: [
         {
-          title: "Dashboard",
-          url: "#",
+          title: 'Dashboard',
+          url: '#',
           action: () => uiStore.setPage('status'),
         },
         {
-          title: "Settings",
-          url: "#",
+          title: 'Editor',
+          url: '#',
+          action: () => uiStore.setPage('editor'),
         },
-        {
-          title: "IP Catalog",
-          url: "#",
-        }
       ],
     },
     {
-      title: "RTL Analysis",
-      url: "#",
+      title: 'Flow Reports',
+      url: '#',
       icon: FileCode2,
       items: [
         {
-          title: "Elaborated Design",
-          url: "#",
-          action: () => uiStore.setPage('editor'),
-        },
-        {
-          title: "IO Planning",
-          url: "#",
-        }
-      ],
-    },
-    {
-      title: "Simulation",
-      url: "#",
-      icon: FlaskConical,
-      items: [
-        {
-          title: "Run Behavioral",
-          url: "#",
-        },
-      ],
-    },
-    {
-      title: "Synthesis",
-      url: "#",
-      icon: Zap,
-      items: [
-        {
-          title: "Run Synthesis",
-          url: "#",
-        },
-        {
-          title: "View Reports",
-          url: "#",
+          title: 'Synthesis',
+          url: '#',
           action: () => uiStore.setPage('synthesis'),
-        }
-      ],
-    },
-    {
-      title: "Implementation",
-      url: "#",
-      icon: Cpu,
-      items: [
-        {
-          title: "Run Implementation",
-          url: "#",
         },
         {
-          title: "View Reports",
-          url: "#",
+          title: 'Implementation',
+          url: '#',
           action: () => uiStore.setPage('implementation'),
-        }
+        },
       ],
     },
     {
-      title: "Program and Debug",
-      url: "#",
+      title: 'Hardware',
+      url: '#',
       icon: Bug,
       items: [
         {
-          title: "Generate Bitstream",
-          url: "#",
+          title: 'Hardware Manager',
+          url: '#',
+          action: () => uiStore.setPage('hardware'),
+        },
+      ],
+    },
+    {
+      title: 'Build Actions',
+      url: '#',
+      icon: Zap,
+      items: [
+        {
+          title: 'Generate Bitstream',
+          url: '#',
+          action: () => uiStore.setPage('hardware'),
         },
         {
-          title: "Hardware Manager",
-          url: "#",
+          title: 'Program Device',
+          url: '#',
           action: () => uiStore.setPage('hardware'),
-        }
+        },
       ],
     },
   ],
@@ -144,7 +104,7 @@ const data = {
     </SidebarHeader>
     <SidebarContent>
       <!-- Mode Switcher (Optional, for now just stacked) -->
-      
+
       <!-- Project Explorer Section -->
       <SidebarGroup class="group-data-[collapsible=icon]:hidden">
         <SidebarGroupLabel>Project Sources</SidebarGroupLabel>
@@ -153,7 +113,6 @@ const data = {
 
       <!-- Main Navigation -->
       <NavMain :items="data.navMain" />
-      
     </SidebarContent>
     <SidebarRail />
   </Sidebar>

@@ -21,22 +21,19 @@ import { Button } from '@/components/ui/button'
 import { projectStore } from '@/stores/project'
 
 defineProps<{
-    open: boolean
+  open: boolean
 }>()
 
 const emit = defineEmits<{
-    (e: 'update:open', value: boolean): void
+  (e: 'update:open', value: boolean): void
 }>()
 
 const projectName = ref('MyFPGAProject')
-const projectLocation = ref('/Users/zhangzhengyi/Documents/Projects')
-const projectTemplate = ref('empty')
+const projectTemplate = ref<'empty' | 'blinky' | 'uart'>('empty')
 
 function handleCreate() {
-    // In a real app, this would call a backend API
-    // For now, we just simulate creating a new project in the store
-    projectStore.createNewProject(projectName.value, projectTemplate.value)
-    emit('update:open', false)
+  projectStore.createNewProject(projectName.value, projectTemplate.value)
+  emit('update:open', false)
 }
 </script>
 
@@ -51,21 +48,11 @@ function handleCreate() {
       </DialogHeader>
       <div class="grid gap-4 py-4">
         <div class="grid grid-cols-4 items-center gap-4">
-          <Label for="name" class="text-right">
-            Name
-          </Label>
+          <Label for="name" class="text-right"> Name </Label>
           <Input id="name" v-model="projectName" class="col-span-3" />
         </div>
         <div class="grid grid-cols-4 items-center gap-4">
-          <Label for="location" class="text-right">
-            Location
-          </Label>
-          <Input id="location" v-model="projectLocation" class="col-span-3" />
-        </div>
-        <div class="grid grid-cols-4 items-center gap-4">
-          <Label for="template" class="text-right">
-            Template
-          </Label>
+          <Label for="template" class="text-right"> Template </Label>
           <Select v-model="projectTemplate">
             <SelectTrigger class="col-span-3">
               <SelectValue placeholder="Select a template" />
@@ -74,7 +61,6 @@ function handleCreate() {
               <SelectItem value="empty">Empty Project</SelectItem>
               <SelectItem value="blinky">LED Blinky</SelectItem>
               <SelectItem value="uart">UART Echo</SelectItem>
-              <SelectItem value="riscv">RISC-V Softcore</SelectItem>
             </SelectContent>
           </Select>
         </div>

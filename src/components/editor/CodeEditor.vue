@@ -22,7 +22,7 @@ self.MonacoEnvironment = {
       return new tsWorker()
     }
     return new editorWorker()
-  }
+  },
 }
 
 const props = defineProps<{
@@ -48,20 +48,40 @@ onMounted(() => {
   monaco.languages.register({ id: 'verilog' })
   monaco.languages.setMonarchTokensProvider('verilog', {
     keywords: [
-      'module', 'endmodule', 'input', 'output', 'inout', 'wire', 'reg', 'always', 'begin', 'end',
-      'if', 'else', 'case', 'endcase', 'default', 'assign', 'initial', 'parameter', 'localparam'
+      'module',
+      'endmodule',
+      'input',
+      'output',
+      'inout',
+      'wire',
+      'reg',
+      'always',
+      'begin',
+      'end',
+      'if',
+      'else',
+      'case',
+      'endcase',
+      'default',
+      'assign',
+      'initial',
+      'parameter',
+      'localparam',
     ],
     tokenizer: {
       root: [
-        [/[a-zA-Z_]\w*/, {
-          cases: {
-            '@keywords': 'keyword',
-            '@default': 'identifier'
-          }
-        }],
+        [
+          /[a-zA-Z_]\w*/,
+          {
+            cases: {
+              '@keywords': 'keyword',
+              '@default': 'identifier',
+            },
+          },
+        ],
         [/\/\/.*$/, 'comment'],
-      ]
-    }
+      ],
+    },
   })
 
   editor = monaco.editor.create(container.value, {
@@ -82,15 +102,21 @@ onMounted(() => {
   })
 })
 
-watch(() => themeState.value, (isDark) => {
-  monaco.editor.setTheme(isDark ? 'vs-dark' : 'vs')
-})
+watch(
+  () => themeState.value,
+  (isDark) => {
+    monaco.editor.setTheme(isDark ? 'vs-dark' : 'vs')
+  },
+)
 
-watch(() => props.value, (val) => {
-  if (editor && val !== editor.getValue()) {
-    editor.setValue(val)
-  }
-})
+watch(
+  () => props.value,
+  (val) => {
+    if (editor && val !== editor.getValue()) {
+      editor.setValue(val)
+    }
+  },
+)
 
 onUnmounted(() => {
   editor?.dispose()

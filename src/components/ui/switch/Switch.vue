@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import type { HTMLAttributes } from "vue"
-import type { PrimitiveProps } from "reka-ui"
-import { computed } from "vue"
-import { Primitive } from "reka-ui"
-import { cn } from "@/lib/utils"
+import type { HTMLAttributes } from 'vue'
+import type { PrimitiveProps } from 'reka-ui'
+import { computed } from 'vue'
+import { Primitive } from 'reka-ui'
+import { cn } from '@/lib/utils'
 
 interface Props extends PrimitiveProps {
   checked?: boolean
@@ -11,7 +11,7 @@ interface Props extends PrimitiveProps {
   height?: number
   length?: number
   gap?: number
-  class?: HTMLAttributes["class"]
+  class?: HTMLAttributes['class']
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -23,16 +23,16 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<{
-  (e: "update:checked", v: boolean): void
+  (e: 'update:checked', v: boolean): void
 }>()
 
 function onToggle() {
   if (props.disabled) return
-  emit("update:checked", !props.checked)
+  emit('update:checked', !props.checked)
 }
 
 function onKeydown(e: KeyboardEvent) {
-  if (e.key === "Enter" || e.key === " ") {
+  if (e.key === 'Enter' || e.key === ' ') {
     e.preventDefault()
     onToggle()
   }
@@ -46,13 +46,15 @@ const current = computed(() => {
   return { h, w, pad, thumb }
 })
 
-const rootClasses = computed(() => cn(
-  "relative inline-flex shrink-0 items-center rounded-full border border-transparent shadow-xs outline-none",
-  "transition-[background-color,border-color] duration-300 ease-in-out",
-  "focus-visible:ring-[3px] focus-visible:border-ring focus-visible:ring-ring/50",
-  "disabled:cursor-not-allowed disabled:opacity-50",
-  props.checked ? "bg-primary" : "bg-input dark:bg-input/80",
-))
+const rootClasses = computed(() =>
+  cn(
+    'relative inline-flex shrink-0 items-center rounded-full border border-transparent shadow-xs outline-none',
+    'transition-[background-color,border-color] duration-300 ease-in-out',
+    'focus-visible:ring-[3px] focus-visible:border-ring focus-visible:ring-ring/50',
+    'disabled:cursor-not-allowed disabled:opacity-50',
+    props.checked ? 'bg-primary' : 'bg-input dark:bg-input/80',
+  ),
+)
 
 const rootStyle = computed(() => ({
   height: `${current.value.h}px`,
@@ -61,11 +63,13 @@ const rootStyle = computed(() => ({
   borderRadius: `${current.value.h / 2}px`,
 }))
 
-const thumbClasses = computed(() => cn(
-  "pointer-events-none absolute rounded-full ring-0",
-  "transition-[left,background-color] duration-300 ease-in-out",
-  props.checked ? "bg-primary-foreground" : "bg-foreground",
-))
+const thumbClasses = computed(() =>
+  cn(
+    'pointer-events-none absolute rounded-full ring-0',
+    'transition-[left,background-color] duration-300 ease-in-out',
+    props.checked ? 'bg-primary-foreground' : 'bg-foreground',
+  ),
+)
 
 const thumbStyle = computed(() => {
   const pad = current.value.pad
@@ -82,9 +86,19 @@ const thumbStyle = computed(() => {
 </script>
 
 <template>
-  <Primitive data-slot="switch" :as="as" :as-child="asChild" role="switch" :aria-checked="props.checked"
-    :disabled="props.disabled" :class="cn(rootClasses, props.class)" :style="rootStyle" @click="onToggle"
-    @keydown="onKeydown" tabindex="0">
+  <Primitive
+    data-slot="switch"
+    :as="as"
+    :as-child="asChild"
+    role="switch"
+    :aria-checked="props.checked"
+    :disabled="props.disabled"
+    :class="cn(rootClasses, props.class)"
+    :style="rootStyle"
+    @click="onToggle"
+    @keydown="onKeydown"
+    tabindex="0"
+  >
     <span :class="thumbClasses" :style="thumbStyle" />
   </Primitive>
 </template>
