@@ -48,6 +48,7 @@ interface HardwareTarget {
 }
 
 const hardwareState = hardwareStore.state
+const streamStatus = hardwareStore.dataStreamStatus
 const hotplugLog = hardwareStore.hotplugLog
 
 const selectedTargetId = ref<string | null>(null)
@@ -88,6 +89,13 @@ const lastRefresh = computed(() => {
     return null
   }
   return new Date(hardwareState.value.updated_at_ms).toLocaleTimeString()
+})
+
+const streamLastBatch = computed(() => {
+  if (streamStatus.value.last_batch_at_ms <= 0) {
+    return null
+  }
+  return new Date(streamStatus.value.last_batch_at_ms).toLocaleTimeString()
 })
 
 const targets = computed<HardwareTarget[]>(() => {
@@ -342,6 +350,13 @@ onBeforeUnmount(() => {
 
       <span v-if="lastRefresh" class="text-xs text-muted-foreground ml-2">
         Last probe: {{ lastRefresh }}
+      </span>
+
+      <span class="text-xs text-muted-foreground ml-2">
+        Stream: {{ streamStatus.running ? 'running' : 'stopped' }} · seq
+        {{ streamStatus.sequence }} · dropped {{ streamStatus.dropped_samples }} · queue
+        {{ streamStatus.queue_fill }}/{{ streamStatus.queue_capacity }}
+        <template v-if="streamLastBatch">· last {{ streamLastBatch }}</template>
       </span>
 
       <span v-if="hotplugLog" class="text-xs text-muted-foreground ml-auto">

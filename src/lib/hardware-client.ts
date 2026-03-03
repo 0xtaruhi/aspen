@@ -70,6 +70,32 @@ export interface HardwareEventV1 {
   reason: HardwareEventReason
 }
 
+export interface HardwareSignalAggregateV1 {
+  signal: string
+  latest: boolean
+  high_ratio: number
+  edge_count: number
+}
+
+export interface HardwareDataBatchV1 {
+  version: 1
+  sequence: number
+  generated_at_ms: number
+  dropped_samples: number
+  queue_fill: number
+  queue_capacity: number
+  updates: HardwareSignalAggregateV1[]
+}
+
+export interface HardwareDataStreamStatusV1 {
+  running: boolean
+  sequence: number
+  dropped_samples: number
+  queue_fill: number
+  queue_capacity: number
+  last_batch_at_ms: number
+}
+
 export type HardwareActionV1 =
   | { type: 'probe' }
   | {
@@ -116,10 +142,30 @@ export async function hardwareDispatch(action: HardwareActionV1): Promise<Hardwa
   return invoke<HardwareStateV1>('hardware_dispatch', { action })
 }
 
+export async function hardwareGetDataStreamStatus(): Promise<HardwareDataStreamStatusV1> {
+  return invoke<HardwareDataStreamStatusV1>('hardware_get_data_stream_status')
+}
+
+export async function startHardwareDataStream(): Promise<void> {
+  await invoke('start_hardware_data_stream')
+}
+
+export async function stopHardwareDataStream(): Promise<void> {
+  await invoke('stop_hardware_data_stream')
+}
+
 export async function listenHardwareStateChanged(
   callback: (event: HardwareEventV1) => void,
 ): Promise<UnlistenFn> {
   return listen<HardwareEventV1>('hardware:state_changed', (event) => {
+    callback(event.payload)
+  })
+}
+
+export async function listenHardwareDataBatch(
+  callback: (batch: HardwareDataBatchV1) => void,
+): Promise<UnlistenFn> {
+  return listen<HardwareDataBatchV1>('hardware:data_batch', (event) => {
     callback(event.payload)
   })
 }

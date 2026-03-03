@@ -5,10 +5,16 @@ import { ref } from 'vue'
 import {
   type CanvasDeviceType,
   hardwareDispatch,
+  hardwareGetDataStreamStatus,
   hardwareGetState,
+  listenHardwareDataBatch,
   listenHardwareStateChanged,
+  startHardwareDataStream,
+  stopHardwareDataStream,
   type CanvasDeviceSnapshot,
   type HardwareActionV1,
+  type HardwareDataBatchV1,
+  type HardwareDataStreamStatusV1,
   type HardwareEventV1,
   type HardwareStateV1,
 } from '@/lib/hardware-client'
@@ -38,12 +44,38 @@ type HotplugPayload = {
   kind: 'arrived' | 'left'
 }
 
+type SignalTelemetrySnapshot = {
+  latest: boolean
+  high_ratio: number
+  edge_count: number
+  sequence: number
+  updated_at_ms: number
+}
+
 const state = ref<HardwareStateV1>({ ...initialState })
 const hotplugLog = ref('')
 const isStarted = ref(false)
+const signalTelemetry = ref<Record<string, SignalTelemetrySnapshot>>({})
+const dataStreamStatus = ref<HardwareDataStreamStatusV1>({
+  running: false,
+  sequence: 0,
+  dropped_samples: 0,
+  queue_fill: 0,
+  queue_capacity: 120,
+  last_batch_at_ms: 0,
+})
 
 let unlistenStateChanged: UnlistenFn | null = null
 let unlistenHotplug: UnlistenFn | null = null
+let unlistenDataBatch: UnlistenFn | null = null
+let telemetryRafId: number | null = null
+let telemetryFlushTimerId: ReturnType<typeof setTimeout> | null = null
+
+const pendingTelemetry = new Map<string, SignalTelemetrySnapshot>()
+let pendingDataBatchMeta: Pick<
+  HardwareDataStreamStatusV1,
+  'sequence' | 'dropped_samples' | 'queue_fill' | 'queue_capacity' | 'last_batch_at_ms'
+> | null = null
 
 function setState(nextState: HardwareStateV1) {
   state.value = nextState
@@ -60,6 +92,80 @@ function setError(message: string) {
 
 function getErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
+}
+
+function clearTelemetryFlushHandle() {
+  if (telemetryRafId !== null) {
+    if (typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(telemetryRafId)
+    }
+    telemetryRafId = null
+  }
+  if (telemetryFlushTimerId !== null) {
+    clearTimeout(telemetryFlushTimerId)
+    telemetryFlushTimerId = null
+  }
+}
+
+function flushTelemetry() {
+  if (pendingTelemetry.size > 0) {
+    const next = { ...signalTelemetry.value }
+    for (const [signal, value] of pendingTelemetry.entries()) {
+      next[signal] = value
+    }
+    signalTelemetry.value = next
+    pendingTelemetry.clear()
+  }
+
+  if (pendingDataBatchMeta) {
+    dataStreamStatus.value = {
+      ...dataStreamStatus.value,
+      running: true,
+      ...pendingDataBatchMeta,
+    }
+    pendingDataBatchMeta = null
+  }
+
+  clearTelemetryFlushHandle()
+}
+
+function scheduleTelemetryFlush() {
+  if (telemetryRafId !== null || telemetryFlushTimerId !== null) {
+    return
+  }
+
+  if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+    telemetryRafId = window.requestAnimationFrame(() => {
+      flushTelemetry()
+    })
+    return
+  }
+
+  telemetryFlushTimerId = setTimeout(() => {
+    flushTelemetry()
+  }, 16)
+}
+
+function onDataBatch(batch: HardwareDataBatchV1) {
+  for (const update of batch.updates) {
+    pendingTelemetry.set(update.signal, {
+      latest: update.latest,
+      high_ratio: update.high_ratio,
+      edge_count: update.edge_count,
+      sequence: batch.sequence,
+      updated_at_ms: batch.generated_at_ms,
+    })
+  }
+
+  pendingDataBatchMeta = {
+    sequence: batch.sequence,
+    dropped_samples: batch.dropped_samples,
+    queue_fill: batch.queue_fill,
+    queue_capacity: batch.queue_capacity,
+    last_batch_at_ms: batch.generated_at_ms,
+  }
+
+  scheduleTelemetryFlush()
 }
 
 function isTauriUnavailable(err: unknown): boolean {
@@ -320,8 +426,20 @@ async function start() {
   try {
     await syncState()
 
+    try {
+      dataStreamStatus.value = await hardwareGetDataStreamStatus()
+    } catch (err) {
+      if (!isTauriUnavailable(err)) {
+        throw err
+      }
+    }
+
     unlistenStateChanged = await listenHardwareStateChanged((event: HardwareEventV1) => {
       setState(event.state)
+    })
+
+    unlistenDataBatch = await listenHardwareDataBatch((batch) => {
+      onDataBatch(batch)
     })
 
     unlistenHotplug = await listen<HotplugPayload>('hardware:hotplug', (event) => {
@@ -329,15 +447,28 @@ async function start() {
     })
 
     await invoke('start_hotplug_watch')
+    await startHardwareDataStream()
     isStarted.value = true
   } catch (err) {
     if (unlistenStateChanged) {
       unlistenStateChanged()
       unlistenStateChanged = null
     }
+    if (unlistenDataBatch) {
+      unlistenDataBatch()
+      unlistenDataBatch = null
+    }
     if (unlistenHotplug) {
       unlistenHotplug()
       unlistenHotplug = null
+    }
+    clearTelemetryFlushHandle()
+    pendingTelemetry.clear()
+    pendingDataBatchMeta = null
+    dataStreamStatus.value = {
+      ...dataStreamStatus.value,
+      running: false,
+      queue_fill: 0,
     }
     setError(err instanceof Error ? err.message : String(err))
     throw err
@@ -350,15 +481,28 @@ async function stop() {
   }
 
   try {
+    await stopHardwareDataStream()
     await invoke('stop_hotplug_watch')
   } finally {
     if (unlistenStateChanged) {
       unlistenStateChanged()
       unlistenStateChanged = null
     }
+    if (unlistenDataBatch) {
+      unlistenDataBatch()
+      unlistenDataBatch = null
+    }
     if (unlistenHotplug) {
       unlistenHotplug()
       unlistenHotplug = null
+    }
+    clearTelemetryFlushHandle()
+    pendingTelemetry.clear()
+    pendingDataBatchMeta = null
+    dataStreamStatus.value = {
+      ...dataStreamStatus.value,
+      running: false,
+      queue_fill: 0,
     }
     isStarted.value = false
   }
@@ -367,11 +511,14 @@ async function stop() {
 async function disconnectView() {
   await stop()
   state.value = { ...initialState }
+  signalTelemetry.value = {}
   hotplugLog.value = ''
 }
 
 export const hardwareStore = {
   state,
+  signalTelemetry,
+  dataStreamStatus,
   hotplugLog,
   isStarted,
   start,
