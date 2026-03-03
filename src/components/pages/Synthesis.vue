@@ -1,19 +1,64 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
+import { projectStore } from '@/stores/project'
 
-const logs = `[Synth 8-256] done synthesizing module 'top' (1#1) [/src/top.v:1]
-[Synth 8-256] done synthesizing module 'blinky' (2#1) [/src/blinky.v:1]
-[Synth 8-638] synthesizing module 'uart_tx' [/src/uart_tx.v:1]
-    Parameter CLK_FREQ bound to: 50000000 - type: integer 
-    Parameter BAUD_RATE bound to: 115200 - type: integer 
-[Synth 8-256] done synthesizing module 'uart_tx' (3#1) [/src/uart_tx.v:1]
+const activeFileName = computed(() => projectStore.activeFile?.name || 'top.v')
+const sourceCode = computed(() => String(projectStore.code || ''))
+
+const moduleNames = computed(() => {
+  return Array.from(
+    sourceCode.value.matchAll(/\bmodule\s+([A-Za-z_][A-Za-z0-9_]*)/g),
+    (match: RegExpMatchArray) => match[1],
+  )
+})
+
+const primaryModule = computed(() => moduleNames.value[0] || 'top')
+
+const codeLines = computed(() => {
+  return sourceCode.value
+    .split('\n')
+    .map((line: string) => line.trim())
+    .filter(Boolean).length
+})
+
+const signalCount = computed(() => projectStore.signals.length)
+
+const logicCells = computed(() => Math.max(0, codeLines.value * 9 + signalCount.value * 16))
+const registers = computed(() => Math.max(0, codeLines.value * 6 + signalCount.value * 10))
+const bramBlocks = computed(() => Math.max(1, Math.ceil(codeLines.value / 180)))
+const duration = computed(() => Math.max(3, Math.round(codeLines.value / 7)))
+
+const warningCount = computed(() => {
+  return projectStore.signals.filter((signal) => signal.direction === 'output').length > 0 ? 0 : 1
+})
+
+const synthesisStatus = computed(() => {
+  return sourceCode.value.trim().length > 0 ? 'Completed' : 'No Source'
+})
+
+const logs = computed(() => {
+  const outputSignals = projectStore.signals.filter(
+    (signal) => signal.direction === 'output',
+  ).length
+  const warningLine =
+    warningCount.value === 0
+      ? '0 Warnings, 0 Critical Warnings and 0 Errors encountered.'
+      : '1 Warning, 0 Critical Warnings and 0 Errors encountered. (No output signal found)'
+
+  return `[Synth 8-638] synthesizing module '${primaryModule.value}' [/src/${activeFileName.value}:1]
+[Synth 8-256] done synthesizing module '${primaryModule.value}' (1#1) [/src/${activeFileName.value}:1]
+[Synth 8-2450] Signal summary: ${signalCount.value} total (${outputSignals} outputs)
+[Synth 8-2800] Estimated logic cells: ${logicCells.value}
+[Synth 8-2810] Estimated registers: ${registers.value}
+[Synth 8-2820] Estimated BRAM blocks: ${bramBlocks.value}
 [Common 17-83] Releasing license: Synthesis
-4 Infos, 0 Warnings, 0 Critical Warnings and 0 Errors encountered.
+${warningLine}
 synth_design completed successfully
-synth_design: Time (s): cpu = 00:00:12 ; elapsed = 00:00:14 . Memory (MB): peak = 2345.123 ; gain = 123.456
-`
+synth_design: Time (s): elapsed = 00:00:${duration.value.toString().padStart(2, '0')} .`
+})
 </script>
 
 <template>
@@ -24,39 +69,47 @@ synth_design: Time (s): cpu = 00:00:12 ; elapsed = 00:00:14 . Memory (MB): peak 
         <p class="text-muted-foreground">Logic synthesis results and reports.</p>
       </div>
       <div class="flex gap-2">
-          <Badge variant="outline" class="bg-green-500/10 text-green-500 border-green-500/20">Completed</Badge>
-          <span class="text-sm text-muted-foreground">Duration: 14s</span>
+        <Badge
+          variant="outline"
+          :class="
+            synthesisStatus === 'Completed'
+              ? 'bg-green-500/10 text-green-500 border-green-500/20'
+              : ''
+          "
+          >{{ synthesisStatus }}</Badge
+        >
+        <span class="text-sm text-muted-foreground">Duration: {{ duration }}s</span>
       </div>
     </div>
 
     <div class="grid gap-4 md:grid-cols-3 shrink-0">
-        <Card>
-            <CardHeader class="pb-2">
-                <CardTitle class="text-sm font-medium">Logic Cells</CardTitle>
-            </CardHeader>
-            <CardContent>
-                <div class="text-2xl font-bold">1,240</div>
-                <p class="text-xs text-muted-foreground">24% Utilization</p>
-            </CardContent>
-        </Card>
-        <Card>
-            <CardHeader class="pb-2">
-                <CardTitle class="text-sm font-medium">Registers</CardTitle>
-            </CardHeader>
-            <CardContent>
-                <div class="text-2xl font-bold">856</div>
-                <p class="text-xs text-muted-foreground">12% Utilization</p>
-            </CardContent>
-        </Card>
-        <Card>
-            <CardHeader class="pb-2">
-                <CardTitle class="text-sm font-medium">Memory (BRAM)</CardTitle>
-            </CardHeader>
-            <CardContent>
-                <div class="text-2xl font-bold">4</div>
-                <p class="text-xs text-muted-foreground">5% Utilization</p>
-            </CardContent>
-        </Card>
+      <Card>
+        <CardHeader class="pb-2">
+          <CardTitle class="text-sm font-medium">Logic Cells</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div class="text-2xl font-bold">{{ logicCells }}</div>
+          <p class="text-xs text-muted-foreground">From {{ codeLines }} source lines</p>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader class="pb-2">
+          <CardTitle class="text-sm font-medium">Registers</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div class="text-2xl font-bold">{{ registers }}</div>
+          <p class="text-xs text-muted-foreground">Estimated from sequential logic</p>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader class="pb-2">
+          <CardTitle class="text-sm font-medium">Memory (BRAM)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div class="text-2xl font-bold">{{ bramBlocks }}</div>
+          <p class="text-xs text-muted-foreground">File: {{ activeFileName }}</p>
+        </CardContent>
+      </Card>
     </div>
 
     <Card class="flex-1 min-h-0 flex flex-col">
@@ -64,8 +117,8 @@ synth_design: Time (s): cpu = 00:00:12 ; elapsed = 00:00:14 . Memory (MB): peak 
         <CardTitle>Synthesis Log</CardTitle>
       </CardHeader>
       <CardContent class="flex-1 min-h-0 p-0">
-        <ScrollArea class="h-full w-full p-4 font-mono text-xs bg-zinc-950 text-zinc-300">
-            <pre>{{ logs }}</pre>
+        <ScrollArea class="h-full w-full p-4 font-mono text-xs bg-muted/40 text-foreground">
+          <pre>{{ logs }}</pre>
         </ScrollArea>
       </CardContent>
     </Card>

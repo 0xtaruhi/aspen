@@ -1,13 +1,114 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Activity, Cpu, Clock, AlertCircle } from 'lucide-vue-next'
+import { projectStore } from '@/stores/project'
 
-const stats = [
-  { title: 'Device Utilization', value: '45%', icon: Cpu, desc: 'LUTs: 1240/5000' },
-  { title: 'Power Estimate', value: '1.2W', icon: Activity, desc: 'Dynamic: 0.8W' },
-  { title: 'Worst Negative Slack', value: '0.4ns', icon: Clock, desc: 'Met Timing' },
-  { title: 'Critical Warnings', value: '0', icon: AlertCircle, desc: 'Clean Build' },
-]
+const codeLines = computed(() => {
+  const code = String(projectStore.code || '')
+  return code
+    .split('\n')
+    .map((line: string) => line.trim())
+    .filter(Boolean).length
+})
+
+const signalSummary = computed(() => {
+  const inputs = projectStore.signals.filter((sig) => sig.direction === 'input').length
+  const outputs = projectStore.signals.filter((sig) => sig.direction === 'output').length
+  const inouts = projectStore.signals.filter((sig) => sig.direction === 'inout').length
+  return { inputs, outputs, inouts }
+})
+
+const estimatedResources = computed(() => {
+  const lut = Math.max(64, codeLines.value * 3 + signalSummary.value.outputs * 20)
+  const ff = Math.max(32, codeLines.value * 2 + signalSummary.value.inputs * 16)
+  const bram = Math.max(1, Math.ceil(codeLines.value / 180))
+  const dsp = Math.max(0, Math.ceil(signalSummary.value.outputs / 3))
+  return { lut, ff, bram, dsp }
+})
+
+const utilizationPercent = computed(() => {
+  const cap = 5000
+  return Math.min(99, Math.round((estimatedResources.value.lut / cap) * 100))
+})
+
+const estimatedPower = computed(() => {
+  const dynamic = estimatedResources.value.lut * 0.00042 + estimatedResources.value.ff * 0.00018
+  const staticPower = 0.42
+  return {
+    total: (dynamic + staticPower).toFixed(2),
+    dynamic: dynamic.toFixed(2),
+  }
+})
+
+const estimatedWns = computed(() => {
+  const signalWeight = signalSummary.value.outputs + signalSummary.value.inputs * 0.5
+  return (1.6 - Math.min(1.4, signalWeight * 0.08)).toFixed(3)
+})
+
+const stats = computed(() => [
+  {
+    title: 'Device Utilization',
+    value: `${utilizationPercent.value}%`,
+    icon: Cpu,
+    desc: `LUTs: ${estimatedResources.value.lut}/5000 (estimated)`,
+  },
+  {
+    title: 'Power Estimate',
+    value: `${estimatedPower.value.total}W`,
+    icon: Activity,
+    desc: `Dynamic: ${estimatedPower.value.dynamic}W`,
+  },
+  {
+    title: 'Worst Negative Slack',
+    value: `${estimatedWns.value}ns`,
+    icon: Clock,
+    desc: Number(estimatedWns.value) >= 0 ? 'Timing estimated as met' : 'Timing risk detected',
+  },
+  {
+    title: 'Critical Warnings',
+    value: signalSummary.value.outputs > 0 ? '0' : '1',
+    icon: AlertCircle,
+    desc: signalSummary.value.outputs > 0 ? 'No obvious output issues' : 'No output signal found',
+  },
+])
+
+const resourceBars = computed(() => {
+  const maxValue = Math.max(
+    estimatedResources.value.lut,
+    estimatedResources.value.ff,
+    estimatedResources.value.bram * 200,
+    Math.max(1, estimatedResources.value.dsp) * 150,
+  )
+
+  return [
+    {
+      label: 'LUT',
+      height: Math.max(8, Math.round((estimatedResources.value.lut / maxValue) * 100)),
+      colorClass: 'bg-chart-1',
+    },
+    {
+      label: 'FF',
+      height: Math.max(8, Math.round((estimatedResources.value.ff / maxValue) * 100)),
+      colorClass: 'bg-chart-2',
+    },
+    {
+      label: 'BRAM',
+      height: Math.max(8, Math.round(((estimatedResources.value.bram * 200) / maxValue) * 100)),
+      colorClass: 'bg-chart-3',
+    },
+    {
+      label: 'DSP',
+      height: Math.max(
+        8,
+        Math.round(((Math.max(1, estimatedResources.value.dsp) * 150) / maxValue) * 100),
+      ),
+      colorClass: 'bg-chart-4',
+    },
+  ]
+})
+
+const activeFileName = computed(() => projectStore.activeFile?.name || 'No file selected')
 </script>
 
 <template>
@@ -40,51 +141,51 @@ const stats = [
           <CardTitle>Resource Utilization</CardTitle>
         </CardHeader>
         <CardContent class="pl-2">
-          <!-- Mock Chart Placeholder -->
           <div class="h-[200px] flex items-end justify-around p-4 gap-2">
-             <div class="w-full bg-blue-500/20 h-[45%] rounded-t relative group">
-                <div class="absolute bottom-0 w-full bg-blue-500 h-full rounded-t opacity-80"></div>
-                <span class="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs">LUT</span>
-             </div>
-             <div class="w-full bg-green-500/20 h-[30%] rounded-t relative group">
-                <div class="absolute bottom-0 w-full bg-green-500 h-full rounded-t opacity-80"></div>
-                <span class="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs">FF</span>
-             </div>
-             <div class="w-full bg-yellow-500/20 h-[10%] rounded-t relative group">
-                <div class="absolute bottom-0 w-full bg-yellow-500 h-full rounded-t opacity-80"></div>
-                <span class="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs">BRAM</span>
-             </div>
-             <div class="w-full bg-purple-500/20 h-[5%] rounded-t relative group">
-                <div class="absolute bottom-0 w-full bg-purple-500 h-full rounded-t opacity-80"></div>
-                <span class="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs">DSP</span>
-             </div>
+            <div
+              v-for="resource in resourceBars"
+              :key="resource.label"
+              class="w-full bg-muted h-full rounded-t relative group"
+            >
+              <div
+                class="absolute bottom-0 w-full rounded-t opacity-80"
+                :class="resource.colorClass"
+                :style="{ height: `${resource.height}%` }"
+              ></div>
+              <span class="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs">{{
+                resource.label
+              }}</span>
+            </div>
           </div>
         </CardContent>
       </Card>
       <Card class="col-span-3">
         <CardHeader>
           <CardTitle>Recent Activity</CardTitle>
-          <CardDescription>
-            Latest build and simulation runs.
-          </CardDescription>
+          <CardDescription> Latest build and simulation runs. </CardDescription>
         </CardHeader>
         <CardContent>
           <div class="space-y-4">
             <div class="flex items-center">
               <span class="relative flex h-2 w-2 mr-2">
-                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                <span
+                  class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"
+                ></span>
                 <span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
               </span>
               <div class="ml-2 space-y-1">
-                <p class="text-sm font-medium leading-none">Synthesis Completed</p>
-                <p class="text-xs text-muted-foreground">2 minutes ago</p>
+                <p class="text-sm font-medium leading-none">Active file analyzed</p>
+                <p class="text-xs text-muted-foreground">{{ activeFileName }}</p>
               </div>
             </div>
-             <div class="flex items-center">
-              <div class="w-2 h-2 rounded-full bg-blue-500 mr-2"></div>
+            <div class="flex items-center">
+              <div class="w-2 h-2 rounded-full bg-primary mr-2"></div>
               <div class="ml-2 space-y-1">
-                <p class="text-sm font-medium leading-none">Simulation Passed</p>
-                <p class="text-xs text-muted-foreground">1 hour ago</p>
+                <p class="text-sm font-medium leading-none">Signal summary ready</p>
+                <p class="text-xs text-muted-foreground">
+                  Inputs: {{ signalSummary.inputs }} · Outputs: {{ signalSummary.outputs }} ·
+                  Inouts: {{ signalSummary.inouts }}
+                </p>
               </div>
             </div>
           </div>
