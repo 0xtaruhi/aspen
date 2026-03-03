@@ -1,16 +1,108 @@
-use std::sync::Mutex;
+use std::{
+    collections::{HashMap, VecDeque},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
+    thread,
+    time::{Duration, Instant},
+};
 
 use tauri::{AppHandle, Emitter};
 
 use super::driver;
 use super::types::{
-    CanvasDeviceType, HardwareActionV1, HardwareArtifactSnapshot, HardwareEventReason,
-    HardwareEventV1, HardwarePhase, HardwareStateV1,
+    CanvasDeviceType, HardwareActionV1, HardwareArtifactSnapshot, HardwareDataBatchV1,
+    HardwareDataStreamStatusV1, HardwareEventReason, HardwareEventV1, HardwarePhase,
+    HardwareSignalAggregateV1, HardwareStateV1,
 };
 
-#[derive(Default)]
+const DATA_SAMPLE_INTERVAL: Duration = Duration::from_millis(5);
+const DATA_FLUSH_INTERVAL: Duration = Duration::from_millis(16);
+const DATA_QUEUE_CAPACITY: usize = 120;
+const DATA_MAX_UPDATES_PER_BATCH: usize = 256;
+
+struct HardwareDataStreamSession {
+    stop_flag: Arc<AtomicBool>,
+    handle: thread::JoinHandle<()>,
+}
+
+struct HardwareDataSample {
+    values: Vec<(String, bool)>,
+}
+
+#[derive(Clone)]
+struct HardwareDataAggregate {
+    latest: bool,
+    high_count: u32,
+    total_count: u32,
+    edge_count: u16,
+    previous: Option<bool>,
+}
+
+impl HardwareDataAggregate {
+    fn new() -> Self {
+        Self {
+            latest: false,
+            high_count: 0,
+            total_count: 0,
+            edge_count: 0,
+            previous: None,
+        }
+    }
+
+    fn ingest(&mut self, value: bool) {
+        if let Some(previous) = self.previous {
+            if previous != value {
+                self.edge_count = self.edge_count.saturating_add(1);
+            }
+        }
+
+        self.previous = Some(value);
+        self.latest = value;
+        if value {
+            self.high_count += 1;
+        }
+        self.total_count += 1;
+    }
+
+    fn into_signal(self, signal: String) -> HardwareSignalAggregateV1 {
+        let high_ratio = if self.total_count == 0 {
+            0.0
+        } else {
+            self.high_count as f32 / self.total_count as f32
+        };
+
+        HardwareSignalAggregateV1 {
+            signal,
+            latest: self.latest,
+            high_ratio,
+            edge_count: self.edge_count,
+        }
+    }
+}
+
 pub struct HardwareRuntime {
     state: Mutex<HardwareStateV1>,
+    data_stream: Mutex<Option<HardwareDataStreamSession>>,
+    data_stream_status: Mutex<HardwareDataStreamStatusV1>,
+}
+
+impl Default for HardwareRuntime {
+    fn default() -> Self {
+        Self {
+            state: Mutex::new(HardwareStateV1::default()),
+            data_stream: Mutex::new(None),
+            data_stream_status: Mutex::new(HardwareDataStreamStatusV1 {
+                running: false,
+                sequence: 0,
+                dropped_samples: 0,
+                queue_fill: 0,
+                queue_capacity: DATA_QUEUE_CAPACITY as u16,
+                last_batch_at_ms: 0,
+            }),
+        }
+    }
 }
 
 impl HardwareRuntime {
@@ -21,6 +113,70 @@ impl HardwareRuntime {
             .map_err(|_| "failed to acquire hardware state mutex".to_string())?
             .clone();
         Ok(state)
+    }
+
+    pub fn data_stream_status(&self) -> Result<HardwareDataStreamStatusV1, String> {
+        self.data_stream_status
+            .lock()
+            .map_err(|_| "failed to acquire data stream status mutex".to_string())
+            .map(|status| status.clone())
+    }
+
+    pub fn start_data_stream(self: &Arc<Self>, app: &AppHandle) -> Result<(), String> {
+        {
+            let mut guard = self
+                .data_stream
+                .lock()
+                .map_err(|_| "failed to acquire data stream mutex".to_string())?;
+
+            if guard.is_some() {
+                return Ok(());
+            }
+
+            let stop_flag = Arc::new(AtomicBool::new(false));
+            let runtime = Arc::clone(self);
+            let stop_for_thread = Arc::clone(&stop_flag);
+            let app_handle = app.clone();
+
+            let handle = thread::Builder::new()
+                .name("aspen-hardware-data-stream".to_string())
+                .spawn(move || {
+                    runtime.run_data_stream_loop(app_handle, stop_for_thread);
+                })
+                .map_err(|err| err.to_string())?;
+
+            *guard = Some(HardwareDataStreamSession { stop_flag, handle });
+        }
+
+        self.update_data_stream_status(|status| {
+            status.running = true;
+            status.queue_fill = 0;
+            status.queue_capacity = DATA_QUEUE_CAPACITY as u16;
+            status.last_batch_at_ms = 0;
+            status.sequence = 0;
+            status.dropped_samples = 0;
+        })
+    }
+
+    pub fn stop_data_stream(&self) -> Result<(), String> {
+        let session = {
+            let mut guard = self
+                .data_stream
+                .lock()
+                .map_err(|_| "failed to acquire data stream mutex".to_string())?;
+
+            guard.take()
+        };
+
+        if let Some(session) = session {
+            session.stop_flag.store(true, Ordering::Relaxed);
+            let _ = session.handle.join();
+        }
+
+        self.update_data_stream_status(|status| {
+            status.running = false;
+            status.queue_fill = 0;
+        })
     }
 
     pub fn mark_device_disconnected(
@@ -331,6 +487,134 @@ impl HardwareRuntime {
         format!("{}-{}", prefix, Self::now_millis())
     }
 
+    fn update_data_stream_status<F>(&self, mutator: F) -> Result<(), String>
+    where
+        F: FnOnce(&mut HardwareDataStreamStatusV1),
+    {
+        let mut guard = self
+            .data_stream_status
+            .lock()
+            .map_err(|_| "failed to acquire data stream status mutex".to_string())?;
+        mutator(&mut guard);
+        Ok(())
+    }
+
+    fn run_data_stream_loop(self: Arc<Self>, app: AppHandle, stop_flag: Arc<AtomicBool>) {
+        let mut queue: VecDeque<HardwareDataSample> = VecDeque::with_capacity(DATA_QUEUE_CAPACITY);
+        let mut dropped_samples = 0_u64;
+        let mut sequence = 0_u64;
+        let mut next_sample_tick = Instant::now();
+        let mut next_flush_tick = Instant::now();
+
+        while !stop_flag.load(Ordering::Relaxed) {
+            let now = Instant::now();
+
+            while now >= next_sample_tick {
+                let sample = self.collect_data_sample();
+                if queue.len() >= DATA_QUEUE_CAPACITY {
+                    queue.pop_front();
+                    dropped_samples = dropped_samples.saturating_add(1);
+                }
+                queue.push_back(sample);
+                next_sample_tick += DATA_SAMPLE_INTERVAL;
+            }
+
+            if now >= next_flush_tick {
+                if !queue.is_empty() {
+                    let queue_fill = queue.len() as u16;
+                    let updates = Self::aggregate_data_samples(&mut queue);
+                    if !updates.is_empty() {
+                        sequence = sequence.saturating_add(1);
+                        let generated_at_ms = Self::now_millis();
+                        let batch = HardwareDataBatchV1 {
+                            version: 1,
+                            sequence,
+                            generated_at_ms,
+                            dropped_samples,
+                            queue_fill,
+                            queue_capacity: DATA_QUEUE_CAPACITY as u16,
+                            updates,
+                        };
+
+                        let _ = app.emit("hardware:data_batch", batch.clone());
+                        let _ = self.update_data_stream_status(|status| {
+                            status.running = true;
+                            status.sequence = batch.sequence;
+                            status.dropped_samples = batch.dropped_samples;
+                            status.queue_fill = 0;
+                            status.queue_capacity = batch.queue_capacity;
+                            status.last_batch_at_ms = batch.generated_at_ms;
+                        });
+                    }
+                }
+
+                next_flush_tick += DATA_FLUSH_INTERVAL;
+            }
+
+            thread::sleep(Duration::from_millis(1));
+        }
+    }
+
+    fn collect_data_sample(&self) -> HardwareDataSample {
+        let values = match self.state.lock() {
+            Ok(state) => {
+                let mut by_signal = HashMap::<String, bool>::new();
+
+                for device in &state.canvas_devices {
+                    if !Self::device_drives_signal(device.r#type) {
+                        continue;
+                    }
+
+                    if let Some(signal) = &device.state.bound_signal {
+                        by_signal.insert(signal.clone(), device.state.is_on);
+                    }
+                }
+
+                for device in &state.canvas_devices {
+                    if !Self::device_receives_signal(device.r#type) {
+                        continue;
+                    }
+
+                    if let Some(signal) = &device.state.bound_signal {
+                        by_signal
+                            .entry(signal.clone())
+                            .or_insert(device.state.is_on);
+                    }
+                }
+
+                let mut values: Vec<(String, bool)> = by_signal.into_iter().collect();
+                values.sort_by(|left, right| left.0.cmp(&right.0));
+                values
+            }
+            Err(_) => Vec::new(),
+        };
+
+        HardwareDataSample { values }
+    }
+
+    fn aggregate_data_samples(
+        queue: &mut VecDeque<HardwareDataSample>,
+    ) -> Vec<HardwareSignalAggregateV1> {
+        let mut aggregated: HashMap<String, HardwareDataAggregate> = HashMap::new();
+
+        while let Some(sample) = queue.pop_front() {
+            for (signal, value) in sample.values {
+                aggregated
+                    .entry(signal)
+                    .or_insert_with(HardwareDataAggregate::new)
+                    .ingest(value);
+            }
+        }
+
+        let mut updates: Vec<HardwareSignalAggregateV1> = aggregated
+            .into_iter()
+            .map(|(signal, aggregate)| aggregate.into_signal(signal))
+            .collect();
+        updates.sort_by(|left, right| left.signal.cmp(&right.signal));
+        updates.truncate(DATA_MAX_UPDATES_PER_BATCH);
+        updates
+    }
+
     fn probe_failure_phase(message: &str) -> HardwarePhase {
         let lowered = message.to_ascii_lowercase();
         if lowered.contains("not found")
@@ -406,5 +690,99 @@ impl HardwareRuntime {
                 state.canvas_devices[target_index].state.is_on = value;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::hardware::types::{CanvasDeviceSnapshot, CanvasDeviceStateSnapshot};
+
+    fn sample(values: &[(&str, bool)]) -> HardwareDataSample {
+        HardwareDataSample {
+            values: values
+                .iter()
+                .map(|(signal, value)| ((*signal).to_string(), *value))
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn aggregate_data_samples_tracks_latest_ratio_and_edges() {
+        let mut queue = VecDeque::from([
+            sample(&[("sig_a", false), ("sig_b", true)]),
+            sample(&[("sig_a", true), ("sig_b", true)]),
+            sample(&[("sig_a", true), ("sig_b", false)]),
+        ]);
+
+        let updates = HardwareRuntime::aggregate_data_samples(&mut queue);
+        assert_eq!(updates.len(), 2);
+
+        let sig_a = updates.iter().find(|item| item.signal == "sig_a").unwrap();
+        assert!(sig_a.latest);
+        assert_eq!(sig_a.edge_count, 1);
+        assert!((sig_a.high_ratio - (2.0 / 3.0)).abs() < 0.0001);
+
+        let sig_b = updates.iter().find(|item| item.signal == "sig_b").unwrap();
+        assert!(!sig_b.latest);
+        assert_eq!(sig_b.edge_count, 1);
+        assert!((sig_b.high_ratio - (2.0 / 3.0)).abs() < 0.0001);
+
+        assert!(queue.is_empty());
+    }
+
+    #[test]
+    fn aggregate_data_samples_caps_payload_size() {
+        let mut values = Vec::new();
+        for index in 0..(DATA_MAX_UPDATES_PER_BATCH + 10) {
+            values.push((format!("sig_{index}"), (index % 2) == 0));
+        }
+
+        let mut queue = VecDeque::from([HardwareDataSample { values }]);
+        let updates = HardwareRuntime::aggregate_data_samples(&mut queue);
+        assert_eq!(updates.len(), DATA_MAX_UPDATES_PER_BATCH);
+    }
+
+    #[test]
+    fn collect_data_sample_prefers_drivers_and_keeps_receiver_fallback() {
+        let runtime = HardwareRuntime::default();
+
+        {
+            let mut state = runtime.state.lock().unwrap();
+            let switch = state
+                .canvas_devices
+                .iter_mut()
+                .find(|item| item.r#type == CanvasDeviceType::Switch)
+                .unwrap();
+            switch.state.bound_signal = Some("sig_driven".to_string());
+            switch.state.is_on = true;
+
+            let led = state
+                .canvas_devices
+                .iter_mut()
+                .find(|item| item.r#type == CanvasDeviceType::Led)
+                .unwrap();
+            led.state.bound_signal = Some("sig_driven".to_string());
+            led.state.is_on = false;
+
+            state.canvas_devices.push(CanvasDeviceSnapshot {
+                id: "led-extra".to_string(),
+                r#type: CanvasDeviceType::Led,
+                x: 0.0,
+                y: 0.0,
+                label: "LED Extra".to_string(),
+                state: CanvasDeviceStateSnapshot {
+                    is_on: true,
+                    color: Some("green".to_string()),
+                    bound_signal: Some("sig_receiver".to_string()),
+                },
+            });
+        }
+
+        let sample = runtime.collect_data_sample();
+        let by_signal: HashMap<String, bool> = sample.values.into_iter().collect();
+
+        assert_eq!(by_signal.get("sig_driven"), Some(&true));
+        assert_eq!(by_signal.get("sig_receiver"), Some(&true));
     }
 }

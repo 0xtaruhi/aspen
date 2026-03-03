@@ -7,8 +7,8 @@ use std::{
 };
 
 use hardware::{
-    BitstreamGenerationResult, HardwareActionV1, HardwareEventReason, HardwareRuntime,
-    HardwareStateV1, HardwareStatus,
+    BitstreamGenerationResult, HardwareActionV1, HardwareDataStreamStatusV1, HardwareEventReason,
+    HardwareRuntime, HardwareStateV1, HardwareStatus,
 };
 use tauri::Emitter;
 use vlfd_rs::{Device, HotplugEvent, HotplugEventKind, HotplugOptions, HotplugRegistration};
@@ -39,6 +39,28 @@ async fn hardware_dispatch(
     runtime
         .dispatch(&app, action, HardwareEventReason::Action)
         .await
+}
+
+#[tauri::command]
+fn hardware_get_data_stream_status(
+    runtime: tauri::State<'_, Arc<HardwareRuntime>>,
+) -> Result<HardwareDataStreamStatusV1, String> {
+    runtime.data_stream_status()
+}
+
+#[tauri::command]
+fn start_hardware_data_stream(
+    app: tauri::AppHandle,
+    runtime: tauri::State<'_, Arc<HardwareRuntime>>,
+) -> Result<(), String> {
+    runtime.inner().start_data_stream(&app)
+}
+
+#[tauri::command]
+fn stop_hardware_data_stream(
+    runtime: tauri::State<'_, Arc<HardwareRuntime>>,
+) -> Result<(), String> {
+    runtime.stop_data_stream()
 }
 
 #[tauri::command]
@@ -205,6 +227,9 @@ pub fn run() {
             greet,
             hardware_get_state,
             hardware_dispatch,
+            hardware_get_data_stream_status,
+            start_hardware_data_stream,
+            stop_hardware_data_stream,
             get_hardware_status,
             program_bitstream,
             generate_bitstream,

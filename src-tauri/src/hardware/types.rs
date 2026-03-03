@@ -153,6 +153,35 @@ pub struct HardwareEventV1 {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct HardwareSignalAggregateV1 {
+    pub signal: String,
+    pub latest: bool,
+    pub high_ratio: f32,
+    pub edge_count: u16,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct HardwareDataBatchV1 {
+    pub version: u8,
+    pub sequence: u64,
+    pub generated_at_ms: u64,
+    pub dropped_samples: u64,
+    pub queue_fill: u16,
+    pub queue_capacity: u16,
+    pub updates: Vec<HardwareSignalAggregateV1>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct HardwareDataStreamStatusV1 {
+    pub running: bool,
+    pub sequence: u64,
+    pub dropped_samples: u64,
+    pub queue_fill: u16,
+    pub queue_capacity: u16,
+    pub last_batch_at_ms: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum HardwareActionV1 {
     Probe,
