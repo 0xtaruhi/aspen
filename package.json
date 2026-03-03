@@ -6,13 +6,18 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
+    "typecheck": "vue-tsc --noEmit",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "prepare": "husky"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.17",
     "@tanstack/vue-table": "^8.21.3",
     "@tauri-apps/api": "^2.9.0",
+    "@tauri-apps/plugin-dialog": "^2.4.2",
     "@tauri-apps/plugin-opener": "^2.5.2",
     "@vueuse/core": "^13.9.0",
     "class-variance-authority": "^0.7.1",
@@ -31,8 +36,15 @@
     "@tauri-apps/cli": "^2.9.4",
     "@types/node": "^24.10.1",
     "@vitejs/plugin-vue": "^5.2.4",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.3.1",
+    "prettier": "^3.8.1",
     "typescript": "~5.6.3",
     "vite": "^6.4.1",
     "vue-tsc": "^2.2.12"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,mjs,cjs,vue,json,css,scss,md,yml,yaml}": "prettier --write",
+    "src-tauri/src/**/*.rs": "cargo fmt --manifest-path src-tauri/Cargo.toml --"
   }
 }
