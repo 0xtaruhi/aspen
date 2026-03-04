@@ -54,6 +54,210 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
       receivesSignal: false,
     },
   },
+  button: {
+    title: 'Button',
+    dropAliases: ['button'],
+    defaultState: () => ({
+      is_on: false,
+      color: null,
+      bound_signal: null,
+    }),
+    toRendererProps: (device) => ({
+      isOn: device.state.is_on,
+    }),
+    emitsToggle: true,
+    capabilities: {
+      drivesSignal: true,
+      receivesSignal: false,
+    },
+  },
+  keypad: {
+    title: 'KeyPad',
+    dropAliases: ['keypad'],
+    defaultState: () => ({
+      is_on: false,
+      color: null,
+      bound_signal: null,
+    }),
+    toRendererProps: () => ({
+      title: 'KeyPad',
+    }),
+    emitsToggle: false,
+    capabilities: {
+      drivesSignal: true,
+      receivesSignal: false,
+    },
+  },
+  small_keypad: {
+    title: 'SmallKeyPad',
+    dropAliases: ['small_keypad', 'smallkeypad'],
+    defaultState: () => ({
+      is_on: false,
+      color: null,
+      bound_signal: null,
+    }),
+    toRendererProps: () => ({
+      title: 'SmallKeyPad',
+    }),
+    emitsToggle: false,
+    capabilities: {
+      drivesSignal: true,
+      receivesSignal: false,
+    },
+  },
+  rotary_button: {
+    title: 'RotaryButton',
+    dropAliases: ['rotary_button', 'rotarybutton'],
+    defaultState: () => ({
+      is_on: false,
+      color: null,
+      bound_signal: null,
+    }),
+    toRendererProps: () => ({
+      title: 'RotaryButton',
+    }),
+    emitsToggle: false,
+    capabilities: {
+      drivesSignal: true,
+      receivesSignal: false,
+    },
+  },
+  ps2_keyboard: {
+    title: 'PS2Keyboard',
+    dropAliases: ['ps2_keyboard', 'ps2keyboard'],
+    defaultState: () => ({
+      is_on: false,
+      color: null,
+      bound_signal: null,
+    }),
+    toRendererProps: () => ({
+      title: 'PS2Keyboard',
+    }),
+    emitsToggle: false,
+    capabilities: {
+      drivesSignal: true,
+      receivesSignal: false,
+    },
+  },
+  text_lcd: {
+    title: 'TextLCD',
+    dropAliases: ['text_lcd', 'textlcd'],
+    defaultState: () => ({
+      is_on: false,
+      color: null,
+      bound_signal: null,
+    }),
+    toRendererProps: () => ({
+      title: 'TextLCD',
+    }),
+    emitsToggle: false,
+    capabilities: {
+      drivesSignal: false,
+      receivesSignal: true,
+    },
+  },
+  graphic_lcd: {
+    title: 'GraphicLCD',
+    dropAliases: ['graphic_lcd', 'graphiclcd'],
+    defaultState: () => ({
+      is_on: false,
+      color: null,
+      bound_signal: null,
+    }),
+    toRendererProps: () => ({
+      title: 'GraphicLCD',
+    }),
+    emitsToggle: false,
+    capabilities: {
+      drivesSignal: false,
+      receivesSignal: true,
+    },
+  },
+  segment_display: {
+    title: 'SegmentDisplay',
+    dropAliases: ['segment_display', 'segmentdisplay'],
+    defaultState: () => ({
+      is_on: false,
+      color: null,
+      bound_signal: null,
+    }),
+    toRendererProps: () => ({
+      title: 'SegmentDisplay',
+    }),
+    emitsToggle: false,
+    capabilities: {
+      drivesSignal: false,
+      receivesSignal: true,
+    },
+  },
+  four_digit_segment_display: {
+    title: '4DigitSegment',
+    dropAliases: ['four_digit_segment_display', 'fourdigitsegmentdisplay'],
+    defaultState: () => ({
+      is_on: false,
+      color: null,
+      bound_signal: null,
+    }),
+    toRendererProps: () => ({
+      title: '4DigitSegment',
+    }),
+    emitsToggle: false,
+    capabilities: {
+      drivesSignal: false,
+      receivesSignal: true,
+    },
+  },
+  led4x4_matrix: {
+    title: 'LED4x4',
+    dropAliases: ['led4x4_matrix', 'led4x4matrix'],
+    defaultState: () => ({
+      is_on: false,
+      color: null,
+      bound_signal: null,
+    }),
+    toRendererProps: () => ({
+      title: 'LED4x4',
+    }),
+    emitsToggle: false,
+    capabilities: {
+      drivesSignal: false,
+      receivesSignal: true,
+    },
+  },
+  led8x8_matrix: {
+    title: 'LED8x8',
+    dropAliases: ['led8x8_matrix', 'led8x8matrix'],
+    defaultState: () => ({
+      is_on: false,
+      color: null,
+      bound_signal: null,
+    }),
+    toRendererProps: () => ({
+      title: 'LED8x8',
+    }),
+    emitsToggle: false,
+    capabilities: {
+      drivesSignal: false,
+      receivesSignal: true,
+    },
+  },
+  led16x16_matrix: {
+    title: 'LED16x16',
+    dropAliases: ['led16x16_matrix', 'led16x16matrix'],
+    defaultState: () => ({
+      is_on: false,
+      color: null,
+      bound_signal: null,
+    }),
+    toRendererProps: () => ({
+      title: 'LED16x16',
+    }),
+    emitsToggle: false,
+    capabilities: {
+      drivesSignal: false,
+      receivesSignal: true,
+    },
+  },
 }
 
 const dropAliasToType = new Map<string, CanvasDeviceType>(

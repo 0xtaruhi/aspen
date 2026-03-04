@@ -26,7 +26,19 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Lightbulb, ToggleLeft } from 'lucide-vue-next'
+import {
+  CircleDot,
+  Grid2x2,
+  Grid3X3,
+  Grid3x3,
+  Keyboard,
+  Lightbulb,
+  Monitor,
+  RotateCw,
+  Square,
+  ToggleLeft,
+  Type,
+} from 'lucide-vue-next'
 
 type GalleryItem = { type: string; title: string; icon: any }
 
@@ -35,6 +47,18 @@ defineProps<{ open: boolean }>()
 const items = computed<GalleryItem[]>(() => [
   { type: 'led', title: 'LED', icon: Lightbulb },
   { type: 'switch', title: 'Switch', icon: ToggleLeft },
+  { type: 'button', title: 'Button', icon: CircleDot },
+  { type: 'keypad', title: 'KeyPad', icon: Grid3x3 },
+  { type: 'small_keypad', title: 'SmallKeyPad', icon: Grid2x2 },
+  { type: 'rotary_button', title: 'RotaryButton', icon: RotateCw },
+  { type: 'ps2_keyboard', title: 'PS2Keyboard', icon: Keyboard },
+  { type: 'text_lcd', title: 'TextLCD', icon: Type },
+  { type: 'graphic_lcd', title: 'GraphicLCD', icon: Monitor },
+  { type: 'segment_display', title: 'SegmentDisplay', icon: Square },
+  { type: 'four_digit_segment_display', title: '4DigitSegment', icon: Grid2x2 },
+  { type: 'led4x4_matrix', title: 'LED4x4', icon: Grid3X3 },
+  { type: 'led8x8_matrix', title: 'LED8x8', icon: Grid3X3 },
+  { type: 'led16x16_matrix', title: 'LED16x16', icon: Grid3X3 },
 ])
 
 function onDragStart(type: string) {

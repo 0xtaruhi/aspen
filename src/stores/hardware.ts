@@ -4,16 +4,18 @@ import { ref } from 'vue'
 
 import {
   type CanvasDeviceType,
+  type HardwareDataBatchBinaryV1,
+  type HardwareDataSignalCatalogV1,
   hardwareDispatch,
   hardwareGetDataStreamStatus,
   hardwareGetState,
-  listenHardwareDataBatch,
+  listenHardwareDataBatchBinary,
+  listenHardwareDataCatalog,
   listenHardwareStateChanged,
   startHardwareDataStream,
   stopHardwareDataStream,
   type CanvasDeviceSnapshot,
   type HardwareActionV1,
-  type HardwareDataBatchV1,
   type HardwareDataStreamStatusV1,
   type HardwareEventV1,
   type HardwareStateV1,
@@ -68,10 +70,12 @@ const dataStreamStatus = ref<HardwareDataStreamStatusV1>({
 let unlistenStateChanged: UnlistenFn | null = null
 let unlistenHotplug: UnlistenFn | null = null
 let unlistenDataBatch: UnlistenFn | null = null
+let unlistenDataCatalog: UnlistenFn | null = null
 let telemetryRafId: number | null = null
 let telemetryFlushTimerId: ReturnType<typeof setTimeout> | null = null
 
 const pendingTelemetry = new Map<string, SignalTelemetrySnapshot>()
+const signalCatalog = new Map<number, string>()
 let pendingDataBatchMeta: Pick<
   HardwareDataStreamStatusV1,
   'sequence' | 'dropped_samples' | 'queue_fill' | 'queue_capacity' | 'last_batch_at_ms'
@@ -109,20 +113,19 @@ function clearTelemetryFlushHandle() {
 
 function flushTelemetry() {
   if (pendingTelemetry.size > 0) {
-    const next = { ...signalTelemetry.value }
     for (const [signal, value] of pendingTelemetry.entries()) {
-      next[signal] = value
+      signalTelemetry.value[signal] = value
     }
-    signalTelemetry.value = next
     pendingTelemetry.clear()
   }
 
   if (pendingDataBatchMeta) {
-    dataStreamStatus.value = {
-      ...dataStreamStatus.value,
-      running: true,
-      ...pendingDataBatchMeta,
-    }
+    dataStreamStatus.value.running = true
+    dataStreamStatus.value.sequence = pendingDataBatchMeta.sequence
+    dataStreamStatus.value.dropped_samples = pendingDataBatchMeta.dropped_samples
+    dataStreamStatus.value.queue_fill = pendingDataBatchMeta.queue_fill
+    dataStreamStatus.value.queue_capacity = pendingDataBatchMeta.queue_capacity
+    dataStreamStatus.value.last_batch_at_ms = pendingDataBatchMeta.last_batch_at_ms
     pendingDataBatchMeta = null
   }
 
@@ -146,23 +149,78 @@ function scheduleTelemetryFlush() {
   }, 16)
 }
 
-function onDataBatch(batch: HardwareDataBatchV1) {
-  for (const update of batch.updates) {
-    pendingTelemetry.set(update.signal, {
-      latest: update.latest,
-      high_ratio: update.high_ratio,
-      edge_count: update.edge_count,
-      sequence: batch.sequence,
-      updated_at_ms: batch.generated_at_ms,
+function toSafeNumberFromU64(value: bigint): number {
+  const maxSafe = BigInt(Number.MAX_SAFE_INTEGER)
+  if (value > maxSafe) {
+    return Number.MAX_SAFE_INTEGER
+  }
+  return Number(value)
+}
+
+function onDataCatalog(catalog: HardwareDataSignalCatalogV1) {
+  for (const entry of catalog.entries) {
+    signalCatalog.set(entry.signal_id, entry.signal)
+  }
+}
+
+function onDataBatchBinary(batch: HardwareDataBatchBinaryV1) {
+  const bytes = new Uint8Array(batch.payload)
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const expectedHeaderBytes = 30
+  if (view.byteLength < expectedHeaderBytes) {
+    return
+  }
+
+  let offset = 0
+  const sequence = toSafeNumberFromU64(view.getBigUint64(offset, true))
+  offset += 8
+  const generatedAtMs = toSafeNumberFromU64(view.getBigUint64(offset, true))
+  offset += 8
+  const droppedSamples = toSafeNumberFromU64(view.getBigUint64(offset, true))
+  offset += 8
+  const queueFill = view.getUint16(offset, true)
+  offset += 2
+  const queueCapacity = view.getUint16(offset, true)
+  offset += 2
+  const updateCount = view.getUint16(offset, true)
+  offset += 2
+
+  const bytesPerUpdate = 9
+  const expectedBytes = expectedHeaderBytes + updateCount * bytesPerUpdate
+  if (view.byteLength < expectedBytes) {
+    return
+  }
+
+  for (let index = 0; index < updateCount; index += 1) {
+    const signalId = view.getUint16(offset, true)
+    offset += 2
+    const latest = view.getUint8(offset) === 1
+    offset += 1
+    const highRatio = view.getFloat32(offset, true)
+    offset += 4
+    const edgeCount = view.getUint16(offset, true)
+    offset += 2
+
+    const signal = signalCatalog.get(signalId)
+    if (!signal) {
+      continue
+    }
+
+    pendingTelemetry.set(signal, {
+      latest,
+      high_ratio: highRatio,
+      edge_count: edgeCount,
+      sequence,
+      updated_at_ms: generatedAtMs,
     })
   }
 
   pendingDataBatchMeta = {
-    sequence: batch.sequence,
-    dropped_samples: batch.dropped_samples,
-    queue_fill: batch.queue_fill,
-    queue_capacity: batch.queue_capacity,
-    last_batch_at_ms: batch.generated_at_ms,
+    sequence,
+    dropped_samples: droppedSamples,
+    queue_fill: queueFill,
+    queue_capacity: queueCapacity,
+    last_batch_at_ms: generatedAtMs,
   }
 
   scheduleTelemetryFlush()
@@ -438,8 +496,12 @@ async function start() {
       setState(event.state)
     })
 
-    unlistenDataBatch = await listenHardwareDataBatch((batch) => {
-      onDataBatch(batch)
+    unlistenDataCatalog = await listenHardwareDataCatalog((catalog) => {
+      onDataCatalog(catalog)
+    })
+
+    unlistenDataBatch = await listenHardwareDataBatchBinary((batch) => {
+      onDataBatchBinary(batch)
     })
 
     unlistenHotplug = await listen<HotplugPayload>('hardware:hotplug', (event) => {
@@ -458,12 +520,17 @@ async function start() {
       unlistenDataBatch()
       unlistenDataBatch = null
     }
+    if (unlistenDataCatalog) {
+      unlistenDataCatalog()
+      unlistenDataCatalog = null
+    }
     if (unlistenHotplug) {
       unlistenHotplug()
       unlistenHotplug = null
     }
     clearTelemetryFlushHandle()
     pendingTelemetry.clear()
+    signalCatalog.clear()
     pendingDataBatchMeta = null
     dataStreamStatus.value = {
       ...dataStreamStatus.value,
@@ -492,12 +559,17 @@ async function stop() {
       unlistenDataBatch()
       unlistenDataBatch = null
     }
+    if (unlistenDataCatalog) {
+      unlistenDataCatalog()
+      unlistenDataCatalog = null
+    }
     if (unlistenHotplug) {
       unlistenHotplug()
       unlistenHotplug = null
     }
     clearTelemetryFlushHandle()
     pendingTelemetry.clear()
+    signalCatalog.clear()
     pendingDataBatchMeta = null
     dataStreamStatus.value = {
       ...dataStreamStatus.value,

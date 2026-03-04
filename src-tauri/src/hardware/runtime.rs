@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, VecDeque},
+    hash::{Hash, Hasher},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -12,15 +13,17 @@ use tauri::{AppHandle, Emitter};
 
 use super::driver;
 use super::types::{
-    CanvasDeviceType, HardwareActionV1, HardwareArtifactSnapshot, HardwareDataBatchV1,
-    HardwareDataStreamStatusV1, HardwareEventReason, HardwareEventV1, HardwarePhase,
-    HardwareSignalAggregateV1, HardwareStateV1,
+    CanvasDeviceType, HardwareActionV1, HardwareArtifactSnapshot, HardwareDataBatchBinaryV1,
+    HardwareDataSignalCatalogEntryV1, HardwareDataSignalCatalogV1, HardwareDataStreamStatusV1,
+    HardwareEventReason, HardwareEventV1, HardwarePhase, HardwareSignalAggregateByIdV1,
+    HardwareStateV1,
 };
 
 const DATA_SAMPLE_INTERVAL: Duration = Duration::from_millis(5);
 const DATA_FLUSH_INTERVAL: Duration = Duration::from_millis(16);
 const DATA_QUEUE_CAPACITY: usize = 120;
 const DATA_MAX_UPDATES_PER_BATCH: usize = 256;
+const DATA_MAX_SAMPLE_CATCH_UP: u32 = 8;
 
 struct HardwareDataStreamSession {
     stop_flag: Arc<AtomicBool>,
@@ -28,7 +31,47 @@ struct HardwareDataStreamSession {
 }
 
 struct HardwareDataSample {
-    values: Vec<(String, bool)>,
+    values: Vec<(u16, bool)>,
+}
+
+#[derive(Default)]
+struct SignalTopologyCache {
+    signature: u64,
+    routes: Vec<SignalRoute>,
+}
+
+struct SignalRoute {
+    signal: String,
+    signal_id: u16,
+    source_index: Option<usize>,
+    fallback_index: Option<usize>,
+}
+
+#[derive(Default)]
+struct SignalCatalog {
+    by_signal: HashMap<String, u16>,
+    next_id: u16,
+}
+
+impl SignalCatalog {
+    fn id_for_signal(
+        &mut self,
+        signal: &str,
+        pending_catalog_updates: &mut Vec<HardwareDataSignalCatalogEntryV1>,
+    ) -> u16 {
+        if let Some(id) = self.by_signal.get(signal) {
+            return *id;
+        }
+
+        let id = self.next_id;
+        self.next_id = self.next_id.saturating_add(1);
+        self.by_signal.insert(signal.to_string(), id);
+        pending_catalog_updates.push(HardwareDataSignalCatalogEntryV1 {
+            signal_id: id,
+            signal: signal.to_string(),
+        });
+        id
+    }
 }
 
 #[derive(Clone)]
@@ -66,15 +109,15 @@ impl HardwareDataAggregate {
         self.total_count += 1;
     }
 
-    fn into_signal(self, signal: String) -> HardwareSignalAggregateV1 {
+    fn into_signal(self, signal_id: u16) -> HardwareSignalAggregateByIdV1 {
         let high_ratio = if self.total_count == 0 {
             0.0
         } else {
             self.high_count as f32 / self.total_count as f32
         };
 
-        HardwareSignalAggregateV1 {
-            signal,
+        HardwareSignalAggregateByIdV1 {
+            signal_id,
             latest: self.latest,
             high_ratio,
             edge_count: self.edge_count,
@@ -505,45 +548,78 @@ impl HardwareRuntime {
         let mut sequence = 0_u64;
         let mut next_sample_tick = Instant::now();
         let mut next_flush_tick = Instant::now();
+        let mut last_latest_by_signal: HashMap<u16, bool> = HashMap::new();
+        let mut topology_cache = SignalTopologyCache::default();
+        let mut signal_catalog = SignalCatalog::default();
+        let mut pending_catalog_updates: Vec<HardwareDataSignalCatalogEntryV1> = Vec::new();
 
         while !stop_flag.load(Ordering::Relaxed) {
             let now = Instant::now();
+            let mut sampled_count = 0_u32;
 
-            while now >= next_sample_tick {
-                let sample = self.collect_data_sample();
+            while now >= next_sample_tick && sampled_count < DATA_MAX_SAMPLE_CATCH_UP {
+                let sample = self.collect_data_sample(
+                    &mut topology_cache,
+                    &mut signal_catalog,
+                    &mut pending_catalog_updates,
+                );
                 if queue.len() >= DATA_QUEUE_CAPACITY {
                     queue.pop_front();
                     dropped_samples = dropped_samples.saturating_add(1);
                 }
                 queue.push_back(sample);
                 next_sample_tick += DATA_SAMPLE_INTERVAL;
+                sampled_count += 1;
+            }
+
+            if now >= next_sample_tick {
+                dropped_samples = dropped_samples.saturating_add(1);
+                next_sample_tick = now + DATA_SAMPLE_INTERVAL;
             }
 
             if now >= next_flush_tick {
+                if !pending_catalog_updates.is_empty() {
+                    let catalog_event = HardwareDataSignalCatalogV1 {
+                        version: 1,
+                        generated_at_ms: Self::now_millis(),
+                        entries: std::mem::take(&mut pending_catalog_updates),
+                    };
+                    let _ = app.emit("hardware:data_catalog", catalog_event);
+                }
+
                 if !queue.is_empty() {
                     let queue_fill = queue.len() as u16;
-                    let updates = Self::aggregate_data_samples(&mut queue);
+                    let updates = Self::filter_changed_updates(
+                        Self::aggregate_data_samples(&mut queue),
+                        &mut last_latest_by_signal,
+                    );
                     if !updates.is_empty() {
                         sequence = sequence.saturating_add(1);
                         let generated_at_ms = Self::now_millis();
-                        let batch = HardwareDataBatchV1 {
-                            version: 1,
+                        let payload = Self::encode_binary_batch(
                             sequence,
                             generated_at_ms,
                             dropped_samples,
                             queue_fill,
-                            queue_capacity: DATA_QUEUE_CAPACITY as u16,
-                            updates,
-                        };
+                            DATA_QUEUE_CAPACITY as u16,
+                            &updates,
+                        );
 
-                        let _ = app.emit("hardware:data_batch", batch.clone());
+                        let _ = app.emit(
+                            "hardware:data_batch_bin",
+                            HardwareDataBatchBinaryV1 {
+                                version: 1,
+                                payload,
+                            },
+                        );
+
                         let _ = self.update_data_stream_status(|status| {
                             status.running = true;
-                            status.sequence = batch.sequence;
-                            status.dropped_samples = batch.dropped_samples;
+                            status.sequence = sequence;
+                            status.dropped_samples = dropped_samples;
                             status.queue_fill = 0;
-                            status.queue_capacity = batch.queue_capacity;
-                            status.last_batch_at_ms = batch.generated_at_ms;
+                            status.queue_capacity = DATA_QUEUE_CAPACITY as u16;
+                            status.last_batch_at_ms = generated_at_ms;
                         });
                     }
                 }
@@ -551,39 +627,38 @@ impl HardwareRuntime {
                 next_flush_tick += DATA_FLUSH_INTERVAL;
             }
 
-            thread::sleep(Duration::from_millis(1));
+            let next_tick = std::cmp::min(next_sample_tick, next_flush_tick);
+            let now_after_work = Instant::now();
+            if next_tick > now_after_work {
+                thread::sleep(next_tick.duration_since(now_after_work));
+            } else {
+                thread::yield_now();
+            }
         }
     }
 
-    fn collect_data_sample(&self) -> HardwareDataSample {
+    fn collect_data_sample(
+        &self,
+        topology_cache: &mut SignalTopologyCache,
+        signal_catalog: &mut SignalCatalog,
+        pending_catalog_updates: &mut Vec<HardwareDataSignalCatalogEntryV1>,
+    ) -> HardwareDataSample {
         let values = match self.state.lock() {
             Ok(state) => {
-                let mut by_signal = HashMap::<String, bool>::new();
+                Self::refresh_signal_topology_cache(
+                    &state,
+                    topology_cache,
+                    signal_catalog,
+                    pending_catalog_updates,
+                );
 
-                for device in &state.canvas_devices {
-                    if !Self::device_drives_signal(device.r#type) {
-                        continue;
-                    }
-
-                    if let Some(signal) = &device.state.bound_signal {
-                        by_signal.insert(signal.clone(), device.state.is_on);
-                    }
-                }
-
-                for device in &state.canvas_devices {
-                    if !Self::device_receives_signal(device.r#type) {
-                        continue;
-                    }
-
-                    if let Some(signal) = &device.state.bound_signal {
-                        by_signal
-                            .entry(signal.clone())
-                            .or_insert(device.state.is_on);
+                let mut values = Vec::with_capacity(topology_cache.routes.len());
+                for route in &topology_cache.routes {
+                    let index = route.source_index.or(route.fallback_index);
+                    if let Some(index) = index {
+                        values.push((route.signal_id, state.canvas_devices[index].state.is_on));
                     }
                 }
-
-                let mut values: Vec<(String, bool)> = by_signal.into_iter().collect();
-                values.sort_by(|left, right| left.0.cmp(&right.0));
                 values
             }
             Err(_) => Vec::new(),
@@ -594,25 +669,129 @@ impl HardwareRuntime {
 
     fn aggregate_data_samples(
         queue: &mut VecDeque<HardwareDataSample>,
-    ) -> Vec<HardwareSignalAggregateV1> {
-        let mut aggregated: HashMap<String, HardwareDataAggregate> = HashMap::new();
+    ) -> Vec<HardwareSignalAggregateByIdV1> {
+        let mut aggregated: HashMap<u16, HardwareDataAggregate> = HashMap::new();
 
         while let Some(sample) = queue.pop_front() {
-            for (signal, value) in sample.values {
+            for (signal_id, value) in sample.values {
                 aggregated
-                    .entry(signal)
+                    .entry(signal_id)
                     .or_insert_with(HardwareDataAggregate::new)
                     .ingest(value);
             }
         }
 
-        let mut updates: Vec<HardwareSignalAggregateV1> = aggregated
+        let mut updates: Vec<HardwareSignalAggregateByIdV1> = aggregated
             .into_iter()
-            .map(|(signal, aggregate)| aggregate.into_signal(signal))
+            .map(|(signal_id, aggregate)| aggregate.into_signal(signal_id))
             .collect();
-        updates.sort_by(|left, right| left.signal.cmp(&right.signal));
-        updates.truncate(DATA_MAX_UPDATES_PER_BATCH);
+        if updates.len() > DATA_MAX_UPDATES_PER_BATCH {
+            updates.sort_by(|left, right| left.signal_id.cmp(&right.signal_id));
+            updates.truncate(DATA_MAX_UPDATES_PER_BATCH);
+        }
         updates
+    }
+
+    fn filter_changed_updates(
+        mut updates: Vec<HardwareSignalAggregateByIdV1>,
+        last_latest_by_signal: &mut HashMap<u16, bool>,
+    ) -> Vec<HardwareSignalAggregateByIdV1> {
+        updates.retain(|update| {
+            let previous_latest = last_latest_by_signal.insert(update.signal_id, update.latest);
+            update.edge_count > 0
+                || previous_latest
+                    .map(|value| value != update.latest)
+                    .unwrap_or(true)
+        });
+        updates
+    }
+
+    fn refresh_signal_topology_cache(
+        state: &HardwareStateV1,
+        topology_cache: &mut SignalTopologyCache,
+        signal_catalog: &mut SignalCatalog,
+        pending_catalog_updates: &mut Vec<HardwareDataSignalCatalogEntryV1>,
+    ) {
+        let signature = Self::signal_topology_signature(state);
+        if topology_cache.signature == signature {
+            return;
+        }
+
+        #[derive(Default)]
+        struct RouteDraft {
+            source_index: Option<usize>,
+            fallback_index: Option<usize>,
+        }
+
+        let mut drafts: HashMap<String, RouteDraft> = HashMap::new();
+
+        for (index, device) in state.canvas_devices.iter().enumerate() {
+            let Some(signal) = device.state.bound_signal.as_ref() else {
+                continue;
+            };
+
+            let draft = drafts.entry(signal.clone()).or_default();
+            if Self::device_drives_signal(device.r#type) && draft.source_index.is_none() {
+                draft.source_index = Some(index);
+            }
+
+            if Self::device_receives_signal(device.r#type) && draft.fallback_index.is_none() {
+                draft.fallback_index = Some(index);
+            }
+        }
+
+        let mut routes = Vec::with_capacity(drafts.len());
+        for (signal, draft) in drafts {
+            let signal_id = signal_catalog.id_for_signal(&signal, pending_catalog_updates);
+            routes.push(SignalRoute {
+                signal,
+                signal_id,
+                source_index: draft.source_index,
+                fallback_index: draft.fallback_index,
+            });
+        }
+
+        routes.sort_by(|left, right| left.signal.cmp(&right.signal));
+        topology_cache.signature = signature;
+        topology_cache.routes = routes;
+    }
+
+    fn signal_topology_signature(state: &HardwareStateV1) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        state.canvas_devices.len().hash(&mut hasher);
+        for device in &state.canvas_devices {
+            device.id.hash(&mut hasher);
+            device.r#type.hash(&mut hasher);
+            device.state.bound_signal.hash(&mut hasher);
+        }
+        hasher.finish()
+    }
+
+    fn encode_binary_batch(
+        sequence: u64,
+        generated_at_ms: u64,
+        dropped_samples: u64,
+        queue_fill: u16,
+        queue_capacity: u16,
+        updates: &[HardwareSignalAggregateByIdV1],
+    ) -> Vec<u8> {
+        let updates_count = updates.len() as u16;
+        let mut payload = Vec::with_capacity(30 + updates.len() * 9);
+        payload.extend_from_slice(&sequence.to_le_bytes());
+        payload.extend_from_slice(&generated_at_ms.to_le_bytes());
+        payload.extend_from_slice(&dropped_samples.to_le_bytes());
+        payload.extend_from_slice(&queue_fill.to_le_bytes());
+        payload.extend_from_slice(&queue_capacity.to_le_bytes());
+        payload.extend_from_slice(&updates_count.to_le_bytes());
+
+        for update in updates {
+            payload.extend_from_slice(&update.signal_id.to_le_bytes());
+            payload.push(u8::from(update.latest));
+            payload.extend_from_slice(&update.high_ratio.to_le_bytes());
+            payload.extend_from_slice(&update.edge_count.to_le_bytes());
+        }
+
+        payload
     }
 
     fn probe_failure_phase(message: &str) -> HardwarePhase {
@@ -633,11 +812,29 @@ impl HardwareRuntime {
     }
 
     fn device_drives_signal(device_type: CanvasDeviceType) -> bool {
-        matches!(device_type, CanvasDeviceType::Switch)
+        matches!(
+            device_type,
+            CanvasDeviceType::Switch
+                | CanvasDeviceType::Button
+                | CanvasDeviceType::Keypad
+                | CanvasDeviceType::SmallKeypad
+                | CanvasDeviceType::RotaryButton
+                | CanvasDeviceType::Ps2Keyboard
+        )
     }
 
     fn device_receives_signal(device_type: CanvasDeviceType) -> bool {
-        matches!(device_type, CanvasDeviceType::Led)
+        matches!(
+            device_type,
+            CanvasDeviceType::Led
+                | CanvasDeviceType::TextLcd
+                | CanvasDeviceType::GraphicLcd
+                | CanvasDeviceType::SegmentDisplay
+                | CanvasDeviceType::FourDigitSegmentDisplay
+                | CanvasDeviceType::Led4x4Matrix
+                | CanvasDeviceType::Led8x8Matrix
+                | CanvasDeviceType::Led16x16Matrix
+        )
     }
 
     fn signal_source_value(state: &HardwareStateV1, signal: &str) -> Option<bool> {
@@ -698,32 +895,29 @@ mod tests {
     use super::*;
     use crate::hardware::types::{CanvasDeviceSnapshot, CanvasDeviceStateSnapshot};
 
-    fn sample(values: &[(&str, bool)]) -> HardwareDataSample {
+    fn sample(values: &[(u16, bool)]) -> HardwareDataSample {
         HardwareDataSample {
-            values: values
-                .iter()
-                .map(|(signal, value)| ((*signal).to_string(), *value))
-                .collect(),
+            values: values.to_vec(),
         }
     }
 
     #[test]
     fn aggregate_data_samples_tracks_latest_ratio_and_edges() {
         let mut queue = VecDeque::from([
-            sample(&[("sig_a", false), ("sig_b", true)]),
-            sample(&[("sig_a", true), ("sig_b", true)]),
-            sample(&[("sig_a", true), ("sig_b", false)]),
+            sample(&[(1, false), (2, true)]),
+            sample(&[(1, true), (2, true)]),
+            sample(&[(1, true), (2, false)]),
         ]);
 
         let updates = HardwareRuntime::aggregate_data_samples(&mut queue);
         assert_eq!(updates.len(), 2);
 
-        let sig_a = updates.iter().find(|item| item.signal == "sig_a").unwrap();
+        let sig_a = updates.iter().find(|item| item.signal_id == 1).unwrap();
         assert!(sig_a.latest);
         assert_eq!(sig_a.edge_count, 1);
         assert!((sig_a.high_ratio - (2.0 / 3.0)).abs() < 0.0001);
 
-        let sig_b = updates.iter().find(|item| item.signal == "sig_b").unwrap();
+        let sig_b = updates.iter().find(|item| item.signal_id == 2).unwrap();
         assert!(!sig_b.latest);
         assert_eq!(sig_b.edge_count, 1);
         assert!((sig_b.high_ratio - (2.0 / 3.0)).abs() < 0.0001);
@@ -735,7 +929,7 @@ mod tests {
     fn aggregate_data_samples_caps_payload_size() {
         let mut values = Vec::new();
         for index in 0..(DATA_MAX_UPDATES_PER_BATCH + 10) {
-            values.push((format!("sig_{index}"), (index % 2) == 0));
+            values.push((index as u16, (index % 2) == 0));
         }
 
         let mut queue = VecDeque::from([HardwareDataSample { values }]);
@@ -779,10 +973,80 @@ mod tests {
             });
         }
 
-        let sample = runtime.collect_data_sample();
-        let by_signal: HashMap<String, bool> = sample.values.into_iter().collect();
+        let mut topology_cache = SignalTopologyCache::default();
+        let mut signal_catalog = SignalCatalog::default();
+        let mut pending_catalog_updates = Vec::new();
 
-        assert_eq!(by_signal.get("sig_driven"), Some(&true));
-        assert_eq!(by_signal.get("sig_receiver"), Some(&true));
+        let sample = runtime.collect_data_sample(
+            &mut topology_cache,
+            &mut signal_catalog,
+            &mut pending_catalog_updates,
+        );
+
+        assert_eq!(sample.values.len(), 2);
+        let by_id: HashMap<u16, bool> = sample.values.into_iter().collect();
+        let driven_id = signal_catalog.by_signal.get("sig_driven").copied().unwrap();
+        let receiver_id = signal_catalog
+            .by_signal
+            .get("sig_receiver")
+            .copied()
+            .unwrap();
+
+        assert_eq!(by_id.get(&driven_id), Some(&true));
+        assert_eq!(by_id.get(&receiver_id), Some(&true));
+    }
+
+    #[test]
+    fn filter_changed_updates_skips_steady_windows() {
+        let mut last_latest = HashMap::new();
+
+        let first = HardwareRuntime::filter_changed_updates(
+            vec![
+                HardwareSignalAggregateByIdV1 {
+                    signal_id: 1,
+                    latest: true,
+                    high_ratio: 1.0,
+                    edge_count: 0,
+                },
+                HardwareSignalAggregateByIdV1 {
+                    signal_id: 2,
+                    latest: false,
+                    high_ratio: 0.0,
+                    edge_count: 0,
+                },
+            ],
+            &mut last_latest,
+        );
+        assert_eq!(first.len(), 2);
+
+        let second = HardwareRuntime::filter_changed_updates(
+            vec![
+                HardwareSignalAggregateByIdV1 {
+                    signal_id: 1,
+                    latest: true,
+                    high_ratio: 1.0,
+                    edge_count: 0,
+                },
+                HardwareSignalAggregateByIdV1 {
+                    signal_id: 2,
+                    latest: false,
+                    high_ratio: 0.0,
+                    edge_count: 0,
+                },
+            ],
+            &mut last_latest,
+        );
+        assert!(second.is_empty());
+
+        let third = HardwareRuntime::filter_changed_updates(
+            vec![HardwareSignalAggregateByIdV1 {
+                signal_id: 1,
+                latest: true,
+                high_ratio: 0.5,
+                edge_count: 2,
+            }],
+            &mut last_latest,
+        );
+        assert_eq!(third.len(), 1);
     }
 }

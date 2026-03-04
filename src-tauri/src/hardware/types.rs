@@ -60,11 +60,23 @@ pub struct HardwareArtifactSnapshot {
     pub bytes: usize,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum CanvasDeviceType {
     Led,
     Switch,
+    Button,
+    Keypad,
+    SmallKeypad,
+    RotaryButton,
+    Ps2Keyboard,
+    TextLcd,
+    GraphicLcd,
+    SegmentDisplay,
+    FourDigitSegmentDisplay,
+    Led4x4Matrix,
+    Led8x8Matrix,
+    Led16x16Matrix,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -153,22 +165,30 @@ pub struct HardwareEventV1 {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct HardwareSignalAggregateV1 {
-    pub signal: String,
+pub struct HardwareSignalAggregateByIdV1 {
+    pub signal_id: u16,
     pub latest: bool,
     pub high_ratio: f32,
     pub edge_count: u16,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct HardwareDataBatchV1 {
+pub struct HardwareDataBatchBinaryV1 {
     pub version: u8,
-    pub sequence: u64,
+    pub payload: Vec<u8>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct HardwareDataSignalCatalogEntryV1 {
+    pub signal_id: u16,
+    pub signal: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct HardwareDataSignalCatalogV1 {
+    pub version: u8,
     pub generated_at_ms: u64,
-    pub dropped_samples: u64,
-    pub queue_fill: u16,
-    pub queue_capacity: u16,
-    pub updates: Vec<HardwareSignalAggregateV1>,
+    pub entries: Vec<HardwareDataSignalCatalogEntryV1>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

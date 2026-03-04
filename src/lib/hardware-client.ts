@@ -34,7 +34,21 @@ export interface HardwareArtifactSnapshot {
   bytes: number
 }
 
-export type CanvasDeviceType = 'led' | 'switch'
+export type CanvasDeviceType =
+  | 'led'
+  | 'switch'
+  | 'button'
+  | 'keypad'
+  | 'small_keypad'
+  | 'rotary_button'
+  | 'ps2_keyboard'
+  | 'text_lcd'
+  | 'graphic_lcd'
+  | 'segment_display'
+  | 'four_digit_segment_display'
+  | 'led4x4_matrix'
+  | 'led8x8_matrix'
+  | 'led16x16_matrix'
 
 export interface CanvasDeviceStateSnapshot {
   is_on: boolean
@@ -85,6 +99,22 @@ export interface HardwareDataBatchV1 {
   queue_fill: number
   queue_capacity: number
   updates: HardwareSignalAggregateV1[]
+}
+
+export interface HardwareDataBatchBinaryV1 {
+  version: 1
+  payload: number[]
+}
+
+export interface HardwareDataSignalCatalogEntryV1 {
+  signal_id: number
+  signal: string
+}
+
+export interface HardwareDataSignalCatalogV1 {
+  version: 1
+  generated_at_ms: number
+  entries: HardwareDataSignalCatalogEntryV1[]
 }
 
 export interface HardwareDataStreamStatusV1 {
@@ -166,6 +196,22 @@ export async function listenHardwareDataBatch(
   callback: (batch: HardwareDataBatchV1) => void,
 ): Promise<UnlistenFn> {
   return listen<HardwareDataBatchV1>('hardware:data_batch', (event) => {
+    callback(event.payload)
+  })
+}
+
+export async function listenHardwareDataBatchBinary(
+  callback: (batch: HardwareDataBatchBinaryV1) => void,
+): Promise<UnlistenFn> {
+  return listen<HardwareDataBatchBinaryV1>('hardware:data_batch_bin', (event) => {
+    callback(event.payload)
+  })
+}
+
+export async function listenHardwareDataCatalog(
+  callback: (catalog: HardwareDataSignalCatalogV1) => void,
+): Promise<UnlistenFn> {
+  return listen<HardwareDataSignalCatalogV1>('hardware:data_catalog', (event) => {
     callback(event.payload)
   })
 }

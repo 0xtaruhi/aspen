@@ -4,6 +4,8 @@ import BaseDevice from '../devices/BaseDevice.vue'
 import WireLayer from './WireLayer.vue'
 import LedDevice from '../devices/LedDevice.vue'
 import SwitchDevice from '../devices/SwitchDevice.vue'
+import ButtonDevice from '../devices/ButtonDevice.vue'
+import GenericPanelDevice from '../devices/GenericPanelDevice.vue'
 import { hardwareStore } from '@/stores/hardware'
 import type { CanvasDeviceSnapshot, CanvasDeviceType } from '@/lib/hardware-client'
 import {
@@ -32,6 +34,18 @@ const selectedDeviceId = ref<string | null>(null)
 const deviceRendererByType: Record<CanvasDeviceType, Component> = {
   led: LedDevice,
   switch: SwitchDevice,
+  button: ButtonDevice,
+  keypad: GenericPanelDevice,
+  small_keypad: GenericPanelDevice,
+  rotary_button: GenericPanelDevice,
+  ps2_keyboard: GenericPanelDevice,
+  text_lcd: GenericPanelDevice,
+  graphic_lcd: GenericPanelDevice,
+  segment_display: GenericPanelDevice,
+  four_digit_segment_display: GenericPanelDevice,
+  led4x4_matrix: GenericPanelDevice,
+  led8x8_matrix: GenericPanelDevice,
+  led16x16_matrix: GenericPanelDevice,
 }
 
 let dropIdCounter = 0
