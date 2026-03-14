@@ -76,12 +76,26 @@ const bindingValue = computed(() => {
   return props.device?.state.bound_signal ?? UNBOUND_SIGNAL
 })
 
+const liveLevel = computed(() => {
+  const signal = props.device?.state.bound_signal
+  if (!signal) {
+    return props.device?.state.is_on ?? false
+  }
+
+  const telemetry = hardwareStore.signalTelemetry.value[signal]
+  if (telemetry && deviceReceivesSignal(props.device?.type ?? 'led')) {
+    return telemetry.latest
+  }
+
+  return props.device?.state.is_on ?? false
+})
+
 const stateLabel = computed(() => {
   if (!props.device) {
     return 'Idle'
   }
 
-  return props.device.state.is_on ? 'High' : 'Low'
+  return liveLevel.value ? 'High' : 'Low'
 })
 
 function handleBindingUpdate(value: unknown) {

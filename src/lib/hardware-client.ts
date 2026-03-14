@@ -117,13 +117,23 @@ export interface HardwareDataSignalCatalogV1 {
   entries: HardwareDataSignalCatalogEntryV1[]
 }
 
+export interface HardwareDataStreamConfigV1 {
+  target_hz: number
+  signal_order: string[]
+  words_per_cycle: number
+}
+
 export interface HardwareDataStreamStatusV1 {
   running: boolean
+  target_hz: number
   sequence: number
   dropped_samples: number
   queue_fill: number
   queue_capacity: number
   last_batch_at_ms: number
+  words_per_cycle: number
+  configured_signal_count: number
+  last_error: string | null
 }
 
 export type HardwareActionV1 =
@@ -174,6 +184,20 @@ export async function hardwareDispatch(action: HardwareActionV1): Promise<Hardwa
 
 export async function hardwareGetDataStreamStatus(): Promise<HardwareDataStreamStatusV1> {
   return invoke<HardwareDataStreamStatusV1>('hardware_get_data_stream_status')
+}
+
+export async function configureHardwareDataStream(
+  config: HardwareDataStreamConfigV1,
+): Promise<HardwareDataStreamStatusV1> {
+  return invoke<HardwareDataStreamStatusV1>('configure_hardware_data_stream', { config })
+}
+
+export async function setHardwareDataStreamRate(
+  rateHz: number,
+): Promise<HardwareDataStreamStatusV1> {
+  return invoke<HardwareDataStreamStatusV1>('set_hardware_data_stream_rate', {
+    rate_hz: rateHz,
+  })
 }
 
 export async function startHardwareDataStream(): Promise<void> {

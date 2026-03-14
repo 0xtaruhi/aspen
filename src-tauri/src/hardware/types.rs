@@ -194,11 +194,32 @@ pub struct HardwareDataSignalCatalogV1 {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct HardwareDataStreamStatusV1 {
     pub running: bool,
+    pub target_hz: f64,
     pub sequence: u64,
     pub dropped_samples: u64,
     pub queue_fill: u16,
     pub queue_capacity: u16,
     pub last_batch_at_ms: u64,
+    pub words_per_cycle: u16,
+    pub configured_signal_count: u16,
+    pub last_error: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct HardwareDataStreamConfigV1 {
+    pub target_hz: f64,
+    pub signal_order: Vec<String>,
+    pub words_per_cycle: u16,
+}
+
+impl Default for HardwareDataStreamConfigV1 {
+    fn default() -> Self {
+        Self {
+            target_hz: 1.0,
+            signal_order: Vec::new(),
+            words_per_cycle: 4,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

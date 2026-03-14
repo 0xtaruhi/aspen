@@ -7,16 +7,19 @@ import { ref } from 'vue'
 import {
   type HardwareActionV1,
   type HardwareDataBatchBinaryV1,
+  type HardwareDataStreamConfigV1,
   type HardwareDataSignalCatalogV1,
   type HardwareDataStreamStatusV1,
   type HardwareEventV1,
   type HardwareStateV1,
+  configureHardwareDataStream,
   hardwareDispatch,
   hardwareGetDataStreamStatus,
   hardwareGetState,
   listenHardwareDataBatchBinary,
   listenHardwareDataCatalog,
   listenHardwareStateChanged,
+  setHardwareDataStreamRate,
   startHardwareDataStream,
   stopHardwareDataStream,
 } from '@/lib/hardware-client'
@@ -51,11 +54,15 @@ const isStarted = ref(false)
 const signalTelemetry = ref<Record<string, SignalTelemetrySnapshot>>({})
 const dataStreamStatus = ref<HardwareDataStreamStatusV1>({
   running: false,
+  target_hz: 1,
   sequence: 0,
   dropped_samples: 0,
   queue_fill: 0,
-  queue_capacity: 120,
+  queue_capacity: 0,
   last_batch_at_ms: 0,
+  words_per_cycle: 4,
+  configured_signal_count: 0,
+  last_error: null,
 })
 
 let unlistenStateChanged: UnlistenFn | null = null
@@ -187,6 +194,10 @@ function onDataCatalog(catalog: HardwareDataSignalCatalogV1) {
 }
 
 function onDataBatchBinary(batch: HardwareDataBatchBinaryV1) {
+  if (!dataStreamStatus.value.running) {
+    return
+  }
+
   const bytes = new Uint8Array(batch.payload)
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   const expectedHeaderBytes = 30
@@ -292,7 +303,22 @@ function resetRuntimeViewState() {
     ...dataStreamStatus.value,
     running: false,
     queue_fill: 0,
+    sequence: 0,
+    dropped_samples: 0,
+    last_batch_at_ms: 0,
+    last_error: null,
   }
+}
+
+function applyDataStreamStatus(status: HardwareDataStreamStatusV1) {
+  dataStreamStatus.value = {
+    ...status,
+    last_error: status.last_error ?? null,
+  }
+}
+
+function configuredSignalOrder(signalNames: readonly string[]) {
+  return Array.from(new Set(signalNames.map((signal) => signal.trim()).filter(Boolean)))
 }
 
 export async function syncState(): Promise<HardwareStateV1 | null> {
@@ -303,6 +329,19 @@ export async function syncState(): Promise<HardwareStateV1 | null> {
   } catch (err) {
     if (isTauriUnavailable(err)) {
       return null
+    }
+    throw err
+  }
+}
+
+export async function refreshDataStreamStatus() {
+  try {
+    const status = await hardwareGetDataStreamStatus()
+    applyDataStreamStatus(status)
+    return status
+  } catch (err) {
+    if (isTauriUnavailable(err)) {
+      return dataStreamStatus.value
     }
     throw err
   }
@@ -337,7 +376,7 @@ export async function start() {
     await syncState()
 
     try {
-      dataStreamStatus.value = await hardwareGetDataStreamStatus()
+      await refreshDataStreamStatus()
     } catch (err) {
       if (!isTauriUnavailable(err)) {
         throw err
@@ -361,7 +400,6 @@ export async function start() {
     })
 
     await invoke('start_hotplug_watch')
-    await startHardwareDataStream()
     isStarted.value = true
   } catch (err) {
     if (unlistenStateChanged) {
@@ -396,7 +434,9 @@ export async function stop() {
   }
 
   try {
-    await stopHardwareDataStream()
+    if (dataStreamStatus.value.running) {
+      await stopDataStream()
+    }
     await invoke('stop_hotplug_watch')
   } finally {
     if (unlistenStateChanged) {
@@ -418,6 +458,91 @@ export async function stop() {
     resetRuntimeViewState()
     isStarted.value = false
   }
+}
+
+export async function configureDataStream(
+  signalNames: readonly string[],
+  wordsPerCycle = dataStreamStatus.value.words_per_cycle || 4,
+) {
+  const nextConfig: HardwareDataStreamConfigV1 = {
+    target_hz: dataStreamStatus.value.target_hz || 1,
+    signal_order: configuredSignalOrder(signalNames),
+    words_per_cycle: Math.max(1, Math.floor(wordsPerCycle)),
+  }
+
+  try {
+    const status = await configureHardwareDataStream(nextConfig)
+    applyDataStreamStatus(status)
+    return status
+  } catch (err) {
+    if (isTauriUnavailable(err)) {
+      applyDataStreamStatus({
+        ...dataStreamStatus.value,
+        target_hz: nextConfig.target_hz,
+        words_per_cycle: nextConfig.words_per_cycle,
+        configured_signal_count: nextConfig.signal_order.length,
+        last_error: null,
+      })
+      return dataStreamStatus.value
+    }
+    throw err
+  }
+}
+
+export async function setDataStreamRate(rateHz: number) {
+  try {
+    const status = await setHardwareDataStreamRate(rateHz)
+    applyDataStreamStatus(status)
+    return status
+  } catch (err) {
+    if (isTauriUnavailable(err)) {
+      applyDataStreamStatus({
+        ...dataStreamStatus.value,
+        target_hz: rateHz,
+        last_error: null,
+      })
+      return dataStreamStatus.value
+    }
+    throw err
+  }
+}
+
+export async function startDataStream() {
+  try {
+    await startHardwareDataStream()
+    await refreshDataStreamStatus()
+  } catch (err) {
+    if (isTauriUnavailable(err)) {
+      applyDataStreamStatus({
+        ...dataStreamStatus.value,
+        running: true,
+        last_error: null,
+      })
+      return
+    }
+    throw err
+  }
+}
+
+export async function stopDataStream() {
+  try {
+    await stopHardwareDataStream()
+  } catch (err) {
+    if (!isTauriUnavailable(err)) {
+      throw err
+    }
+  }
+
+  clearTelemetryFlushHandle()
+  pendingTelemetry.clear()
+  pendingDataBatchMeta = null
+
+  applyDataStreamStatus({
+    ...dataStreamStatus.value,
+    running: false,
+    queue_fill: 0,
+    last_error: null,
+  })
 }
 
 export async function disconnectView() {
@@ -444,6 +569,11 @@ export const hardwareRuntimeStore = {
   syncState,
   start,
   stop,
+  refreshDataStreamStatus,
+  configureDataStream,
+  setDataStreamRate,
+  startDataStream,
+  stopDataStream,
   disconnectView,
   subscribeHardwareState,
   isTauriUnavailable,

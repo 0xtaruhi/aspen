@@ -1,6 +1,5 @@
 use std::{
-    collections::{HashMap, VecDeque},
-    hash::{Hash, Hasher},
+    collections::HashMap,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -8,38 +7,46 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+#[cfg(test)]
+use std::{
+    collections::VecDeque,
+    hash::{Hash, Hasher},
+};
 
 use tauri::{AppHandle, Emitter};
+use vlfd_rs::{Device, IoSettings};
 
 use super::driver;
 use super::types::{
     CanvasDeviceType, HardwareActionV1, HardwareArtifactSnapshot, HardwareDataBatchBinaryV1,
-    HardwareDataSignalCatalogEntryV1, HardwareDataSignalCatalogV1, HardwareDataStreamStatusV1,
-    HardwareEventReason, HardwareEventV1, HardwarePhase, HardwareSignalAggregateByIdV1,
-    HardwareStateV1,
+    HardwareDataSignalCatalogEntryV1, HardwareDataSignalCatalogV1, HardwareDataStreamConfigV1,
+    HardwareDataStreamStatusV1, HardwareEventReason, HardwareEventV1, HardwarePhase,
+    HardwareSignalAggregateByIdV1, HardwareStateV1,
 };
 
-const DATA_SAMPLE_INTERVAL: Duration = Duration::from_millis(5);
-const DATA_FLUSH_INTERVAL: Duration = Duration::from_millis(16);
-const DATA_QUEUE_CAPACITY: usize = 120;
+const DATA_IDLE_SLEEP: Duration = Duration::from_millis(1);
 const DATA_MAX_UPDATES_PER_BATCH: usize = 256;
-const DATA_MAX_SAMPLE_CATCH_UP: u32 = 8;
+const DATA_DEFAULT_WORDS_PER_CYCLE: u16 = 4;
+const DATA_DEFAULT_TARGET_HZ: f64 = 1.0;
 
 struct HardwareDataStreamSession {
     stop_flag: Arc<AtomicBool>,
     handle: thread::JoinHandle<()>,
 }
 
+#[cfg(test)]
 struct HardwareDataSample {
     values: Vec<(u16, bool)>,
 }
 
+#[cfg(test)]
 #[derive(Default)]
 struct SignalTopologyCache {
     signature: u64,
     routes: Vec<SignalRoute>,
 }
 
+#[cfg(test)]
 struct SignalRoute {
     signal: String,
     signal_id: u16,
@@ -128,6 +135,7 @@ impl HardwareDataAggregate {
 pub struct HardwareRuntime {
     state: Mutex<HardwareStateV1>,
     data_stream: Mutex<Option<HardwareDataStreamSession>>,
+    data_stream_config: Arc<Mutex<HardwareDataStreamConfigV1>>,
     data_stream_status: Mutex<HardwareDataStreamStatusV1>,
 }
 
@@ -136,13 +144,18 @@ impl Default for HardwareRuntime {
         Self {
             state: Mutex::new(HardwareStateV1::default()),
             data_stream: Mutex::new(None),
+            data_stream_config: Arc::new(Mutex::new(HardwareDataStreamConfigV1::default())),
             data_stream_status: Mutex::new(HardwareDataStreamStatusV1 {
                 running: false,
+                target_hz: DATA_DEFAULT_TARGET_HZ,
                 sequence: 0,
                 dropped_samples: 0,
                 queue_fill: 0,
-                queue_capacity: DATA_QUEUE_CAPACITY as u16,
+                queue_capacity: 0,
                 last_batch_at_ms: 0,
+                words_per_cycle: DATA_DEFAULT_WORDS_PER_CYCLE,
+                configured_signal_count: 0,
+                last_error: None,
             }),
         }
     }
@@ -165,7 +178,75 @@ impl HardwareRuntime {
             .map(|status| status.clone())
     }
 
+    pub fn configure_data_stream(
+        &self,
+        config: HardwareDataStreamConfigV1,
+    ) -> Result<HardwareDataStreamStatusV1, String> {
+        Self::validate_stream_config(&config)?;
+
+        {
+            let mut guard = self
+                .data_stream_config
+                .lock()
+                .map_err(|_| "failed to acquire data stream config mutex".to_string())?;
+            *guard = config.clone();
+        }
+
+        self.update_data_stream_status(|status| {
+            status.target_hz = config.target_hz;
+            status.words_per_cycle = config.words_per_cycle;
+            status.configured_signal_count = config.signal_order.len() as u16;
+            status.last_error = None;
+        })?;
+
+        self.data_stream_status()
+    }
+
+    pub fn set_data_stream_rate(&self, rate_hz: f64) -> Result<HardwareDataStreamStatusV1, String> {
+        Self::validate_target_hz(rate_hz)?;
+
+        {
+            let mut guard = self
+                .data_stream_config
+                .lock()
+                .map_err(|_| "failed to acquire data stream config mutex".to_string())?;
+            guard.target_hz = rate_hz;
+        }
+
+        self.update_data_stream_status(|status| {
+            status.target_hz = rate_hz;
+            status.last_error = None;
+        })?;
+
+        self.data_stream_status()
+    }
+
     pub fn start_data_stream(self: &Arc<Self>, app: &AppHandle) -> Result<(), String> {
+        let config = {
+            self.data_stream_config
+                .lock()
+                .map_err(|_| "failed to acquire data stream config mutex".to_string())?
+                .clone()
+        };
+        Self::validate_stream_config(&config)?;
+
+        let stale_session = {
+            let mut guard = self
+                .data_stream
+                .lock()
+                .map_err(|_| "failed to acquire data stream mutex".to_string())?;
+
+            match guard.as_ref() {
+                Some(session) if session.handle.is_finished() => guard.take(),
+                Some(_) => return Ok(()),
+                None => None,
+            }
+        };
+
+        if let Some(session) = stale_session {
+            let _ = session.handle.join();
+        }
+
         {
             let mut guard = self
                 .data_stream
@@ -180,11 +261,12 @@ impl HardwareRuntime {
             let runtime = Arc::clone(self);
             let stop_for_thread = Arc::clone(&stop_flag);
             let app_handle = app.clone();
+            let config_handle = Arc::clone(&self.data_stream_config);
 
             let handle = thread::Builder::new()
                 .name("aspen-hardware-data-stream".to_string())
                 .spawn(move || {
-                    runtime.run_data_stream_loop(app_handle, stop_for_thread);
+                    runtime.run_data_stream_loop(app_handle, stop_for_thread, config_handle);
                 })
                 .map_err(|err| err.to_string())?;
 
@@ -193,11 +275,14 @@ impl HardwareRuntime {
 
         self.update_data_stream_status(|status| {
             status.running = true;
+            status.target_hz = config.target_hz;
             status.queue_fill = 0;
-            status.queue_capacity = DATA_QUEUE_CAPACITY as u16;
             status.last_batch_at_ms = 0;
             status.sequence = 0;
             status.dropped_samples = 0;
+            status.words_per_cycle = config.words_per_cycle;
+            status.configured_signal_count = config.signal_order.len() as u16;
+            status.last_error = None;
         })
     }
 
@@ -219,6 +304,7 @@ impl HardwareRuntime {
         self.update_data_stream_status(|status| {
             status.running = false;
             status.queue_fill = 0;
+            status.last_error = None;
         })
     }
 
@@ -542,101 +628,255 @@ impl HardwareRuntime {
         Ok(())
     }
 
-    fn run_data_stream_loop(self: Arc<Self>, app: AppHandle, stop_flag: Arc<AtomicBool>) {
-        let mut queue: VecDeque<HardwareDataSample> = VecDeque::with_capacity(DATA_QUEUE_CAPACITY);
-        let mut dropped_samples = 0_u64;
+    fn run_data_stream_loop(
+        self: Arc<Self>,
+        app: AppHandle,
+        stop_flag: Arc<AtomicBool>,
+        data_stream_config: Arc<Mutex<HardwareDataStreamConfigV1>>,
+    ) {
+        let mut device = match Device::connect() {
+            Ok(device) => device,
+            Err(err) => {
+                let _ = self.update_data_stream_status(|status| {
+                    status.running = false;
+                    status.last_error = Some(err.to_string());
+                });
+                return;
+            }
+        };
+
+        if let Err(err) = device.enter_io_mode(&IoSettings::default()) {
+            let _ = self.update_data_stream_status(|status| {
+                status.running = false;
+                status.last_error = Some(err.to_string());
+            });
+            let _ = device.close();
+            return;
+        }
+
+        let fifo_words =
+            usize::from(device.config().fifo_size()).max(usize::from(DATA_DEFAULT_WORDS_PER_CYCLE));
+        let started_at = Instant::now();
+        let mut completed_cycles = 0_u64;
         let mut sequence = 0_u64;
-        let mut next_sample_tick = Instant::now();
-        let mut next_flush_tick = Instant::now();
         let mut last_latest_by_signal: HashMap<u16, bool> = HashMap::new();
-        let mut topology_cache = SignalTopologyCache::default();
         let mut signal_catalog = SignalCatalog::default();
         let mut pending_catalog_updates: Vec<HardwareDataSignalCatalogEntryV1> = Vec::new();
 
         while !stop_flag.load(Ordering::Relaxed) {
-            let now = Instant::now();
-            let mut sampled_count = 0_u32;
+            let config = match data_stream_config.lock() {
+                Ok(guard) => guard.clone(),
+                Err(_) => break,
+            };
 
-            while now >= next_sample_tick && sampled_count < DATA_MAX_SAMPLE_CATCH_UP {
-                let sample = self.collect_data_sample(
-                    &mut topology_cache,
-                    &mut signal_catalog,
-                    &mut pending_catalog_updates,
-                );
-                if queue.len() >= DATA_QUEUE_CAPACITY {
-                    queue.pop_front();
-                    dropped_samples = dropped_samples.saturating_add(1);
-                }
-                queue.push_back(sample);
-                next_sample_tick += DATA_SAMPLE_INTERVAL;
-                sampled_count += 1;
-            }
+            let signal_order =
+                Self::active_signal_order(&config.signal_order, config.words_per_cycle);
+            let signal_ids = signal_order
+                .iter()
+                .map(|signal| signal_catalog.id_for_signal(signal, &mut pending_catalog_updates))
+                .collect::<Vec<_>>();
 
-            if now >= next_sample_tick {
-                dropped_samples = dropped_samples.saturating_add(1);
-                next_sample_tick = now + DATA_SAMPLE_INTERVAL;
-            }
-
-            if now >= next_flush_tick {
-                if !pending_catalog_updates.is_empty() {
-                    let catalog_event = HardwareDataSignalCatalogV1 {
+            if !pending_catalog_updates.is_empty() {
+                let _ = app.emit(
+                    "hardware:data_catalog",
+                    HardwareDataSignalCatalogV1 {
                         version: 1,
                         generated_at_ms: Self::now_millis(),
                         entries: std::mem::take(&mut pending_catalog_updates),
-                    };
-                    let _ = app.emit("hardware:data_catalog", catalog_event);
-                }
-
-                if !queue.is_empty() {
-                    let queue_fill = queue.len() as u16;
-                    let updates = Self::filter_changed_updates(
-                        Self::aggregate_data_samples(&mut queue),
-                        &mut last_latest_by_signal,
-                    );
-                    if !updates.is_empty() {
-                        sequence = sequence.saturating_add(1);
-                        let generated_at_ms = Self::now_millis();
-                        let payload = Self::encode_binary_batch(
-                            sequence,
-                            generated_at_ms,
-                            dropped_samples,
-                            queue_fill,
-                            DATA_QUEUE_CAPACITY as u16,
-                            &updates,
-                        );
-
-                        let _ = app.emit(
-                            "hardware:data_batch_bin",
-                            HardwareDataBatchBinaryV1 {
-                                version: 1,
-                                payload,
-                            },
-                        );
-
-                        let _ = self.update_data_stream_status(|status| {
-                            status.running = true;
-                            status.sequence = sequence;
-                            status.dropped_samples = dropped_samples;
-                            status.queue_fill = 0;
-                            status.queue_capacity = DATA_QUEUE_CAPACITY as u16;
-                            status.last_batch_at_ms = generated_at_ms;
-                        });
-                    }
-                }
-
-                next_flush_tick += DATA_FLUSH_INTERVAL;
+                    },
+                );
             }
 
-            let next_tick = std::cmp::min(next_sample_tick, next_flush_tick);
-            let now_after_work = Instant::now();
-            if next_tick > now_after_work {
-                thread::sleep(next_tick.duration_since(now_after_work));
-            } else {
-                thread::yield_now();
+            let words_per_cycle = usize::from(config.words_per_cycle.max(1));
+            let queue_capacity = (fifo_words / words_per_cycle).max(1);
+            let expected_cycles = (started_at.elapsed().as_secs_f64()
+                * config.target_hz.max(DATA_DEFAULT_TARGET_HZ))
+            .floor() as u64;
+            let due_cycles = expected_cycles.saturating_sub(completed_cycles);
+
+            if due_cycles == 0 {
+                thread::sleep(DATA_IDLE_SLEEP);
+                continue;
             }
+
+            let batch_cycles = due_cycles.min(queue_capacity as u64) as usize;
+            let state_snapshot = match self.snapshot() {
+                Ok(snapshot) => snapshot,
+                Err(_) => break,
+            };
+            let mut write_buffer = Self::build_write_buffer(
+                &state_snapshot,
+                &signal_order,
+                batch_cycles,
+                words_per_cycle,
+            );
+            let mut read_buffer = vec![0u16; batch_cycles * words_per_cycle];
+
+            if let Err(err) = device.transfer_io(&mut write_buffer, &mut read_buffer) {
+                let _ = self.update_data_stream_status(|status| {
+                    status.running = false;
+                    status.last_error = Some(err.to_string());
+                });
+                break;
+            }
+
+            completed_cycles = completed_cycles.saturating_add(batch_cycles as u64);
+            sequence = sequence.saturating_add(1);
+
+            let generated_at_ms = Self::now_millis();
+            let updates = Self::filter_changed_updates(
+                Self::aggregate_read_buffer(&read_buffer, &signal_ids, words_per_cycle),
+                &mut last_latest_by_signal,
+            );
+            let remaining_backlog = expected_cycles.saturating_sub(completed_cycles);
+            let payload = Self::encode_binary_batch(
+                sequence,
+                generated_at_ms,
+                0,
+                remaining_backlog.min(u64::from(u16::MAX)) as u16,
+                queue_capacity.min(usize::from(u16::MAX)) as u16,
+                &updates,
+            );
+
+            let _ = app.emit(
+                "hardware:data_batch_bin",
+                HardwareDataBatchBinaryV1 {
+                    version: 1,
+                    payload,
+                },
+            );
+
+            let _ = self.update_data_stream_status(|status| {
+                status.running = true;
+                status.target_hz = config.target_hz;
+                status.sequence = sequence;
+                status.dropped_samples = 0;
+                status.queue_fill = remaining_backlog.min(u64::from(u16::MAX)) as u16;
+                status.queue_capacity = queue_capacity.min(usize::from(u16::MAX)) as u16;
+                status.last_batch_at_ms = generated_at_ms;
+                status.words_per_cycle = config.words_per_cycle;
+                status.configured_signal_count = signal_order.len() as u16;
+                status.last_error = None;
+            });
         }
+
+        let _ = device.exit_io_mode();
+        let _ = device.close();
     }
 
+    fn validate_stream_config(config: &HardwareDataStreamConfigV1) -> Result<(), String> {
+        Self::validate_target_hz(config.target_hz)?;
+
+        if config.words_per_cycle == 0 {
+            return Err("Words per cycle must be greater than zero".to_string());
+        }
+
+        let max_signal_count = usize::from(config.words_per_cycle) * 16;
+        if config.signal_order.len() > max_signal_count {
+            return Err(format!(
+                "Configured {} signals exceed packet capacity of {} bits",
+                config.signal_order.len(),
+                max_signal_count
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn validate_target_hz(rate_hz: f64) -> Result<(), String> {
+        if !rate_hz.is_finite() || rate_hz <= 0.0 {
+            return Err("Target frequency must be a finite value greater than zero".to_string());
+        }
+
+        Ok(())
+    }
+
+    fn active_signal_order(signal_order: &[String], words_per_cycle: u16) -> Vec<String> {
+        let max_signal_count = usize::from(words_per_cycle.max(1)) * 16;
+        let mut active = Vec::with_capacity(signal_order.len().min(max_signal_count));
+
+        for signal in signal_order {
+            if active.len() >= max_signal_count {
+                break;
+            }
+
+            if active.iter().any(|existing| existing == signal) {
+                continue;
+            }
+
+            active.push(signal.clone());
+        }
+
+        active
+    }
+
+    fn build_write_buffer(
+        state: &HardwareStateV1,
+        signal_order: &[String],
+        batch_cycles: usize,
+        words_per_cycle: usize,
+    ) -> Vec<u16> {
+        let mut cycle_words = vec![0u16; words_per_cycle];
+
+        for (signal_index, signal) in signal_order.iter().enumerate() {
+            if !Self::signal_source_value(state, signal).unwrap_or(false) {
+                continue;
+            }
+
+            let word_index = signal_index / 16;
+            let bit_index = signal_index % 16;
+            if let Some(word) = cycle_words.get_mut(word_index) {
+                *word |= 1u16 << bit_index;
+            }
+        }
+
+        let mut buffer = vec![0u16; batch_cycles * words_per_cycle];
+        for chunk in buffer.chunks_exact_mut(words_per_cycle) {
+            chunk.copy_from_slice(&cycle_words);
+        }
+        buffer
+    }
+
+    fn aggregate_read_buffer(
+        read_buffer: &[u16],
+        signal_ids: &[u16],
+        words_per_cycle: usize,
+    ) -> Vec<HardwareSignalAggregateByIdV1> {
+        let signal_count = signal_ids.len().min(words_per_cycle * 16);
+        if signal_count == 0 {
+            return Vec::new();
+        }
+
+        let mut aggregates = (0..signal_count)
+            .map(|_| HardwareDataAggregate::new())
+            .collect::<Vec<_>>();
+
+        for cycle in read_buffer.chunks_exact(words_per_cycle) {
+            for (signal_index, aggregate) in aggregates.iter_mut().enumerate().take(signal_count) {
+                let word_index = signal_index / 16;
+                let bit_index = signal_index % 16;
+                let value = cycle
+                    .get(word_index)
+                    .map(|word| (word & (1u16 << bit_index)) != 0)
+                    .unwrap_or(false);
+                aggregate.ingest(value);
+            }
+        }
+
+        let mut updates = aggregates
+            .into_iter()
+            .enumerate()
+            .map(|(signal_index, aggregate)| aggregate.into_signal(signal_ids[signal_index]))
+            .collect::<Vec<_>>();
+
+        if updates.len() > DATA_MAX_UPDATES_PER_BATCH {
+            updates.truncate(DATA_MAX_UPDATES_PER_BATCH);
+        }
+
+        updates
+    }
+
+    #[cfg(test)]
     fn collect_data_sample(
         &self,
         topology_cache: &mut SignalTopologyCache,
@@ -667,6 +907,7 @@ impl HardwareRuntime {
         HardwareDataSample { values }
     }
 
+    #[cfg(test)]
     fn aggregate_data_samples(
         queue: &mut VecDeque<HardwareDataSample>,
     ) -> Vec<HardwareSignalAggregateByIdV1> {
@@ -706,6 +947,7 @@ impl HardwareRuntime {
         updates
     }
 
+    #[cfg(test)]
     fn refresh_signal_topology_cache(
         state: &HardwareStateV1,
         topology_cache: &mut SignalTopologyCache,
@@ -756,6 +998,7 @@ impl HardwareRuntime {
         topology_cache.routes = routes;
     }
 
+    #[cfg(test)]
     fn signal_topology_signature(state: &HardwareStateV1) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         state.canvas_devices.len().hash(&mut hasher);

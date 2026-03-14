@@ -4,6 +4,6 @@ mod types;
 
 pub use runtime::HardwareRuntime;
 pub use types::{
-    BitstreamGenerationResult, HardwareActionV1, HardwareDataStreamStatusV1, HardwareEventReason,
-    HardwareStateV1, HardwareStatus,
+    BitstreamGenerationResult, HardwareActionV1, HardwareDataStreamConfigV1,
+    HardwareDataStreamStatusV1, HardwareEventReason, HardwareStateV1, HardwareStatus,
 };

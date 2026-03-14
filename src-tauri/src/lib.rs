@@ -7,8 +7,9 @@ use std::{
 };
 
 use hardware::{
-    BitstreamGenerationResult, HardwareActionV1, HardwareDataStreamStatusV1, HardwareEventReason,
-    HardwareRuntime, HardwareStateV1, HardwareStatus,
+    BitstreamGenerationResult, HardwareActionV1, HardwareDataStreamConfigV1,
+    HardwareDataStreamStatusV1, HardwareEventReason, HardwareRuntime, HardwareStateV1,
+    HardwareStatus,
 };
 use tauri::Emitter;
 use vlfd_rs::{Device, HotplugEvent, HotplugEventKind, HotplugOptions, HotplugRegistration};
@@ -61,6 +62,22 @@ fn stop_hardware_data_stream(
     runtime: tauri::State<'_, Arc<HardwareRuntime>>,
 ) -> Result<(), String> {
     runtime.stop_data_stream()
+}
+
+#[tauri::command]
+fn configure_hardware_data_stream(
+    runtime: tauri::State<'_, Arc<HardwareRuntime>>,
+    config: HardwareDataStreamConfigV1,
+) -> Result<HardwareDataStreamStatusV1, String> {
+    runtime.configure_data_stream(config)
+}
+
+#[tauri::command]
+fn set_hardware_data_stream_rate(
+    runtime: tauri::State<'_, Arc<HardwareRuntime>>,
+    rate_hz: f64,
+) -> Result<HardwareDataStreamStatusV1, String> {
+    runtime.set_data_stream_rate(rate_hz)
 }
 
 #[tauri::command]
@@ -230,6 +247,8 @@ pub fn run() {
             hardware_get_data_stream_status,
             start_hardware_data_stream,
             stop_hardware_data_stream,
+            configure_hardware_data_stream,
+            set_hardware_data_stream_rate,
             get_hardware_status,
             program_bitstream,
             generate_bitstream,

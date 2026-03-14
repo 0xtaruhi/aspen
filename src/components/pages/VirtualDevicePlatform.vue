@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { LayoutGrid } from 'lucide-vue-next'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { LayoutGrid, Play, Square } from 'lucide-vue-next'
 
 import DeviceCanvas from '@/components/canvas/DeviceCanvas.vue'
 import ComponentGallery from '@/components/ComponentGallery.vue'
@@ -8,15 +8,37 @@ import RightDrawer from '@/components/RightDrawer.vue'
 import DeviceInspector from '@/components/virtual-device/DeviceInspector.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { hardwareStore } from '@/stores/hardware'
 import { signalCatalogStore } from '@/stores/signal-catalog'
+
+const STREAM_WORDS_PER_CYCLE = 4
+const STREAM_SIGNAL_LIMIT = STREAM_WORDS_PER_CYCLE * 16
 
 const showGallery = ref(false)
 const selectedDeviceId = ref<string | null>(null)
 const inspectorOpen = ref(false)
 const galleryDropBlockInset = 60
+const streamBusy = ref(false)
+const streamMessage = ref('')
+const rateInput = ref('1000')
 
 const availableSignalCount = computed(() => signalCatalogStore.signals.value.length)
+const streamSignalNames = computed(() => {
+  return signalCatalogStore.signals.value.slice(0, STREAM_SIGNAL_LIMIT).map((signal) => signal.name)
+})
+const streamSignalOverflow = computed(() => {
+  return Math.max(0, availableSignalCount.value - streamSignalNames.value.length)
+})
+const streamStatus = computed(() => hardwareStore.dataStreamStatus.value)
+const streamRunning = computed(() => streamStatus.value.running)
+const streamLastBatch = computed(() => {
+  if (streamStatus.value.last_batch_at_ms <= 0) {
+    return null
+  }
+
+  return new Date(streamStatus.value.last_batch_at_ms).toLocaleTimeString()
+})
 const selectedDevice = computed(() => {
   if (!selectedDeviceId.value) {
     return null
@@ -38,10 +60,121 @@ function openInspectorForDevice(id: string) {
   inspectorOpen.value = true
 }
 
+function getErrorMessage(err: unknown) {
+  return err instanceof Error ? err.message : String(err)
+}
+
+function formatRate(rateHz: number) {
+  if (!Number.isFinite(rateHz) || rateHz <= 0) {
+    return '1'
+  }
+
+  if (Number.isInteger(rateHz)) {
+    return String(rateHz)
+  }
+
+  return rateHz.toFixed(2).replace(/\.?0+$/, '')
+}
+
+function parseRequestedRate() {
+  const nextRate = Number(rateInput.value)
+  if (!Number.isFinite(nextRate) || nextRate <= 0) {
+    throw new Error('Frequency must be a finite value greater than 0 Hz.')
+  }
+
+  return nextRate
+}
+
+async function syncStreamConfig() {
+  await hardwareStore.configureDataStream(streamSignalNames.value, STREAM_WORDS_PER_CYCLE)
+}
+
+async function applyRate() {
+  streamBusy.value = true
+  streamMessage.value = ''
+
+  try {
+    const nextRate = parseRequestedRate()
+    await hardwareStore.setDataStreamRate(nextRate)
+  } catch (err) {
+    streamMessage.value = getErrorMessage(err)
+  } finally {
+    streamBusy.value = false
+  }
+}
+
+async function startStream() {
+  streamBusy.value = true
+  streamMessage.value = ''
+
+  try {
+    await syncStreamConfig()
+    await hardwareStore.setDataStreamRate(parseRequestedRate())
+    await hardwareStore.startDataStream()
+  } catch (err) {
+    streamMessage.value = `Failed to start stream: ${getErrorMessage(err)}`
+  } finally {
+    streamBusy.value = false
+  }
+}
+
+async function stopStream() {
+  streamBusy.value = true
+  streamMessage.value = ''
+
+  try {
+    await hardwareStore.stopDataStream()
+  } catch (err) {
+    streamMessage.value = `Failed to stop stream: ${getErrorMessage(err)}`
+  } finally {
+    streamBusy.value = false
+  }
+}
+
 watch(selectedDevice, (device) => {
   if (!device) {
     inspectorOpen.value = false
   }
+})
+
+watch(
+  () => streamStatus.value.target_hz,
+  (targetHz) => {
+    rateInput.value = formatRate(targetHz)
+  },
+  { immediate: true },
+)
+
+watch(
+  () => streamSignalNames.value.join('\u0000'),
+  () => {
+    if (!hardwareStore.isStarted.value) {
+      return
+    }
+
+    void syncStreamConfig().catch((err) => {
+      streamMessage.value = `Failed to update signal map: ${getErrorMessage(err)}`
+    })
+  },
+)
+
+onMounted(() => {
+  streamBusy.value = true
+  streamMessage.value = ''
+
+  hardwareStore
+    .start()
+    .then(() => syncStreamConfig())
+    .catch((err) => {
+      streamMessage.value = `Hardware runtime unavailable: ${getErrorMessage(err)}`
+    })
+    .finally(() => {
+      streamBusy.value = false
+    })
+})
+
+onBeforeUnmount(() => {
+  hardwareStore.stop().catch(() => undefined)
 })
 </script>
 
@@ -58,7 +191,64 @@ watch(selectedDevice, (device) => {
       >
         <LayoutGrid class="w-4 h-4" />
       </Button>
-      <Badge variant="outline">{{ availableSignalCount }} top ports</Badge>
+      <Badge variant="outline">{{ streamRunning ? 'Running' : 'Stopped' }}</Badge>
+      <Badge variant="outline">
+        {{ streamStatus.configured_signal_count || streamSignalNames.length }} /
+        {{ availableSignalCount }}
+        ports
+      </Badge>
+      <Badge v-if="streamLastBatch" variant="outline">Seq {{ streamStatus.sequence }}</Badge>
+
+      <div class="ml-auto flex items-center gap-2">
+        <div class="flex items-center gap-2 rounded-md border border-border bg-background px-2">
+          <span class="text-xs text-muted-foreground">Hz</span>
+          <Input
+            v-model="rateInput"
+            type="number"
+            min="0.1"
+            step="1"
+            class="h-8 w-24 border-0 bg-transparent px-0 text-right shadow-none focus-visible:ring-0"
+            @keydown.enter.prevent="applyRate"
+          />
+        </div>
+        <Button type="button" size="sm" variant="outline" :disabled="streamBusy" @click="applyRate">
+          Apply
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          :variant="streamRunning ? 'destructive' : 'default'"
+          :disabled="streamBusy"
+          class="gap-2"
+          @click="streamRunning ? stopStream() : startStream()"
+        >
+          <Square v-if="streamRunning" class="h-4 w-4" />
+          <Play v-else class="h-4 w-4" />
+          {{ streamRunning ? 'Stop' : 'Start' }}
+        </Button>
+      </div>
+    </div>
+
+    <div
+      v-if="streamMessage || streamStatus.last_error || streamSignalOverflow > 0 || streamLastBatch"
+      class="border-b border-border bg-background px-4 py-2 text-xs text-muted-foreground"
+    >
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <span v-if="streamStatus.last_error" class="text-destructive">
+          {{ streamStatus.last_error }}
+        </span>
+        <span v-else-if="streamMessage" class="text-destructive">
+          {{ streamMessage }}
+        </span>
+        <span v-if="streamLastBatch">
+          Last batch {{ streamLastBatch }} · Queue {{ streamStatus.queue_fill }} /
+          {{ streamStatus.queue_capacity }}
+        </span>
+        <span v-if="streamSignalOverflow > 0" class="text-amber-600">
+          {{ streamSignalOverflow }} ports exceed the 64-bit stream window and are not active in
+          live IO.
+        </span>
+      </div>
     </div>
 
     <div class="relative flex-1 min-h-0 overflow-hidden">

@@ -12,6 +12,7 @@ import { consumePaletteDrop, paletteDragStore } from '@/stores/palette-drag'
 import {
   canvasDeviceEmitsToggle,
   createCanvasDeviceSnapshot,
+  deviceReceivesSignal,
   getCanvasDeviceRendererProps,
 } from '@/lib/canvas-devices'
 
@@ -254,8 +255,28 @@ function toggleSwitch(device: CanvasDeviceSnapshot, value: boolean) {
   void hardwareStore.setCanvasSwitchState(device.id, value)
 }
 
+function renderedDevice(device: CanvasDeviceSnapshot): CanvasDeviceSnapshot {
+  const boundSignal = device.state.bound_signal
+  if (!boundSignal || !deviceReceivesSignal(device.type)) {
+    return device
+  }
+
+  const telemetry = hardwareStore.signalTelemetry.value[boundSignal]
+  if (!telemetry) {
+    return device
+  }
+
+  return {
+    ...device,
+    state: {
+      ...device.state,
+      is_on: telemetry.latest,
+    },
+  }
+}
+
 function rendererProps(device: CanvasDeviceSnapshot) {
-  return getCanvasDeviceRendererProps(device)
+  return getCanvasDeviceRendererProps(renderedDevice(device))
 }
 
 function rendererListeners(

@@ -3,10 +3,14 @@ import type { CanvasDeviceSnapshot, HardwareActionV1, HardwareStateV1 } from '@/
 import { computed } from 'vue'
 
 import {
+  configureDataStream as configureRuntimeDataStream,
   dispatch as dispatchRuntimeAction,
   disconnectView as disconnectRuntimeView,
   hardwareRuntimeStore,
+  setDataStreamRate as setRuntimeDataStreamRate,
+  startDataStream as startRuntimeDataStream,
   start as startRuntime,
+  stopDataStream as stopRuntimeDataStream,
   stop as stopRuntime,
   syncState as syncRuntimeState,
 } from './hardware-runtime'
@@ -122,6 +126,22 @@ async function stop() {
   return stopRuntime()
 }
 
+async function configureDataStream(signalNames: readonly string[], wordsPerCycle?: number) {
+  return configureRuntimeDataStream(signalNames, wordsPerCycle)
+}
+
+async function setDataStreamRate(rateHz: number) {
+  return setRuntimeDataStreamRate(rateHz)
+}
+
+async function startDataStream() {
+  return startRuntimeDataStream()
+}
+
+async function stopDataStream() {
+  return stopRuntimeDataStream()
+}
+
 async function disconnectView() {
   await disconnectRuntimeView()
   virtualDeviceStore.resetState()
@@ -135,6 +155,10 @@ export const hardwareStore = {
   isStarted: hardwareRuntimeStore.isStarted,
   start,
   stop,
+  configureDataStream,
+  setDataStreamRate,
+  startDataStream,
+  stopDataStream,
   probe,
   dispatch,
   syncState,
