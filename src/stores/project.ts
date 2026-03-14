@@ -1,5 +1,6 @@
 import { reactive } from 'vue'
-import { parseVerilogPorts, type VerilogPort } from '@/lib/verilog-parser'
+
+import { parseVerilogPorts, type VerilogPort } from '../lib/verilog-parser'
 
 export type ProjectNode = {
   id: string
@@ -15,7 +16,10 @@ export type ProjectSnapshot = {
   name: string
   files: ProjectNode[]
   activeFileId: string
+  topFileId: string
 }
+
+type FileSignatureMap = Record<string, string>
 
 function cloneProjectNodes(nodes: ProjectNode[]): ProjectNode[] {
   return nodes.map((node) => ({
@@ -26,6 +30,27 @@ function cloneProjectNodes(nodes: ProjectNode[]): ProjectNode[] {
     isOpen: node.isOpen,
     children: node.children ? cloneProjectNodes(node.children) : undefined,
   }))
+}
+
+function createFileSignature(node: ProjectNode): string {
+  return `${node.name}\n${node.content ?? ''}`
+}
+
+function buildFileSignatureMap(
+  nodes: ProjectNode[],
+  signatureMap: FileSignatureMap = {},
+): FileSignatureMap {
+  for (const node of nodes) {
+    if (node.type === 'file') {
+      signatureMap[node.id] = createFileSignature(node)
+    }
+
+    if (node.children) {
+      buildFileSignatureMap(node.children, signatureMap)
+    }
+  }
+
+  return signatureMap
 }
 
 function findFirstFileId(nodes: ProjectNode[]): string {
@@ -41,6 +66,47 @@ function findFirstFileId(nodes: ProjectNode[]): string {
     }
   }
   return ''
+}
+
+function isHardwareSourceFile(name: string): boolean {
+  return name.endsWith('.v') || name.endsWith('.sv')
+}
+
+function findFirstMatchingFileId(
+  nodes: ProjectNode[],
+  predicate: (node: ProjectNode) => boolean,
+): string {
+  for (const node of nodes) {
+    if (node.type === 'file' && predicate(node)) {
+      return node.id
+    }
+    if (node.children) {
+      const childFileId = findFirstMatchingFileId(node.children, predicate)
+      if (childFileId) {
+        return childFileId
+      }
+    }
+  }
+
+  return ''
+}
+
+function resolveTopFileId(nodes: ProjectNode[]): string {
+  const topNamedHardwareFileId = findFirstMatchingFileId(nodes, (node) => {
+    return isHardwareSourceFile(node.name) && /^top([._-]|$)/i.test(node.name)
+  })
+  if (topNamedHardwareFileId) {
+    return topNamedHardwareFileId
+  }
+
+  const firstHardwareFileId = findFirstMatchingFileId(nodes, (node) => {
+    return isHardwareSourceFile(node.name)
+  })
+  if (firstHardwareFileId) {
+    return firstHardwareFileId
+  }
+
+  return findFirstFileId(nodes)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -106,6 +172,10 @@ function normalizeSnapshot(value: unknown): ProjectSnapshot {
     name: value.name,
     files: cloneProjectNodes(value.files),
     activeFileId: value.activeFileId,
+    topFileId:
+      typeof value.topFileId === 'string' && value.topFileId.length > 0
+        ? value.topFileId
+        : resolveTopFileId(value.files),
   }
 }
 
@@ -153,6 +223,10 @@ endmodule`,
   ] as ProjectNode[],
 
   activeFileId: '1',
+  topFileId: '1',
+  projectPath: null as string | null,
+  savedSnapshotJson: '' as string,
+  savedFileSignatures: {} as FileSignatureMap,
 
   // Helper to find a node by ID recursively
   findNode(id: string, nodes?: ProjectNode[]): ProjectNode | null {
@@ -171,8 +245,31 @@ endmodule`,
     return this.findNode(this.activeFileId)
   },
 
+  get rootNode() {
+    return this.files.length === 1 && this.files[0]?.type === 'folder' ? this.files[0] : null
+  },
+
   get code() {
     return this.activeFile?.content || ''
+  },
+
+  get topFile() {
+    return this.findNode(this.topFileId)
+  },
+
+  get hasUnsavedChanges() {
+    return JSON.stringify(this.toSnapshot()) !== this.savedSnapshotJson
+  },
+
+  get topCode() {
+    return this.topFile?.content || ''
+  },
+
+  get topSignals() {
+    if (this.topFile?.type === 'file' && isHardwareSourceFile(this.topFile.name)) {
+      return parseVerilogPorts(this.topFile.content || '')
+    }
+    return [] as VerilogPort[]
   },
 
   get signals() {
@@ -188,18 +285,24 @@ endmodule`,
       name: this.files[0]?.name || 'project',
       files: cloneProjectNodes(this.files),
       activeFileId: this.activeFileId,
+      topFileId: this.topFileId,
     }
   },
 
-  loadFromSnapshot(snapshot: unknown) {
+  loadFromSnapshot(snapshot: unknown, options: { projectPath?: string | null } = {}) {
     const parsed = normalizeSnapshot(snapshot)
     const nextFiles = cloneProjectNodes(parsed.files)
     const nextActiveFileId = this.findNode(parsed.activeFileId, nextFiles)
       ? parsed.activeFileId
       : findFirstFileId(nextFiles)
+    const nextTopFileId = this.findNode(parsed.topFileId, nextFiles)
+      ? parsed.topFileId
+      : resolveTopFileId(nextFiles)
 
     this.files = nextFiles
     this.activeFileId = nextActiveFileId
+    this.topFileId = nextTopFileId
+    this.markSaved(options.projectPath ?? null)
   },
 
   updateCode(newCode: string) {
@@ -211,6 +314,28 @@ endmodule`,
 
   setActiveFile(id: string) {
     this.activeFileId = id
+  },
+
+  setTopFile(id: string) {
+    const node = this.findNode(id)
+    if (node?.type === 'file' && isHardwareSourceFile(node.name)) {
+      this.topFileId = id
+    }
+  },
+
+  markSaved(projectPath?: string | null) {
+    this.projectPath = projectPath === undefined ? this.projectPath : projectPath
+    this.savedSnapshotJson = JSON.stringify(this.toSnapshot())
+    this.savedFileSignatures = buildFileSignatureMap(this.files)
+  },
+
+  isFileDirty(id: string) {
+    const node = this.findNode(id)
+    if (!node || node.type !== 'file') {
+      return false
+    }
+
+    return this.savedFileSignatures[id] !== createFileSignature(node)
   },
 
   // File Operations
@@ -263,6 +388,9 @@ endmodule`,
     if (this.activeFileId === id) {
       this.activeFileId = ''
     }
+    if (this.topFileId === id) {
+      this.topFileId = resolveTopFileId(this.files)
+    }
   },
 
   renameNode(id: string, newName: string) {
@@ -301,6 +429,7 @@ endmodule`,
 endmodule`,
       })
       this.activeFileId = '1'
+      this.topFileId = '1'
     } else if (template === 'uart') {
       this.files[0].children?.push({
         id: '1',
@@ -351,6 +480,7 @@ endmodule`,
 endmodule`,
       })
       this.activeFileId = '1'
+      this.topFileId = '1'
     } else {
       // Empty or other templates
       this.files[0].children?.push({
@@ -363,6 +493,11 @@ endmodule`,
 endmodule`,
       })
       this.activeFileId = '1'
+      this.topFileId = '1'
     }
+
+    this.markSaved(null)
   },
 })
+
+projectStore.markSaved(null)

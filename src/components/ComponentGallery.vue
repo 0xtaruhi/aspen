@@ -7,8 +7,7 @@
             class="cg-item"
             v-for="item in items"
             :key="item.type"
-            :draggable="true"
-            @dragstart="onDragStart(item.type)"
+            @pointerdown="beginPaletteDrag(item.type, $event)"
             :title="item.title"
           >
             <div class="cg-card">
@@ -40,6 +39,8 @@ import {
   Type,
 } from 'lucide-vue-next'
 
+import { beginPaletteDrag } from '@/stores/palette-drag'
+
 type GalleryItem = { type: string; title: string; icon: any }
 
 defineProps<{ open: boolean }>()
@@ -60,14 +61,6 @@ const items = computed<GalleryItem[]>(() => [
   { type: 'led8x8_matrix', title: 'LED8x8', icon: Grid3X3 },
   { type: 'led16x16_matrix', title: 'LED16x16', icon: Grid3X3 },
 ])
-
-function onDragStart(type: string) {
-  return (e: DragEvent) => {
-    if (!e.dataTransfer) return
-    e.dataTransfer.setData('application/x-widget', type)
-    e.dataTransfer.effectAllowed = 'copy'
-  }
-}
 </script>
 
 <style scoped>
@@ -79,6 +72,7 @@ function onDragStart(type: string) {
   bottom: 0;
   background: rgba(255, 255, 255, 0.1);
   z-index: 10;
+  pointer-events: none;
 }
 
 @supports not (backdrop-filter: blur(1px)) {
@@ -107,6 +101,7 @@ function onDragStart(type: string) {
   border-bottom: 1px solid var(--border);
   backdrop-filter: blur(8px);
   z-index: 11;
+  pointer-events: auto;
 }
 
 .cg-inner {

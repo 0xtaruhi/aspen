@@ -1,23 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Activity, Cpu, Clock, AlertCircle } from 'lucide-vue-next'
-import { projectStore } from '@/stores/project'
+import { Activity, AlertCircle, Clock, Cpu } from 'lucide-vue-next'
 
-const codeLines = computed(() => {
-  const code = String(projectStore.code || '')
-  return code
-    .split('\n')
-    .map((line: string) => line.trim())
-    .filter(Boolean).length
-})
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { designContextStore } from '@/stores/design-context'
 
-const signalSummary = computed(() => {
-  const inputs = projectStore.signals.filter((sig) => sig.direction === 'input').length
-  const outputs = projectStore.signals.filter((sig) => sig.direction === 'output').length
-  const inouts = projectStore.signals.filter((sig) => sig.direction === 'inout').length
-  return { inputs, outputs, inouts }
-})
+const codeLines = designContextStore.codeLines
+const signalSummary = designContextStore.signalSummary
+const activeFileName = designContextStore.sourceName
 
 const estimatedResources = computed(() => {
   const lut = Math.max(64, codeLines.value * 3 + signalSummary.value.outputs * 20)
@@ -107,15 +97,15 @@ const resourceBars = computed(() => {
     },
   ]
 })
-
-const activeFileName = computed(() => projectStore.activeFile?.name || 'No file selected')
 </script>
 
 <template>
   <div class="p-8 space-y-8 animate-in fade-in duration-500">
-    <div>
-      <h2 class="text-3xl font-bold tracking-tight">Project Status</h2>
-      <p class="text-muted-foreground">Overview of your FPGA design metrics.</p>
+    <div class="flex items-center justify-between gap-4">
+      <div>
+        <h2 class="text-3xl font-bold tracking-tight">Project Status</h2>
+        <p class="text-muted-foreground">Overview of your selected FPGA design metrics.</p>
+      </div>
     </div>
 
     <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -162,7 +152,7 @@ const activeFileName = computed(() => projectStore.activeFile?.name || 'No file 
       <Card class="col-span-3">
         <CardHeader>
           <CardTitle>Recent Activity</CardTitle>
-          <CardDescription> Latest build and simulation runs. </CardDescription>
+          <CardDescription>Latest build and simulation runs.</CardDescription>
         </CardHeader>
         <CardContent>
           <div class="space-y-4">
@@ -174,7 +164,7 @@ const activeFileName = computed(() => projectStore.activeFile?.name || 'No file 
                 <span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
               </span>
               <div class="ml-2 space-y-1">
-                <p class="text-sm font-medium leading-none">Active file analyzed</p>
+                <p class="text-sm font-medium leading-none">Design source analyzed</p>
                 <p class="text-xs text-muted-foreground">{{ activeFileName }}</p>
               </div>
             </div>

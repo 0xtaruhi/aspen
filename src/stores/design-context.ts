@@ -1,0 +1,133 @@
+import type { VerilogPort } from '../lib/verilog-parser'
+
+import { computed } from 'vue'
+
+import { parseVerilogPorts } from '../lib/verilog-parser'
+import { projectStore } from './project'
+
+export type DesignSource = {
+  id: string
+  name: string
+  path: string
+  code: string
+  isHardwareSource: boolean
+}
+
+type SignalSummary = {
+  inputs: number
+  outputs: number
+  inouts: number
+}
+
+function isHardwareSourceFile(name: string): boolean {
+  return name.endsWith('.v') || name.endsWith('.sv')
+}
+
+function findNodePathById(
+  nodes: typeof projectStore.files,
+  targetId: string,
+  parentSegments: string[] = [],
+): string {
+  for (const node of nodes) {
+    const pathSegments = [...parentSegments, node.name]
+
+    if (node.id === targetId) {
+      return pathSegments.join('/')
+    }
+
+    if (node.children) {
+      const childPath = findNodePathById(node.children, targetId, pathSegments)
+      if (childPath) {
+        return childPath
+      }
+    }
+  }
+
+  return ''
+}
+
+const selectedSource = computed<DesignSource | null>(() => {
+  const topFile = projectStore.topFile
+  if (!topFile || topFile.type !== 'file') {
+    return null
+  }
+
+  return {
+    id: topFile.id,
+    name: topFile.name,
+    path: findNodePathById(projectStore.files, topFile.id),
+    code: topFile.content || '',
+    isHardwareSource: isHardwareSourceFile(topFile.name),
+  }
+})
+
+const sourceName = computed(() => selectedSource.value?.name ?? 'No top file selected')
+const sourcePath = computed(() => selectedSource.value?.path ?? '')
+const sourceCode = computed(() => selectedSource.value?.code ?? '')
+
+const moduleNames = computed(() => {
+  return Array.from(
+    sourceCode.value.matchAll(/\bmodule\s+([A-Za-z_][A-Za-z0-9_]*)/g),
+    (match: RegExpMatchArray) => match[1],
+  )
+})
+
+const primaryModule = computed(() => moduleNames.value[0] || 'top')
+
+const codeLines = computed(() => {
+  return sourceCode.value
+    .split('\n')
+    .map((line: string) => line.trim())
+    .filter(Boolean).length
+})
+
+const signals = computed<readonly VerilogPort[]>(() => {
+  if (!selectedSource.value?.isHardwareSource) {
+    return []
+  }
+
+  return parseVerilogPorts(sourceCode.value).map((signal) => ({
+    ...signal,
+  }))
+})
+
+const signalSummary = computed<SignalSummary>(() => {
+  let inputs = 0
+  let outputs = 0
+  let inouts = 0
+
+  for (const signal of signals.value) {
+    if (signal.direction === 'input') {
+      inputs += 1
+      continue
+    }
+
+    if (signal.direction === 'output') {
+      outputs += 1
+      continue
+    }
+
+    if (signal.direction === 'inout') {
+      inouts += 1
+    }
+  }
+
+  return { inputs, outputs, inouts }
+})
+
+const outputSignals = computed(() => {
+  return signals.value.filter((signal) => signal.direction === 'output')
+})
+
+export const designContextStore = {
+  selectedSource,
+  sourceName,
+  sourcePath,
+  sourceCode,
+  moduleNames,
+  primaryModule,
+  codeLines,
+  signals,
+  signalSummary,
+  outputSignals,
+}

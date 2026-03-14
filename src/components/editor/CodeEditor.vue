@@ -38,6 +38,7 @@ const container = ref<HTMLElement | null>(null)
 let editor: monaco.editor.IStandaloneCodeEditor | null = null
 
 import { useThemeState } from '@/lib/theme'
+import { settingsStore } from '@/stores/settings'
 
 const themeState = useThemeState()
 
@@ -89,8 +90,8 @@ onMounted(() => {
     language: props.language || 'verilog',
     theme: themeState.value ? 'vs-dark' : 'vs',
     automaticLayout: true,
-    minimap: { enabled: true },
-    fontSize: 14,
+    minimap: { enabled: settingsStore.state.editorMinimap },
+    fontSize: settingsStore.state.editorFontSize,
     fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
     scrollBeyondLastLine: false,
     padding: { top: 16, bottom: 16 },
@@ -115,6 +116,20 @@ watch(
     if (editor && val !== editor.getValue()) {
       editor.setValue(val)
     }
+  },
+)
+
+watch(
+  () => settingsStore.state.editorFontSize,
+  (fontSize) => {
+    editor?.updateOptions({ fontSize })
+  },
+)
+
+watch(
+  () => settingsStore.state.editorMinimap,
+  (enabled) => {
+    editor?.updateOptions({ minimap: { enabled } })
   },
 )
 

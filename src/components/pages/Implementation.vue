@@ -1,17 +1,18 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+
+import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table,
   TableBody,
   TableCell,
+  TableEmpty,
   TableHead,
   TableHeader,
   TableRow,
-  TableEmpty,
 } from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
-import { projectStore } from '@/stores/project'
+import { designContextStore } from '@/stores/design-context'
 
 type TimingPath = {
   name: string
@@ -20,17 +21,8 @@ type TimingPath = {
   skew: string
 }
 
-const outputSignals = computed(() => {
-  return projectStore.signals.filter((signal) => signal.direction === 'output')
-})
-
-const sourceLines = computed(() => {
-  const code = String(projectStore.code || '')
-  return code
-    .split('\n')
-    .map((line: string) => line.trim())
-    .filter(Boolean).length
-})
+const outputSignals = designContextStore.outputSignals
+const sourceLines = designContextStore.codeLines
 
 const timingPaths = computed<TimingPath[]>(() => {
   if (outputSignals.value.length === 0) {
@@ -54,6 +46,7 @@ const worstSlack = computed(() => {
   if (timingPaths.value.length === 0) {
     return 'N/A'
   }
+
   return timingPaths.value.reduce((min, path) => {
     return Number(path.slack) < Number(min) ? path.slack : min
   }, timingPaths.value[0].slack)
@@ -75,12 +68,18 @@ const totalPower = computed(() => {
 
 <template>
   <div class="p-8 space-y-8 animate-in fade-in duration-500">
-    <div class="flex items-center justify-between">
+    <div class="flex items-center justify-between gap-4">
       <div>
         <h2 class="text-3xl font-bold tracking-tight">Implementation</h2>
-        <p class="text-muted-foreground">Place & Route results and timing analysis.</p>
+        <p class="text-muted-foreground">
+          Place & Route results and timing analysis for {{ designContextStore.sourceName.value }}.
+        </p>
       </div>
-      <Badge variant="secondary">WNS: {{ worstSlack === 'N/A' ? 'N/A' : `${worstSlack}ns` }}</Badge>
+      <div class="flex items-center gap-2">
+        <Badge variant="secondary"
+          >WNS: {{ worstSlack === 'N/A' ? 'N/A' : `${worstSlack}ns` }}</Badge
+        >
+      </div>
     </div>
 
     <div class="grid gap-4 md:grid-cols-2">
@@ -164,7 +163,7 @@ const totalPower = computed(() => {
               <TableCell>{{ path.skew }}</TableCell>
             </TableRow>
             <TableEmpty v-if="timingPaths.length === 0" :colspan="4" class="text-muted-foreground">
-              No output signals found in current source.
+              No output signals found in selected design source.
             </TableEmpty>
           </TableBody>
         </Table>

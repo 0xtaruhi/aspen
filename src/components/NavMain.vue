@@ -53,16 +53,12 @@ defineProps<{
           <CollapsibleContent>
             <SidebarMenuSub>
               <SidebarMenuSubItem v-for="subItem in item.items" :key="subItem.title">
-                <SidebarMenuSubButton as-child>
-                  <a
-                    href="#"
-                    @click.prevent="subItem.action ? subItem.action() : null"
-                    :class="{
-                      'bg-sidebar-accent text-sidebar-accent-foreground': subItem.isActive,
-                    }"
-                  >
-                    <span>{{ subItem.title }}</span>
-                  </a>
+                <SidebarMenuSubButton
+                  type="button"
+                  :is-active="subItem.isActive"
+                  @click="subItem.action ? subItem.action() : null"
+                >
+                  <span>{{ subItem.title }}</span>
                 </SidebarMenuSubButton>
               </SidebarMenuSubItem>
             </SidebarMenuSub>

@@ -1,30 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+
+import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Badge } from '@/components/ui/badge'
-import { projectStore } from '@/stores/project'
+import { designContextStore } from '@/stores/design-context'
 
-const activeFileName = computed(() => projectStore.activeFile?.name || 'top.v')
-const sourceCode = computed(() => String(projectStore.code || ''))
-
-const moduleNames = computed(() => {
-  return Array.from(
-    sourceCode.value.matchAll(/\bmodule\s+([A-Za-z_][A-Za-z0-9_]*)/g),
-    (match: RegExpMatchArray) => match[1],
-  )
-})
-
-const primaryModule = computed(() => moduleNames.value[0] || 'top')
-
-const codeLines = computed(() => {
-  return sourceCode.value
-    .split('\n')
-    .map((line: string) => line.trim())
-    .filter(Boolean).length
-})
-
-const signalCount = computed(() => projectStore.signals.length)
+const activeFileName = designContextStore.sourceName
+const sourceCode = designContextStore.sourceCode
+const primaryModule = designContextStore.primaryModule
+const codeLines = designContextStore.codeLines
+const signalCount = computed(() => designContextStore.signals.value.length)
 
 const logicCells = computed(() => Math.max(0, codeLines.value * 9 + signalCount.value * 16))
 const registers = computed(() => Math.max(0, codeLines.value * 6 + signalCount.value * 10))
@@ -32,7 +18,7 @@ const bramBlocks = computed(() => Math.max(1, Math.ceil(codeLines.value / 180)))
 const duration = computed(() => Math.max(3, Math.round(codeLines.value / 7)))
 
 const warningCount = computed(() => {
-  return projectStore.signals.filter((signal) => signal.direction === 'output').length > 0 ? 0 : 1
+  return designContextStore.signalSummary.value.outputs > 0 ? 0 : 1
 })
 
 const synthesisStatus = computed(() => {
@@ -40,9 +26,7 @@ const synthesisStatus = computed(() => {
 })
 
 const logs = computed(() => {
-  const outputSignals = projectStore.signals.filter(
-    (signal) => signal.direction === 'output',
-  ).length
+  const outputSignals = designContextStore.signalSummary.value.outputs
   const warningLine =
     warningCount.value === 0
       ? '0 Warnings, 0 Critical Warnings and 0 Errors encountered.'
@@ -66,9 +50,11 @@ synth_design: Time (s): elapsed = 00:00:${duration.value.toString().padStart(2, 
     <div class="flex items-center justify-between shrink-0">
       <div>
         <h2 class="text-3xl font-bold tracking-tight">Synthesis</h2>
-        <p class="text-muted-foreground">Logic synthesis results and reports.</p>
+        <p class="text-muted-foreground">
+          Logic synthesis results and reports for {{ activeFileName }}.
+        </p>
       </div>
-      <div class="flex gap-2">
+      <div class="flex gap-2 items-center">
         <Badge
           variant="outline"
           :class="

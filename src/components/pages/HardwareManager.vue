@@ -19,7 +19,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable'
-import { projectStore } from '@/stores/project'
+import { designContextStore } from '@/stores/design-context'
 import { hardwareStore } from '@/stores/hardware'
 import type { HardwarePhase } from '@/lib/hardware-client'
 
@@ -117,7 +117,7 @@ const selectedDevice = computed(() => {
 })
 
 const canGenerate = computed(() => {
-  return !!selectedDevice.value && !isBusy.value
+  return !!selectedDevice.value && !!designContextStore.selectedSource.value && !isBusy.value
 })
 
 const canProgram = computed(() => {
@@ -256,8 +256,13 @@ async function disconnect() {
 async function generateBitstream() {
   if (!canGenerate.value) return
 
-  const sourceName = projectStore.activeFile?.name || 'top.v'
-  const sourceCode = projectStore.code
+  const sourceName = designContextStore.sourceName.value || 'top.v'
+  const sourceCode = designContextStore.sourceCode.value
+
+  if (!sourceCode.trim()) {
+    programMessage.value = 'Selected design source is empty. Choose a source file with FPGA logic.'
+    return
+  }
 
   try {
     const nextState = await hardwareStore.generateBitstream(

@@ -1,0 +1,450 @@
+import type { UnlistenFn } from '@tauri-apps/api/event'
+
+import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
+import { ref } from 'vue'
+
+import {
+  type HardwareActionV1,
+  type HardwareDataBatchBinaryV1,
+  type HardwareDataSignalCatalogV1,
+  type HardwareDataStreamStatusV1,
+  type HardwareEventV1,
+  type HardwareStateV1,
+  hardwareDispatch,
+  hardwareGetDataStreamStatus,
+  hardwareGetState,
+  listenHardwareDataBatchBinary,
+  listenHardwareDataCatalog,
+  listenHardwareStateChanged,
+  startHardwareDataStream,
+  stopHardwareDataStream,
+} from '@/lib/hardware-client'
+
+type HotplugPayload = {
+  kind: 'arrived' | 'left'
+}
+
+type RuntimeState = Omit<HardwareStateV1, 'canvas_devices'>
+
+type SignalTelemetrySnapshot = {
+  latest: boolean
+  high_ratio: number
+  edge_count: number
+  sequence: number
+  updated_at_ms: number
+}
+
+const initialRuntimeState: RuntimeState = {
+  version: 1,
+  phase: 'idle',
+  device: null,
+  artifact: null,
+  last_error: null,
+  op_id: null,
+  updated_at_ms: 0,
+}
+
+const runtimeState = ref<RuntimeState>({ ...initialRuntimeState })
+const hotplugLog = ref('')
+const isStarted = ref(false)
+const signalTelemetry = ref<Record<string, SignalTelemetrySnapshot>>({})
+const dataStreamStatus = ref<HardwareDataStreamStatusV1>({
+  running: false,
+  sequence: 0,
+  dropped_samples: 0,
+  queue_fill: 0,
+  queue_capacity: 120,
+  last_batch_at_ms: 0,
+})
+
+let unlistenStateChanged: UnlistenFn | null = null
+let unlistenHotplug: UnlistenFn | null = null
+let unlistenDataBatch: UnlistenFn | null = null
+let unlistenDataCatalog: UnlistenFn | null = null
+let telemetryRafId: number | null = null
+let telemetryFlushTimerId: ReturnType<typeof setTimeout> | null = null
+
+const pendingTelemetry = new Map<string, SignalTelemetrySnapshot>()
+const signalCatalog = new Map<number, string>()
+let pendingDataBatchMeta: Pick<
+  HardwareDataStreamStatusV1,
+  'sequence' | 'dropped_samples' | 'queue_fill' | 'queue_capacity' | 'last_batch_at_ms'
+> | null = null
+
+const hardwareStateListeners = new Set<(state: HardwareStateV1) => void>()
+
+function extractRuntimeState(nextState: HardwareStateV1): RuntimeState {
+  const { canvas_devices: _canvasDevices, ...runtimeOnlyState } = nextState
+  return runtimeOnlyState
+}
+
+function notifyHardwareState(nextState: HardwareStateV1) {
+  for (const listener of hardwareStateListeners) {
+    listener(nextState)
+  }
+}
+
+function setRuntimeState(nextState: RuntimeState) {
+  runtimeState.value = nextState
+}
+
+function applyHardwareState(nextState: HardwareStateV1) {
+  setRuntimeState(extractRuntimeState(nextState))
+  notifyHardwareState(nextState)
+}
+
+function setError(message: string) {
+  runtimeState.value = {
+    ...runtimeState.value,
+    phase: 'error',
+    last_error: message,
+    updated_at_ms: Date.now(),
+  }
+}
+
+function clearErrorLocal() {
+  runtimeState.value = {
+    ...runtimeState.value,
+    last_error: null,
+    phase:
+      runtimeState.value.phase === 'error'
+        ? runtimeState.value.device
+          ? 'device_ready'
+          : 'idle'
+        : runtimeState.value.phase,
+    updated_at_ms: Date.now(),
+  }
+}
+
+function getErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+function clearTelemetryFlushHandle() {
+  if (telemetryRafId !== null) {
+    if (typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(telemetryRafId)
+    }
+    telemetryRafId = null
+  }
+  if (telemetryFlushTimerId !== null) {
+    clearTimeout(telemetryFlushTimerId)
+    telemetryFlushTimerId = null
+  }
+}
+
+function flushTelemetry() {
+  if (pendingTelemetry.size > 0) {
+    for (const [signal, value] of pendingTelemetry.entries()) {
+      signalTelemetry.value[signal] = value
+    }
+    pendingTelemetry.clear()
+  }
+
+  if (pendingDataBatchMeta) {
+    dataStreamStatus.value.running = true
+    dataStreamStatus.value.sequence = pendingDataBatchMeta.sequence
+    dataStreamStatus.value.dropped_samples = pendingDataBatchMeta.dropped_samples
+    dataStreamStatus.value.queue_fill = pendingDataBatchMeta.queue_fill
+    dataStreamStatus.value.queue_capacity = pendingDataBatchMeta.queue_capacity
+    dataStreamStatus.value.last_batch_at_ms = pendingDataBatchMeta.last_batch_at_ms
+    pendingDataBatchMeta = null
+  }
+
+  clearTelemetryFlushHandle()
+}
+
+function scheduleTelemetryFlush() {
+  if (telemetryRafId !== null || telemetryFlushTimerId !== null) {
+    return
+  }
+
+  if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+    telemetryRafId = window.requestAnimationFrame(() => {
+      flushTelemetry()
+    })
+    return
+  }
+
+  telemetryFlushTimerId = setTimeout(() => {
+    flushTelemetry()
+  }, 16)
+}
+
+function toSafeNumberFromU64(value: bigint): number {
+  const maxSafe = BigInt(Number.MAX_SAFE_INTEGER)
+  if (value > maxSafe) {
+    return Number.MAX_SAFE_INTEGER
+  }
+  return Number(value)
+}
+
+function onDataCatalog(catalog: HardwareDataSignalCatalogV1) {
+  for (const entry of catalog.entries) {
+    signalCatalog.set(entry.signal_id, entry.signal)
+  }
+}
+
+function onDataBatchBinary(batch: HardwareDataBatchBinaryV1) {
+  const bytes = new Uint8Array(batch.payload)
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const expectedHeaderBytes = 30
+  if (view.byteLength < expectedHeaderBytes) {
+    return
+  }
+
+  let offset = 0
+  const sequence = toSafeNumberFromU64(view.getBigUint64(offset, true))
+  offset += 8
+  const generatedAtMs = toSafeNumberFromU64(view.getBigUint64(offset, true))
+  offset += 8
+  const droppedSamples = toSafeNumberFromU64(view.getBigUint64(offset, true))
+  offset += 8
+  const queueFill = view.getUint16(offset, true)
+  offset += 2
+  const queueCapacity = view.getUint16(offset, true)
+  offset += 2
+  const updateCount = view.getUint16(offset, true)
+  offset += 2
+
+  const bytesPerUpdate = 9
+  const expectedBytes = expectedHeaderBytes + updateCount * bytesPerUpdate
+  if (view.byteLength < expectedBytes) {
+    return
+  }
+
+  for (let index = 0; index < updateCount; index += 1) {
+    const signalId = view.getUint16(offset, true)
+    offset += 2
+    const latest = view.getUint8(offset) === 1
+    offset += 1
+    const highRatio = view.getFloat32(offset, true)
+    offset += 4
+    const edgeCount = view.getUint16(offset, true)
+    offset += 2
+
+    const signal = signalCatalog.get(signalId)
+    if (!signal) {
+      continue
+    }
+
+    pendingTelemetry.set(signal, {
+      latest,
+      high_ratio: highRatio,
+      edge_count: edgeCount,
+      sequence,
+      updated_at_ms: generatedAtMs,
+    })
+  }
+
+  pendingDataBatchMeta = {
+    sequence,
+    dropped_samples: droppedSamples,
+    queue_fill: queueFill,
+    queue_capacity: queueCapacity,
+    last_batch_at_ms: generatedAtMs,
+  }
+
+  scheduleTelemetryFlush()
+}
+
+function isTauriUnavailable(err: unknown): boolean {
+  const message = getErrorMessage(err)
+  return (
+    message.includes('__TAURI_INTERNALS__') ||
+    message.includes('window.__TAURI_INTERNALS__') ||
+    message.includes('plugin') ||
+    message.includes("Cannot read properties of undefined (reading 'invoke')") ||
+    message.includes("Cannot read properties of undefined (reading 'transformCallback')")
+  )
+}
+
+function isRuntimeOnlyAction(action: HardwareActionV1): boolean {
+  return (
+    action.type === 'probe' ||
+    action.type === 'generate_bitstream' ||
+    action.type === 'program_bitstream'
+  )
+}
+
+function runtimeUnavailableMessage(action: HardwareActionV1): string {
+  switch (action.type) {
+    case 'probe':
+      return 'Hardware probing is unavailable in browser mode. Run the desktop app to connect to FPGA hardware.'
+    case 'generate_bitstream':
+      return 'Bitstream generation is unavailable in browser mode. Run the desktop app to build FPGA bitstreams.'
+    case 'program_bitstream':
+      return 'Bitstream programming is unavailable in browser mode. Run the desktop app to program FPGA hardware.'
+    default:
+      return 'Hardware runtime actions are unavailable in browser mode. Run the desktop app for hardware access.'
+  }
+}
+
+function resetRuntimeViewState() {
+  hotplugLog.value = ''
+  signalTelemetry.value = {}
+  clearTelemetryFlushHandle()
+  pendingTelemetry.clear()
+  signalCatalog.clear()
+  pendingDataBatchMeta = null
+  dataStreamStatus.value = {
+    ...dataStreamStatus.value,
+    running: false,
+    queue_fill: 0,
+  }
+}
+
+export async function syncState(): Promise<HardwareStateV1 | null> {
+  try {
+    const nextState = await hardwareGetState()
+    applyHardwareState(nextState)
+    return nextState
+  } catch (err) {
+    if (isTauriUnavailable(err)) {
+      return null
+    }
+    throw err
+  }
+}
+
+export async function dispatch(action: HardwareActionV1): Promise<HardwareStateV1 | null> {
+  try {
+    const nextState = await hardwareDispatch(action)
+    applyHardwareState(nextState)
+    return nextState
+  } catch (err) {
+    if (isTauriUnavailable(err)) {
+      if (isRuntimeOnlyAction(action)) {
+        setError(runtimeUnavailableMessage(action))
+        return null
+      }
+      if (action.type === 'clear_error') {
+        clearErrorLocal()
+        return null
+      }
+    }
+    throw err
+  }
+}
+
+export async function start() {
+  if (isStarted.value) {
+    return
+  }
+
+  try {
+    await syncState()
+
+    try {
+      dataStreamStatus.value = await hardwareGetDataStreamStatus()
+    } catch (err) {
+      if (!isTauriUnavailable(err)) {
+        throw err
+      }
+    }
+
+    unlistenStateChanged = await listenHardwareStateChanged((event: HardwareEventV1) => {
+      applyHardwareState(event.state)
+    })
+
+    unlistenDataCatalog = await listenHardwareDataCatalog((catalog) => {
+      onDataCatalog(catalog)
+    })
+
+    unlistenDataBatch = await listenHardwareDataBatchBinary((batch) => {
+      onDataBatchBinary(batch)
+    })
+
+    unlistenHotplug = await listen<HotplugPayload>('hardware:hotplug', (event) => {
+      hotplugLog.value = event.payload.kind === 'arrived' ? 'Device connected' : 'Device removed'
+    })
+
+    await invoke('start_hotplug_watch')
+    await startHardwareDataStream()
+    isStarted.value = true
+  } catch (err) {
+    if (unlistenStateChanged) {
+      unlistenStateChanged()
+      unlistenStateChanged = null
+    }
+    if (unlistenDataBatch) {
+      unlistenDataBatch()
+      unlistenDataBatch = null
+    }
+    if (unlistenDataCatalog) {
+      unlistenDataCatalog()
+      unlistenDataCatalog = null
+    }
+    if (unlistenHotplug) {
+      unlistenHotplug()
+      unlistenHotplug = null
+    }
+    resetRuntimeViewState()
+    if (isTauriUnavailable(err)) {
+      isStarted.value = false
+      return
+    }
+    setError(err instanceof Error ? err.message : String(err))
+    throw err
+  }
+}
+
+export async function stop() {
+  if (!isStarted.value) {
+    return
+  }
+
+  try {
+    await stopHardwareDataStream()
+    await invoke('stop_hotplug_watch')
+  } finally {
+    if (unlistenStateChanged) {
+      unlistenStateChanged()
+      unlistenStateChanged = null
+    }
+    if (unlistenDataBatch) {
+      unlistenDataBatch()
+      unlistenDataBatch = null
+    }
+    if (unlistenDataCatalog) {
+      unlistenDataCatalog()
+      unlistenDataCatalog = null
+    }
+    if (unlistenHotplug) {
+      unlistenHotplug()
+      unlistenHotplug = null
+    }
+    resetRuntimeViewState()
+    isStarted.value = false
+  }
+}
+
+export async function disconnectView() {
+  await stop()
+  runtimeState.value = { ...initialRuntimeState }
+  resetRuntimeViewState()
+}
+
+function subscribeHardwareState(listener: (state: HardwareStateV1) => void) {
+  hardwareStateListeners.add(listener)
+
+  return () => {
+    hardwareStateListeners.delete(listener)
+  }
+}
+
+export const hardwareRuntimeStore = {
+  runtimeState,
+  signalTelemetry,
+  dataStreamStatus,
+  hotplugLog,
+  isStarted,
+  dispatch,
+  syncState,
+  start,
+  stop,
+  disconnectView,
+  subscribeHardwareState,
+  isTauriUnavailable,
+}

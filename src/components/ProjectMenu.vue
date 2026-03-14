@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
-import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog'
-import { ChevronsUpDown, Plus, FolderOpen, Save, Box } from 'lucide-vue-next'
+import { useRouter } from 'vue-router'
+import { ChevronsUpDown, Plus, FolderOpen, Save, Box, Settings2 } from 'lucide-vue-next'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
@@ -17,119 +18,20 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar'
+import { openProject, saveProject, saveProjectAs } from '@/lib/project-io'
 import NewProjectDialog from './project/NewProjectDialog.vue'
 import { projectStore } from '@/stores/project'
 
 const { isMobile } = useSidebar()
 const showNewProjectDialog = ref(false)
+const router = useRouter()
 const activeProject = computed(() => ({
-  name: projectStore.files[0]?.name || 'Aspen FPGA',
+  name: `${projectStore.files[0]?.name || 'Aspen FPGA'}${projectStore.hasUnsavedChanges ? ' *' : ''}`,
   plan: 'Pro',
 }))
 
-function getErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
-}
-
-function isTauriUnavailable(err: unknown): boolean {
-  const message = getErrorMessage(err)
-  return (
-    message.includes('__TAURI_INTERNALS__') ||
-    message.includes('window.__TAURI_INTERNALS__') ||
-    message.includes('plugin')
-  )
-}
-
-async function openProjectInBrowserFallback() {
-  if (typeof document === 'undefined') {
-    return
-  }
-
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.accept = '.json,application/json'
-
-  input.onchange = async () => {
-    const file = input.files?.[0]
-    if (!file) {
-      return
-    }
-
-    try {
-      const text = await file.text()
-      const data = JSON.parse(text) as unknown
-      projectStore.loadFromSnapshot(data)
-    } catch (err) {
-      window.alert(`Failed to open project: ${getErrorMessage(err)}`)
-    }
-  }
-
-  input.click()
-}
-
-function saveProjectInBrowserFallback(serialized: string, filename: string) {
-  if (typeof document === 'undefined') {
-    return
-  }
-
-  const blob = new Blob([serialized], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  link.style.display = 'none'
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  URL.revokeObjectURL(url)
-}
-
-async function openProject() {
-  try {
-    const selected = await openDialog({
-      multiple: false,
-      filters: [{ name: 'Aspen Project', extensions: ['json'] }],
-    })
-
-    if (typeof selected !== 'string') {
-      return
-    }
-
-    const content = await invoke<string>('read_project_file', { path: selected })
-    const data = JSON.parse(content) as unknown
-    projectStore.loadFromSnapshot(data)
-  } catch (err) {
-    if (isTauriUnavailable(err)) {
-      await openProjectInBrowserFallback()
-      return
-    }
-    window.alert(`Failed to open project: ${getErrorMessage(err)}`)
-  }
-}
-
-async function saveProject() {
-  const snapshot = projectStore.toSnapshot()
-  const serialized = JSON.stringify(snapshot, null, 2)
-  const filename = `${snapshot.name || 'project'}.aspen.json`
-
-  try {
-    const selected = await saveDialog({
-      defaultPath: filename,
-      filters: [{ name: 'Aspen Project', extensions: ['json'] }],
-    })
-
-    if (!selected || Array.isArray(selected)) {
-      return
-    }
-
-    await invoke('write_project_file', { path: selected, content: serialized })
-  } catch (err) {
-    if (isTauriUnavailable(err)) {
-      saveProjectInBrowserFallback(serialized, filename)
-      return
-    }
-    window.alert(`Failed to save project: ${getErrorMessage(err)}`)
-  }
+function openSettings() {
+  void router.push({ name: 'settings' })
 }
 </script>
 
@@ -186,6 +88,23 @@ async function saveProject() {
               <Save class="size-4" />
             </div>
             Save Project
+            <DropdownMenuShortcut>Ctrl+S</DropdownMenuShortcut>
+          </DropdownMenuItem>
+
+          <DropdownMenuItem class="gap-2 p-2" @click="saveProjectAs">
+            <div class="flex size-6 items-center justify-center rounded-sm border">
+              <Save class="size-4" />
+            </div>
+            Save Project As
+          </DropdownMenuItem>
+
+          <DropdownMenuSeparator />
+
+          <DropdownMenuItem class="gap-2 p-2" @click="openSettings">
+            <div class="flex size-6 items-center justify-center rounded-sm border">
+              <Settings2 class="size-4" />
+            </div>
+            Settings
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

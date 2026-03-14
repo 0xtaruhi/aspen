@@ -1,26 +1,38 @@
 <script setup lang="ts">
 import type { SidebarProps } from '@/components/ui/sidebar'
-import { Cpu, FolderCog, FileCode2, Zap, Bug } from 'lucide-vue-next'
+
+import { Cpu, Bug, FileCode2, FolderCog } from 'lucide-vue-next'
+import { computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+
 import NavMain from '@/components/NavMain.vue'
 import ProjectMenu from '@/components/ProjectMenu.vue'
 import ProjectExplorer from '@/components/project/ProjectExplorer.vue'
-
 import {
   Sidebar,
   SidebarContent,
-  SidebarHeader,
-  SidebarRail,
   SidebarGroup,
   SidebarGroupLabel,
+  SidebarHeader,
+  SidebarRail,
 } from '@/components/ui/sidebar'
+import { type AppRouteName, modulePathMap } from '@/router'
+import { uiStore } from '@/stores/ui'
 
 const props = withDefaults(defineProps<SidebarProps>(), {
   collapsible: 'icon',
 })
 
-import { uiStore } from '@/stores/ui'
+const route = useRoute()
+const router = useRouter()
 
-const data = {
+function navigate(path: string) {
+  void router.push(path)
+}
+
+const activeRouteName = computed(() => route.name as AppRouteName | undefined)
+
+const data = computed(() => ({
   teams: [
     {
       name: 'Aspen FPGA',
@@ -30,71 +42,63 @@ const data = {
   ],
   navMain: [
     {
-      title: 'Workspace',
-      url: '#',
+      title: 'Project Management',
+      url: modulePathMap['project-management'],
       icon: FolderCog,
-      isActive: true,
+      isActive: uiStore.activeModule.value === 'project-management',
       items: [
         {
           title: 'Dashboard',
-          url: '#',
-          action: () => uiStore.setPage('status'),
-        },
-        {
-          title: 'Editor',
-          url: '#',
-          action: () => uiStore.setPage('editor'),
+          url: '/project-management/dashboard',
+          action: () => navigate('/project-management/dashboard'),
+          isActive:
+            activeRouteName.value === 'project-management-dashboard' ||
+            activeRouteName.value === 'project-management',
         },
       ],
     },
     {
-      title: 'Flow Reports',
-      url: '#',
+      title: 'FPGA Flow',
+      url: modulePathMap['fpga-flow'],
       icon: FileCode2,
+      isActive: uiStore.activeModule.value === 'fpga-flow',
       items: [
         {
           title: 'Synthesis',
-          url: '#',
-          action: () => uiStore.setPage('synthesis'),
+          url: '/fpga-flow/synthesis',
+          action: () => navigate('/fpga-flow/synthesis'),
+          isActive: activeRouteName.value === 'fpga-flow-synthesis',
         },
         {
           title: 'Implementation',
-          url: '#',
-          action: () => uiStore.setPage('implementation'),
+          url: '/fpga-flow/implementation',
+          action: () => navigate('/fpga-flow/implementation'),
+          isActive: activeRouteName.value === 'fpga-flow-implementation',
         },
-      ],
-    },
-    {
-      title: 'Hardware',
-      url: '#',
-      icon: Bug,
-      items: [
         {
           title: 'Hardware Manager',
-          url: '#',
-          action: () => uiStore.setPage('hardware'),
+          url: '/fpga-flow/hardware',
+          action: () => navigate('/fpga-flow/hardware'),
+          isActive: activeRouteName.value === 'fpga-flow-hardware',
         },
       ],
     },
     {
-      title: 'Build Actions',
-      url: '#',
-      icon: Zap,
+      title: 'Virtual Device Platform',
+      url: modulePathMap['virtual-device-platform'],
+      icon: Bug,
+      isActive: uiStore.activeModule.value === 'virtual-device-platform',
       items: [
         {
-          title: 'Generate Bitstream',
-          url: '#',
-          action: () => uiStore.setPage('hardware'),
-        },
-        {
-          title: 'Program Device',
-          url: '#',
-          action: () => uiStore.setPage('hardware'),
+          title: 'Workbench',
+          url: modulePathMap['virtual-device-platform'],
+          action: () => navigate(modulePathMap['virtual-device-platform']),
+          isActive: activeRouteName.value === 'virtual-device-platform',
         },
       ],
     },
   ],
-}
+}))
 </script>
 
 <template>
@@ -103,15 +107,11 @@ const data = {
       <ProjectMenu />
     </SidebarHeader>
     <SidebarContent>
-      <!-- Mode Switcher (Optional, for now just stacked) -->
-
-      <!-- Project Explorer Section -->
       <SidebarGroup class="group-data-[collapsible=icon]:hidden">
         <SidebarGroupLabel>Project Sources</SidebarGroupLabel>
         <ProjectExplorer />
       </SidebarGroup>
 
-      <!-- Main Navigation -->
       <NavMain :items="data.navMain" />
     </SidebarContent>
     <SidebarRail />

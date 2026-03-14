@@ -1,50 +1,153 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onUnmounted, ref } from 'vue'
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuTrigger,
-  ContextMenuSub,
-  ContextMenuSubTrigger,
-  ContextMenuSubContent,
 } from '@/components/ui/context-menu'
-import { projectStore } from '@/stores/project'
+import { confirmAction } from '@/lib/confirm-action'
+import { settingsStore } from '@/stores/settings'
 
 const props = defineProps<{
   id: string
   x: number
   y: number
+  label: string
   selected?: boolean
   width?: number
   height?: number
   boundSignal?: string
+  scale?: number
+  preview?: boolean
+  animated?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'update:position', x: number, y: number): void
   (e: 'select', id: string, multi: boolean): void
-  (e: 'bind:signal', signalName: string): void
+  (e: 'open-settings', id: string): void
+  (e: 'delete', id: string): void
+  (e: 'drag-end', id: string, x: number, y: number): void
 }>()
 
 const el = ref<HTMLElement | null>(null)
+const dragState = ref<{
+  startX: number
+  startY: number
+  pointerX: number
+  pointerY: number
+  currentX: number
+  currentY: number
+} | null>(null)
 
 function onMouseDown(e: MouseEvent) {
+  if (props.preview) {
+    return
+  }
+
   e.stopPropagation()
   emit('select', props.id, e.shiftKey || e.metaKey)
 }
 
-function bindSignal(signalName: string) {
-  emit('bind:signal', signalName)
+function openSettings() {
+  emit('select', props.id, false)
+  emit('open-settings', props.id)
 }
+
+function removeDevice() {
+  emit('delete', props.id)
+}
+
+function deferContextAction(action: () => void | Promise<void>) {
+  window.setTimeout(action, 0)
+}
+
+function requestOpenSettings() {
+  deferContextAction(openSettings)
+}
+
+function requestRemoveDevice() {
+  deferContextAction(async () => {
+    if (
+      settingsStore.state.confirmDelete &&
+      !(await confirmAction(`Are you sure you want to delete ${props.label}?`, {
+        title: 'Delete Device',
+      }))
+    ) {
+      return
+    }
+
+    removeDevice()
+  })
+}
+
+function stopDrag() {
+  if (dragState.value && !props.preview) {
+    emit('drag-end', props.id, dragState.value.currentX, dragState.value.currentY)
+  }
+
+  dragState.value = null
+  window.removeEventListener('pointermove', onPointerMove)
+  window.removeEventListener('pointerup', stopDrag)
+  window.removeEventListener('pointercancel', stopDrag)
+}
+
+function onPointerMove(e: PointerEvent) {
+  if (!dragState.value) {
+    return
+  }
+
+  const scale = props.scale && props.scale > 0 ? props.scale : 1
+  const nextX = dragState.value.startX + (e.clientX - dragState.value.pointerX) / scale
+  const nextY = dragState.value.startY + (e.clientY - dragState.value.pointerY) / scale
+  dragState.value.currentX = nextX
+  dragState.value.currentY = nextY
+  emit('update:position', nextX, nextY)
+}
+
+function startDrag(e: PointerEvent) {
+  if (props.preview) {
+    return
+  }
+
+  if (e.button !== 0) {
+    return
+  }
+
+  e.preventDefault()
+  e.stopPropagation()
+  emit('select', props.id, e.shiftKey || e.metaKey)
+
+  dragState.value = {
+    startX: props.x,
+    startY: props.y,
+    pointerX: e.clientX,
+    pointerY: e.clientY,
+    currentX: props.x,
+    currentY: props.y,
+  }
+
+  window.addEventListener('pointermove', onPointerMove)
+  window.addEventListener('pointerup', stopDrag)
+  window.addEventListener('pointercancel', stopDrag)
+}
+
+onUnmounted(() => {
+  if (typeof window !== 'undefined') {
+    stopDrag()
+  }
+})
 </script>
 
 <template>
   <div
     ref="el"
     class="absolute select-none group"
+    :class="props.preview ? 'pointer-events-none z-20 opacity-60 saturate-75 drop-shadow-xl' : ''"
     :style="{
       transform: `translate(${x}px, ${y}px)`,
+      transition: animated ? 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1)' : undefined,
       width: width ? `${width}px` : 'auto',
       height: height ? `${height}px` : 'auto',
     }"
@@ -59,10 +162,15 @@ function bindSignal(signalName: string) {
         ></div>
 
         <!-- Content -->
-        <div class="relative bg-card border border-border rounded-md shadow-sm overflow-hidden">
+        <div
+          class="relative bg-card border border-border rounded-md shadow-sm overflow-hidden"
+          :class="props.preview ? 'border-primary/60 ring-1 ring-primary/30' : ''"
+        >
           <!-- Drag Handle / Header -->
           <div
-            class="h-2 w-full bg-muted/50 cursor-grab active:cursor-grabbing flex items-center justify-center"
+            class="h-2 w-full bg-muted/50 flex items-center justify-center"
+            :class="props.preview ? 'cursor-copy' : 'cursor-grab active:cursor-grabbing'"
+            @pointerdown="startDrag"
           >
             <!-- Signal Indicator -->
             <div
@@ -77,24 +185,10 @@ function bindSignal(signalName: string) {
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent class="w-48">
-        <ContextMenuItem>Properties</ContextMenuItem>
-        <ContextMenuSub>
-          <ContextMenuSubTrigger>Bind to Signal</ContextMenuSubTrigger>
-          <ContextMenuSubContent class="w-48">
-            <ContextMenuItem
-              v-for="sig in projectStore.signals"
-              :key="sig.name"
-              @select="bindSignal(sig.name)"
-            >
-              <span class="font-mono text-xs">{{ sig.name }}</span>
-              <span class="ml-auto text-xs text-muted-foreground">{{ sig.direction }}</span>
-            </ContextMenuItem>
-            <ContextMenuItem v-if="projectStore.signals.length === 0" disabled>
-              No signals found
-            </ContextMenuItem>
-          </ContextMenuSubContent>
-        </ContextMenuSub>
-        <ContextMenuItem class="text-destructive">Delete</ContextMenuItem>
+        <ContextMenuItem @select="requestOpenSettings">Settings</ContextMenuItem>
+        <ContextMenuItem class="text-destructive" @select="requestRemoveDevice">
+          Delete
+        </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
   </div>

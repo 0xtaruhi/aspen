@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+  CircuitBoard,
   Folder,
   FileCode,
   ChevronRight,
@@ -9,18 +10,28 @@ import {
   Trash2,
   Edit2,
 } from 'lucide-vue-next'
+import { useRouter } from 'vue-router'
+import { Badge } from '@/components/ui/badge'
 import { projectStore, type ProjectNode } from '@/stores/project'
+import { settingsStore } from '@/stores/settings'
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
-  ContextMenuTrigger,
   ContextMenuSeparator,
+  ContextMenuTrigger,
 } from '@/components/ui/context-menu'
+import { confirmAction } from '@/lib/confirm-action'
 
 const props = defineProps<{
   node: ProjectNode
 }>()
+
+const router = useRouter()
+
+function isHardwareSourceFile(name: string) {
+  return name.endsWith('.v') || name.endsWith('.sv')
+}
 
 function toggleFolder() {
   if (props.node.type === 'folder') {
@@ -39,6 +50,7 @@ function handleNewFile() {
   const name = prompt('Enter file name:', 'new_file.v')
   if (name) {
     projectStore.createFile(props.node.id, name)
+    void router.push({ name: 'project-management-editor' })
   }
 }
 
@@ -49,9 +61,25 @@ function handleNewFolder() {
   }
 }
 
-function handleDelete() {
-  if (confirm(`Are you sure you want to delete ${props.node.name}?`)) {
+async function handleDelete() {
+  if (
+    !settingsStore.state.confirmDelete ||
+    (await confirmAction(`Are you sure you want to delete ${props.node.name}?`, {
+      title: 'Delete File',
+    }))
+  ) {
     projectStore.deleteNode(props.node.id)
+  }
+}
+
+function openFile(id: string) {
+  projectStore.setActiveFile(id)
+  void router.push({ name: 'project-management-editor' })
+}
+
+function setAsTopFile() {
+  if (props.node.type === 'file') {
+    projectStore.setTopFile(props.node.id)
   }
 }
 </script>
@@ -63,7 +91,7 @@ function handleDelete() {
         <div
           class="flex items-center gap-1.5 py-1 px-2 rounded-md hover:bg-accent/50 cursor-pointer transition-colors"
           :class="{ 'bg-accent text-accent-foreground': projectStore.activeFileId === node.id }"
-          @click="node.type === 'folder' ? toggleFolder() : projectStore.setActiveFile(node.id)"
+          @click="node.type === 'folder' ? toggleFolder() : openFile(node.id)"
         >
           <component
             :is="node.type === 'folder' ? (node.isOpen ? ChevronDown : ChevronRight) : FileCode"
@@ -75,10 +103,31 @@ function handleDelete() {
             class="w-4 h-4"
             :class="node.type === 'folder' ? 'text-blue-400' : 'text-zinc-400'"
           />
-          <span>{{ node.name }}</span>
+          <span class="min-w-0 flex-1 truncate">{{ node.name }}</span>
+          <span
+            v-if="node.type === 'file' && projectStore.isFileDirty(node.id)"
+            class="text-amber-600"
+            aria-label="Unsaved changes"
+          >
+            *
+          </span>
+          <Badge
+            v-if="node.type === 'file' && projectStore.topFileId === node.id"
+            variant="secondary"
+            class="gap-1 px-1.5 py-0 text-[10px] uppercase tracking-[0.18em]"
+          >
+            <CircuitBoard class="h-3 w-3" />
+            Top
+          </Badge>
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent class="w-48">
+        <template v-if="node.type === 'file' && isHardwareSourceFile(node.name)">
+          <ContextMenuItem @select="setAsTopFile">
+            <CircuitBoard class="w-4 h-4 mr-2" /> Set as Top File
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+        </template>
         <ContextMenuItem @select="handleRename">
           <Edit2 class="w-4 h-4 mr-2" /> Rename
         </ContextMenuItem>
