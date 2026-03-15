@@ -18,6 +18,16 @@ use super::types::{
 };
 
 const BUNDLED_YOSYS_DIR: &str = "vendor/yosys";
+const FDE_RESOURCE_DIR: &str = "resource/yosys-fde";
+const FDE_SIMLIB_FILE: &str = "fdesimlib.v";
+const FDE_CELLS_MAP_FILE: &str = "cells_map.v";
+const FDE_LUT_WIDTH: u8 = 4;
+
+struct SynthesisToolchainPaths<'a> {
+    yosys_bin: &'a Path,
+    fde_simlib: &'a Path,
+    fde_cells_map: &'a Path,
+}
 
 pub fn run_yosys_synthesis(
     app: &AppHandle,
@@ -36,11 +46,18 @@ pub fn run_yosys_synthesis(
     }
 
     let yosys_bin = resolve_yosys_binary(app)?;
+    let fde_simlib = resolve_fde_support_file(app, FDE_SIMLIB_FILE)?;
+    let fde_cells_map = resolve_fde_support_file(app, FDE_CELLS_MAP_FILE)?;
+    let toolchain = SynthesisToolchainPaths {
+        yosys_bin: &yosys_bin,
+        fde_simlib: &fde_simlib,
+        fde_cells_map: &fde_cells_map,
+    };
     let started_at = Instant::now();
     let generated_at_ms = now_millis()?;
     let workdir = create_workdir(generated_at_ms)?;
     let result = run_yosys_in_workdir(
-        &yosys_bin,
+        &toolchain,
         &workdir,
         &request,
         generated_at_ms,
@@ -52,7 +69,7 @@ pub fn run_yosys_synthesis(
 }
 
 fn run_yosys_in_workdir<F>(
-    yosys_bin: &Path,
+    toolchain: &SynthesisToolchainPaths<'_>,
     workdir: &Path,
     request: &SynthesisRequestV1,
     generated_at_ms: u64,
@@ -73,10 +90,16 @@ where
 
     let script_path = workdir.join("run.ys");
     let netlist_path = workdir.join("netlist.json");
-    let script = build_yosys_script(&source_paths, &request.top_module, &netlist_path);
+    let script = build_yosys_script(
+        toolchain.fde_simlib,
+        toolchain.fde_cells_map,
+        &source_paths,
+        &request.top_module,
+        &netlist_path,
+    );
     fs::write(&script_path, script).map_err(|err| err.to_string())?;
 
-    let output = Command::new(yosys_bin)
+    let output = Command::new(toolchain.yosys_bin)
         .arg("-s")
         .arg(&script_path)
         .current_dir(workdir)
@@ -86,7 +109,7 @@ where
         .map_err(|err| {
             format!(
                 "Failed to launch Yosys at '{}': {}",
-                yosys_bin.display(),
+                toolchain.yosys_bin.display(),
                 err
             )
         })?;
@@ -117,7 +140,7 @@ where
     let output_status = child.wait().map_err(|err| {
         format!(
             "Failed to wait for Yosys at '{}': {}",
-            yosys_bin.display(),
+            toolchain.yosys_bin.display(),
             err
         )
     })?;
@@ -133,7 +156,7 @@ where
             success: false,
             top_module: request.top_module.clone(),
             source_count: request.files.len().min(usize::from(u16::MAX)) as u16,
-            tool_path: yosys_bin.to_string_lossy().to_string(),
+            tool_path: toolchain.yosys_bin.to_string_lossy().to_string(),
             elapsed_ms,
             warnings,
             errors: logged_errors.max(1),
@@ -150,7 +173,7 @@ where
         success: true,
         top_module: request.top_module.clone(),
         source_count: request.files.len().min(usize::from(u16::MAX)) as u16,
-        tool_path: yosys_bin.to_string_lossy().to_string(),
+        tool_path: toolchain.yosys_bin.to_string_lossy().to_string(),
         elapsed_ms,
         warnings,
         errors: logged_errors,
@@ -217,7 +240,39 @@ fn resolve_yosys_binary(app: &AppHandle) -> Result<PathBuf, String> {
     )
 }
 
-fn build_yosys_script(source_paths: &[PathBuf], top_module: &str, netlist_path: &Path) -> String {
+fn resolve_fde_support_file(app: &AppHandle, file_name: &str) -> Result<PathBuf, String> {
+    let bundled_resource_candidate = app
+        .path()
+        .resolve(
+            format!("{}/{}", FDE_RESOURCE_DIR, file_name),
+            BaseDirectory::Resource,
+        )
+        .ok()
+        .filter(|path| path.is_file());
+    if let Some(candidate) = bundled_resource_candidate {
+        return Ok(candidate);
+    }
+
+    let bundled_dev_candidate = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(FDE_RESOURCE_DIR)
+        .join(file_name);
+    if bundled_dev_candidate.is_file() {
+        return Ok(bundled_dev_candidate);
+    }
+
+    Err(format!(
+        "Unable to locate Aspen's bundled FDE synthesis support file '{}'. Build with `src-tauri/tauri.yosys.conf.json` or keep `{}/{}` in the source tree for local development.",
+        file_name, FDE_RESOURCE_DIR, file_name
+    ))
+}
+
+fn build_yosys_script(
+    fde_simlib: &Path,
+    fde_cells_map: &Path,
+    source_paths: &[PathBuf],
+    top_module: &str,
+    netlist_path: &Path,
+) -> String {
     let quoted_sources = source_paths
         .iter()
         .map(|path| quote_yosys_path(path))
@@ -225,10 +280,45 @@ fn build_yosys_script(source_paths: &[PathBuf], top_module: &str, netlist_path: 
         .join(" ");
 
     format!(
-        "read_verilog -sv {quoted_sources}\n\
+        "read_verilog -lib {}\n\
+read_verilog -sv {quoted_sources}\n\
 hierarchy -check -top {top_module}\n\
-synth -top {top_module}\n\
+flatten\n\
+synth -run coarse\n\
+opt -fast\n\
+opt -full\n\
+techmap\n\
+simplemap\n\
+dfflegalize \\\n\
+  -cell $_DFF_N_ x \\\n\
+  -cell $_DFF_P_ x \\\n\
+  -cell $_DFFE_PP_ x \\\n\
+  -cell $_DFFE_PN_ x \\\n\
+  -cell $_DFF_PN0_ x \\\n\
+  -cell $_DFF_PN1_ x \\\n\
+  -cell $_DFF_PP0_ x \\\n\
+  -cell $_DFF_PP1_ x \\\n\
+  -cell $_DFF_NN0_ x \\\n\
+  -cell $_DFF_NN1_ x \\\n\
+  -cell $_DFF_NP0_ x \\\n\
+  -cell $_DFF_NP1_ x\n\
+techmap -D NO_LUT -map {}\n\
+opt\n\
+wreduce\n\
+clean\n\
+abc -lut {}\n\
+opt\n\
+wreduce\n\
+clean\n\
+techmap -map {}\n\
+opt\n\
+check\n\
+stat\n\
 write_json {}\n",
+        quote_yosys_path(fde_simlib),
+        quote_yosys_path(fde_cells_map),
+        FDE_LUT_WIDTH,
+        quote_yosys_path(fde_cells_map),
         quote_yosys_path(netlist_path)
     )
 }
@@ -428,7 +518,16 @@ mod tests {
             .join(BUNDLED_YOSYS_DIR)
             .join("bin")
             .join(yosys_executable_name());
+        let fde_simlib = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join(FDE_RESOURCE_DIR)
+            .join(FDE_SIMLIB_FILE);
+        let fde_cells_map = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join(FDE_RESOURCE_DIR)
+            .join(FDE_CELLS_MAP_FILE);
         if !yosys_bin.is_file() {
+            return;
+        }
+        if !fde_simlib.is_file() || !fde_cells_map.is_file() {
             return;
         }
 
@@ -442,19 +541,28 @@ mod tests {
                 content: r#"
 module child(
     input wire clk,
+    input wire en,
+    input wire rst_n,
     output reg q
 );
-    always @(posedge clk) begin
-        q <= ~q;
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            q <= 1'b0;
+        else if (en)
+            q <= ~q;
     end
 endmodule
 
 module top(
     input wire clk,
+    input wire en,
+    input wire rst_n,
     output wire led
 );
     child u_child(
         .clk(clk),
+        .en(en),
+        .rst_n(rst_n),
         .q(led)
     );
 endmodule
@@ -465,7 +573,11 @@ endmodule
         };
 
         let report = run_yosys_in_workdir(
-            &yosys_bin,
+            &SynthesisToolchainPaths {
+                yosys_bin: &yosys_bin,
+                fde_simlib: &fde_simlib,
+                fde_cells_map: &fde_cells_map,
+            },
             &workdir,
             &request,
             generated_at_ms,
@@ -477,5 +589,23 @@ endmodule
 
         assert!(report.success, "{}", report.log);
         assert!(report.stats.cell_count > 0);
+        assert!(
+            report
+                .stats
+                .cell_type_counts
+                .iter()
+                .any(|entry| entry.cell_type.starts_with("LUT")),
+            "{}",
+            report.log
+        );
+        assert!(
+            report
+                .stats
+                .cell_type_counts
+                .iter()
+                .any(|entry| entry.cell_type.contains("DFF")),
+            "{}",
+            report.log
+        );
     }
 }

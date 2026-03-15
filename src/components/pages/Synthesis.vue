@@ -94,6 +94,18 @@ const synthesisLog = computed(() => {
   )
 })
 
+const zeroCellExplanation = computed(() => {
+  if (!synthesisReport.value?.success) {
+    return ''
+  }
+
+  if ((synthesisReport.value.stats.cell_count ?? 0) > 0) {
+    return ''
+  }
+
+  return `Top module ${topModule.value} synthesized to only ports and direct wiring. Modules that are not instantiated by the top module are removed from the result.`
+})
+
 function formatDuration(elapsedMs: number) {
   if (!Number.isFinite(elapsedMs) || elapsedMs <= 0) {
     return '0 ms'
@@ -196,6 +208,13 @@ watch(
       {{ synthesisErrorMessage }}
     </div>
 
+    <div
+      v-else-if="zeroCellExplanation"
+      class="rounded-xl border border-border/60 bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
+    >
+      {{ zeroCellExplanation }}
+    </div>
+
     <div class="grid gap-4 md:grid-cols-4 shrink-0">
       <Card v-for="card in summaryCards" :key="card.title">
         <CardHeader class="pb-2">
@@ -244,7 +263,7 @@ watch(
               v-else-if="synthesisReport.stats.cell_type_counts.length === 0"
               class="py-4 text-sm text-muted-foreground"
             >
-              No synthesized cells reported.
+              {{ zeroCellExplanation || 'No synthesized cells reported.' }}
             </div>
             <div v-else class="space-y-2">
               <div

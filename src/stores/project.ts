@@ -193,11 +193,20 @@ export const projectStore = reactive({
           type: 'file',
           content: `module top_module(
     input clk,
+    input rst,
     input [7:0] sw,
     output [7:0] led
 );
 
-    assign led = sw;
+    wire [7:0] count;
+
+    counter u_counter (
+        .clk(clk),
+        .rst(rst),
+        .count(count)
+    );
+
+    assign led = count ^ sw;
 
 endmodule`,
         },
