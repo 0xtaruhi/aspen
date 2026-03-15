@@ -41,6 +41,8 @@ export interface SynthesisSourceFileV1 {
 
 export interface SynthesisRequestV1 {
   op_id: string
+  project_name?: string | null
+  project_dir?: string | null
   top_module: string
   files: SynthesisSourceFileV1[]
 }
@@ -75,6 +77,14 @@ export interface SynthesisTopPortV1 {
   width: string
 }
 
+export interface SynthesisArtifactsV1 {
+  work_dir: string
+  script_path: string | null
+  netlist_json_path: string | null
+  edif_path: string | null
+  flow_revision?: string | null
+}
+
 export interface SynthesisReportV1 {
   version: 1
   op_id: string
@@ -88,6 +98,74 @@ export interface SynthesisReportV1 {
   log: string
   stats: SynthesisStatsV1
   top_ports: SynthesisTopPortV1[]
+  artifacts?: SynthesisArtifactsV1 | null
+  generated_at_ms: number
+}
+
+export type ImplementationStageKindV1 =
+  | 'yosys'
+  | 'map'
+  | 'pack'
+  | 'place'
+  | 'route'
+  | 'sta'
+  | 'bitgen'
+
+export interface ImplementationRequestV1 {
+  op_id: string
+  project_name: string
+  project_dir: string | null
+  top_module: string
+  target_device_id: string
+  constraint_xml: string
+  synthesized_edif_path?: string | null
+  files: SynthesisSourceFileV1[]
+}
+
+export interface ImplementationLogChunkV1 {
+  version: 1
+  op_id: string
+  stage: ImplementationStageKindV1
+  chunk: string
+  generated_at_ms: number
+}
+
+export interface ImplementationArtifactsV1 {
+  work_dir: string
+  constraint_path: string
+  edif_path: string | null
+  map_path: string | null
+  pack_path: string | null
+  place_path: string | null
+  route_path: string | null
+  sta_output_path: string | null
+  sta_report_path: string | null
+  bitstream_path: string | null
+}
+
+export interface ImplementationStageResultV1 {
+  stage: ImplementationStageKindV1
+  success: boolean
+  optional: boolean
+  elapsed_ms: number
+  exit_code: number | null
+  log_path: string | null
+  output_path: string | null
+  error_message: string | null
+}
+
+export interface ImplementationReportV1 {
+  version: 1
+  op_id: string
+  success: boolean
+  timing_success: boolean
+  top_module: string
+  source_count: number
+  elapsed_ms: number
+  log: string
+  stages: ImplementationStageResultV1[]
+  artifacts: ImplementationArtifactsV1
+  timing_report: string
   generated_at_ms: number
 }
 
@@ -300,10 +378,24 @@ export async function runHardwareSynthesis(
   return invoke<SynthesisReportV1>('run_yosys_synthesis', { request })
 }
 
+export async function runHardwareImplementation(
+  request: ImplementationRequestV1,
+): Promise<ImplementationReportV1> {
+  return invoke<ImplementationReportV1>('run_fde_implementation', { request })
+}
+
 export async function listenHardwareSynthesisLog(
   callback: (chunk: SynthesisLogChunkV1) => void,
 ): Promise<UnlistenFn> {
   return listen<SynthesisLogChunkV1>('hardware:synthesis_log', (event) => {
+    callback(event.payload)
+  })
+}
+
+export async function listenHardwareImplementationLog(
+  callback: (chunk: ImplementationLogChunkV1) => void,
+): Promise<UnlistenFn> {
+  return listen<ImplementationLogChunkV1>('hardware:implementation_log', (event) => {
     callback(event.payload)
   })
 }

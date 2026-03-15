@@ -9,6 +9,7 @@ import NavMain from '@/components/NavMain.vue'
 import ProjectMenu from '@/components/ProjectMenu.vue'
 import ProjectExplorer from '@/components/project/ProjectExplorer.vue'
 import ProjectTextInputDialog from '@/components/project/ProjectTextInputDialog.vue'
+import TopModuleSelect from '@/components/TopModuleSelect.vue'
 import { importProjectFiles } from '@/lib/project-io'
 import { Button } from '@/components/ui/button'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
@@ -23,6 +24,7 @@ import {
 } from '@/components/ui/sidebar'
 import { useI18n } from '@/lib/i18n'
 import { type AppRouteName, modulePathMap } from '@/router'
+import { designContextStore } from '@/stores/design-context'
 import { hardwareStore } from '@/stores/hardware'
 import { projectStore } from '@/stores/project'
 import { requestProjectTextInput } from '@/stores/project-text-input'
@@ -42,7 +44,9 @@ function navigate(path: string) {
 
 const activeRouteName = computed(() => route.name as AppRouteName | undefined)
 const rootNode = computed(() => projectStore.rootNode)
+const hasTopModuleOptions = computed(() => designContextStore.moduleNames.value.length > 0)
 const isSynthesisRunning = hardwareStore.synthesisRunning
+const isImplementationRunning = hardwareStore.implementationRunning
 
 const data = computed(() => ({
   teams: [
@@ -77,7 +81,7 @@ const data = computed(() => ({
       url: modulePathMap['fpga-flow'],
       icon: FileCode2,
       isActive: uiStore.activeModule.value === 'fpga-flow',
-      isRunning: isSynthesisRunning.value,
+      isRunning: isSynthesisRunning.value || isImplementationRunning.value,
       items: [
         {
           title: 'Synthesis',
@@ -100,6 +104,7 @@ const data = computed(() => ({
           url: '/fpga-flow/implementation',
           action: () => navigate('/fpga-flow/implementation'),
           isActive: activeRouteName.value === 'fpga-flow-implementation',
+          isRunning: isImplementationRunning.value,
         },
       ],
     },
@@ -223,6 +228,12 @@ function handleImportFiles() {
                 </div>
               </div>
               <div class="min-h-0 flex-1 overflow-hidden">
+                <div
+                  v-if="hasTopModuleOptions"
+                  class="mx-2 mb-2 rounded-md border border-sidebar-border/70 bg-sidebar-accent/20 px-2 py-2"
+                >
+                  <TopModuleSelect />
+                </div>
                 <ProjectExplorer />
               </div>
             </SidebarGroup>

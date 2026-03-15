@@ -8,7 +8,9 @@ Follow repository facts first, then these conventions.
 - Frontend stack: Vue 3 + TypeScript + Vite.
 - Desktop shell: Tauri v2 (Rust in `src-tauri/`).
 - FPGA synthesis: Yosys, invoked from the Tauri backend for the Synthesis page.
+- FPGA implementation/bitstream: bundled FDE downstream tools (`map`, `pack`, `place`, `route`, `sta`, `bitgen`) invoked from the Tauri backend.
 - Runtime synthesis must use Aspen's bundled Yosys toolchain; do not fall back to a system `yosys` on `PATH`.
+- Runtime implementation must use Aspen's bundled FDE toolchain; do not fall back to system-installed downstream tools.
 - Package manager: pnpm.
 - Type safety baseline: strict TypeScript (`strict: true`, unused checks on).
 - UI foundation: Tailwind CSS v4 + shadcn-vue/reka-ui patterns.
@@ -31,8 +33,11 @@ Follow repository facts first, then these conventions.
 - `src-tauri/src/main.rs`: Rust binary entrypoint.
 - `src-tauri/src/lib.rs`: Tauri commands and app wiring.
 - `src-tauri/src/hardware/synthesis.rs`: Yosys runner and synthesis report generation.
+- `src-tauri/src/hardware/implementation.rs`: downstream implementation/STA/bitstream runner.
+- `src-tauri/resource/fde/hw_lib/`: bundled FDE XML architecture/library resources.
+- `src-tauri/vendor/fde/`: bundled downstream executables assembled by `prepare:fde-bundle`.
 - `src-tauri/tauri.conf.json`: Tauri build/dev config.
-- `src-tauri/tauri.yosys.conf.json`: optional Tauri bundle config used when packaging Aspen with a bundled Yosys toolchain.
+- `src-tauri/tauri.yosys.conf.json`: optional Tauri bundle config used when packaging Aspen with bundled Yosys and FDE toolchains.
 
 ## Source of Truth for Commands
 
@@ -48,6 +53,7 @@ Follow repository facts first, then these conventions.
 - Tauri dev app: `pnpm tauri dev`
 - Frontend preview: `pnpm preview`
 - Download, prune, and bundle the official OSS CAD Suite into `src-tauri/vendor/yosys`: `pnpm prepare:yosys-bundle`
+- Build and bundle the downstream FDE toolchain into `src-tauri/vendor/fde`: `pnpm prepare:fde-bundle`
 
 ## Build, Lint, Typecheck, Test
 
@@ -57,7 +63,7 @@ Follow repository facts first, then these conventions.
 - Frontend format write: `pnpm format`
 - Frontend format check: `pnpm format:check`
 - Tauri production build: `pnpm tauri build`
-- Tauri build with bundled Yosys resources: `pnpm tauri build --no-bundle -c src-tauri/tauri.yosys.conf.json`
+- Tauri build with bundled FPGA toolchains/resources: `pnpm tauri build --no-bundle -c src-tauri/tauri.yosys.conf.json`
 - Standalone typecheck: `pnpm exec vue-tsc --noEmit`
 - Rust formatting: `cargo fmt --manifest-path src-tauri/Cargo.toml`
 - Rust tests: `cargo test --manifest-path src-tauri/Cargo.toml`
@@ -93,10 +99,13 @@ Use these when Rust tests exist:
 
 ## Pre-PR Verification Checklist
 
+- `pnpm prepare:yosys-bundle`
+- `pnpm prepare:fde-bundle`
 - `pnpm build`
 - `pnpm tauri build` for desktop-impacting changes
 - `cargo test --manifest-path src-tauri/Cargo.toml` when Rust code changes
-- Verify Yosys-backed synthesis if you touched `src-tauri/src/hardware/synthesis.rs`, `src/components/pages/Synthesis.vue`, or CI/toolchain packaging.
+- Verify bundled Yosys-backed synthesis if you touched `src-tauri/src/hardware/synthesis.rs`, `src/components/pages/Synthesis.vue`, or CI/toolchain packaging.
+- Verify bundled FDE implementation/bitstream generation if you touched `src-tauri/src/hardware/implementation.rs`, `src/components/pages/Implementation.vue`, `scripts/prepare-fde-bundle.mjs`, or CI/toolchain packaging.
 - Manual smoke test in `pnpm dev` and `pnpm tauri dev`
 
 ## TypeScript and Vue Style

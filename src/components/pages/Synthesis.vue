@@ -3,7 +3,6 @@ import type { SynthesisSourceFileV1 } from '@/lib/hardware-client'
 
 import { computed, nextTick, ref, watch } from 'vue'
 
-import TopModuleSelect from '@/components/TopModuleSelect.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,6 +11,7 @@ import { useI18n } from '@/lib/i18n'
 import { resolveSynthesisLog } from '@/lib/synthesis-log'
 import { designContextStore } from '@/stores/design-context'
 import { hardwareStore } from '@/stores/hardware'
+import { projectStore } from '@/stores/project'
 
 const activeFileName = designContextStore.sourceName
 const topModule = designContextStore.primaryModule
@@ -131,12 +131,25 @@ async function runSynthesis() {
   try {
     await hardwareStore.runSynthesis({
       op_id: opId,
+      project_name: projectStore.toSnapshot().name,
+      project_dir: projectDirectory(),
       top_module: topModule.value,
       files: synthesisSources.value,
     })
   } catch {
     // The store publishes synthesisMessage for the page to render.
   }
+}
+
+function projectDirectory() {
+  const projectPath = projectStore.projectPath
+  if (!projectPath) {
+    return null
+  }
+
+  const normalized = projectPath.replace(/\\/g, '/')
+  const lastSlash = normalized.lastIndexOf('/')
+  return lastSlash >= 0 ? normalized.slice(0, lastSlash) : null
 }
 
 async function scrollSynthesisLogToBottom() {
@@ -186,7 +199,7 @@ watch(
         </p>
       </div>
       <div class="flex gap-2 items-center">
-        <TopModuleSelect :disabled="isBusy" />
+        <Badge variant="outline">{{ t('topModuleHint', { name: topModule }) }}</Badge>
         <Badge
           variant="outline"
           :class="

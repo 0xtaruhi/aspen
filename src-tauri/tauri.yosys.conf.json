@@ -1,5 +1,10 @@
 {
   "bundle": {
-    "resources": ["vendor/yosys/**/*", "resource/yosys-fde/**/*"]
+    "resources": [
+      "vendor/yosys/**/*",
+      "vendor/fde/**/*",
+      "resource/yosys-fde/**/*",
+      "resource/fde/**/*"
+    ]
   }
 }

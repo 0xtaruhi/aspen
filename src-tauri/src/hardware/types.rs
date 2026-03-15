@@ -372,6 +372,8 @@ pub struct SynthesisSourceFileV1 {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SynthesisRequestV1 {
     pub op_id: String,
+    pub project_name: Option<String>,
+    pub project_dir: Option<String>,
     pub top_module: String,
     pub files: Vec<SynthesisSourceFileV1>,
 }
@@ -410,6 +412,16 @@ pub struct SynthesisTopPortV1 {
     pub width: String,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct SynthesisArtifactsV1 {
+    pub work_dir: String,
+    pub script_path: Option<String>,
+    pub netlist_json_path: Option<String>,
+    pub edif_path: Option<String>,
+    #[serde(default)]
+    pub flow_revision: Option<String>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SynthesisReportV1 {
     pub version: u8,
@@ -424,6 +436,82 @@ pub struct SynthesisReportV1 {
     pub log: String,
     pub stats: SynthesisStatsV1,
     pub top_ports: Vec<SynthesisTopPortV1>,
+    pub artifacts: Option<SynthesisArtifactsV1>,
+    pub generated_at_ms: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ImplementationStageKindV1 {
+    Yosys,
+    Map,
+    Pack,
+    Place,
+    Route,
+    Sta,
+    Bitgen,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ImplementationRequestV1 {
+    pub op_id: String,
+    pub project_name: String,
+    pub project_dir: Option<String>,
+    pub top_module: String,
+    pub target_device_id: String,
+    pub constraint_xml: String,
+    pub synthesized_edif_path: Option<String>,
+    pub files: Vec<SynthesisSourceFileV1>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ImplementationLogChunkV1 {
+    pub version: u8,
+    pub op_id: String,
+    pub stage: ImplementationStageKindV1,
+    pub chunk: String,
+    pub generated_at_ms: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct ImplementationArtifactsV1 {
+    pub work_dir: String,
+    pub constraint_path: String,
+    pub edif_path: Option<String>,
+    pub map_path: Option<String>,
+    pub pack_path: Option<String>,
+    pub place_path: Option<String>,
+    pub route_path: Option<String>,
+    pub sta_output_path: Option<String>,
+    pub sta_report_path: Option<String>,
+    pub bitstream_path: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ImplementationStageResultV1 {
+    pub stage: ImplementationStageKindV1,
+    pub success: bool,
+    pub optional: bool,
+    pub elapsed_ms: u64,
+    pub exit_code: Option<i32>,
+    pub log_path: Option<String>,
+    pub output_path: Option<String>,
+    pub error_message: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ImplementationReportV1 {
+    pub version: u8,
+    pub op_id: String,
+    pub success: bool,
+    pub timing_success: bool,
+    pub top_module: String,
+    pub source_count: u16,
+    pub elapsed_ms: u64,
+    pub log: String,
+    pub stages: Vec<ImplementationStageResultV1>,
+    pub artifacts: ImplementationArtifactsV1,
+    pub timing_report: String,
     pub generated_at_ms: u64,
 }
 

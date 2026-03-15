@@ -10,6 +10,7 @@
     "test": "vitest",
     "test:ci": "vitest run --passWithNoTests",
     "prepare:yosys-bundle": "node scripts/prepare-yosys-bundle.mjs",
+    "prepare:fde-bundle": "node scripts/prepare-fde-bundle.mjs",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
     "preview": "vite preview",

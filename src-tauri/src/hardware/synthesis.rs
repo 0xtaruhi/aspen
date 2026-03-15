@@ -16,15 +16,17 @@ use serde_json::Value;
 use tauri::{path::BaseDirectory, AppHandle, Emitter, Manager};
 
 use super::types::{
-    SynthesisCellTypeCountV1, SynthesisLogChunkV1, SynthesisReportV1, SynthesisRequestV1,
-    SynthesisSourceFileV1, SynthesisStatsV1, SynthesisTopPortV1,
+    SynthesisArtifactsV1, SynthesisCellTypeCountV1, SynthesisLogChunkV1, SynthesisReportV1,
+    SynthesisRequestV1, SynthesisSourceFileV1, SynthesisStatsV1, SynthesisTopPortV1,
 };
 
 const BUNDLED_YOSYS_DIR: &str = "vendor/yosys";
 const FDE_RESOURCE_DIR: &str = "resource/yosys-fde";
 const FDE_SIMLIB_FILE: &str = "fdesimlib.v";
+const FDE_TECHMAP_FILE: &str = "techmap.v";
 const FDE_CELLS_MAP_FILE: &str = "cells_map.v";
 const FDE_LUT_WIDTH: u8 = 4;
+const SYNTHESIS_ARTIFACT_FLOW_REVISION: &str = "fde-yosys-edif-v2";
 static WORKDIR_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 struct ParsedSynthesisNetlist {
@@ -32,10 +34,18 @@ struct ParsedSynthesisNetlist {
     top_ports: Vec<SynthesisTopPortV1>,
 }
 
+struct PlannedSynthesisArtifacts {
+    work_dir: PathBuf,
+    script_path: PathBuf,
+    netlist_path: PathBuf,
+    edif_path: PathBuf,
+}
+
 struct SynthesisToolchainPaths<'a> {
     yosys_bin: &'a Path,
     yosys_env: Option<PathBuf>,
     fde_simlib: &'a Path,
+    fde_techmap: &'a Path,
     fde_cells_map: &'a Path,
 }
 
@@ -57,16 +67,18 @@ pub fn run_yosys_synthesis(
 
     let yosys_bin = resolve_yosys_binary(app)?;
     let fde_simlib = resolve_fde_support_file(app, FDE_SIMLIB_FILE)?;
+    let fde_techmap = resolve_fde_support_file(app, FDE_TECHMAP_FILE)?;
     let fde_cells_map = resolve_fde_support_file(app, FDE_CELLS_MAP_FILE)?;
     let toolchain = SynthesisToolchainPaths {
         yosys_bin: &yosys_bin,
         yosys_env: resolve_yosys_environment(&yosys_bin),
         fde_simlib: &fde_simlib,
+        fde_techmap: &fde_techmap,
         fde_cells_map: &fde_cells_map,
     };
     let started_at = Instant::now();
     let generated_at_ms = now_millis()?;
-    let workdir = create_workdir(generated_at_ms)?;
+    let (workdir, should_cleanup) = resolve_workdir(&request, generated_at_ms)?;
     let result = run_yosys_in_workdir(
         &toolchain,
         &workdir,
@@ -75,7 +87,9 @@ pub fn run_yosys_synthesis(
         started_at,
         |chunk| emit_log_chunk(app, &request.op_id, chunk, generated_at_ms),
     );
-    let _ = fs::remove_dir_all(&workdir);
+    if should_cleanup {
+        let _ = fs::remove_dir_all(&workdir);
+    }
     result
 }
 
@@ -92,6 +106,7 @@ where
 {
     let sources_dir = workdir.join("sources");
     fs::create_dir_all(&sources_dir).map_err(|err| err.to_string())?;
+    let artifacts = plan_synthesis_artifacts(workdir, request);
 
     let mut source_paths = Vec::with_capacity(request.files.len());
     for (index, file) in request.files.iter().enumerate() {
@@ -99,24 +114,25 @@ where
         source_paths.push(source_path);
     }
 
-    let script_path = workdir.join("run.ys");
-    let netlist_path = workdir.join("netlist.json");
     let script = build_yosys_script(
         toolchain.fde_simlib,
+        toolchain.fde_techmap,
         toolchain.fde_cells_map,
         &source_paths,
         &request.top_module,
-        &netlist_path,
+        &artifacts.netlist_path,
+        &artifacts.edif_path,
     );
-    fs::write(&script_path, script).map_err(|err| err.to_string())?;
+    fs::write(&artifacts.script_path, script).map_err(|err| err.to_string())?;
 
-    let output = spawn_yosys_process(toolchain, &script_path, workdir).map_err(|err| {
-        format!(
-            "Failed to launch Yosys at '{}': {}",
-            toolchain.yosys_bin.display(),
-            err
-        )
-    })?;
+    let output =
+        spawn_yosys_process(toolchain, &artifacts.script_path, workdir).map_err(|err| {
+            format!(
+                "Failed to launch Yosys at '{}': {}",
+                toolchain.yosys_bin.display(),
+                err
+            )
+        })?;
 
     let mut child = output;
     let stdout = child
@@ -167,11 +183,12 @@ where
             log,
             stats: SynthesisStatsV1::default(),
             top_ports: Vec::new(),
+            artifacts: Some(artifacts.to_snapshot()),
             generated_at_ms,
         });
     }
 
-    let parsed_netlist = parse_synthesized_netlist(&netlist_path, &request.top_module)?;
+    let parsed_netlist = parse_synthesized_netlist(&artifacts.netlist_path, &request.top_module)?;
     Ok(SynthesisReportV1 {
         version: 1,
         op_id: request.op_id.clone(),
@@ -185,6 +202,7 @@ where
         log,
         stats: parsed_netlist.stats,
         top_ports: parsed_netlist.top_ports,
+        artifacts: Some(artifacts.to_snapshot()),
         generated_at_ms,
     })
 }
@@ -321,10 +339,12 @@ fn resolve_fde_support_file(app: &AppHandle, file_name: &str) -> Result<PathBuf,
 
 fn build_yosys_script(
     fde_simlib: &Path,
+    fde_techmap: &Path,
     fde_cells_map: &Path,
     source_paths: &[PathBuf],
     top_module: &str,
     netlist_path: &Path,
+    edif_path: &Path,
 ) -> String {
     let quoted_sources = source_paths
         .iter()
@@ -336,11 +356,12 @@ fn build_yosys_script(
         "read_verilog -lib {}\n\
 read_verilog -sv {quoted_sources}\n\
 hierarchy -check -top {top_module}\n\
-flatten\n\
-synth -run coarse\n\
+proc\n\
+flatten -noscopeinfo\n\
+memory_map\n\
 opt -fast\n\
 opt -full\n\
-techmap\n\
+techmap -map {}\n\
 simplemap\n\
 dfflegalize \\\n\
   -cell $_DFF_N_ x \\\n\
@@ -359,6 +380,7 @@ techmap -D NO_LUT -map {}\n\
 opt\n\
 wreduce\n\
 clean\n\
+dffinit -ff DFFNHQ Q INIT -ff DFFHQ Q INIT -ff EDFFHQ Q INIT -ff DFFRHQ Q INIT -ff DFFSHQ Q INIT -ff DFFNRHQ Q INIT -ff DFFNSHQ Q INIT\n\
 abc -lut {}\n\
 opt\n\
 wreduce\n\
@@ -367,11 +389,14 @@ techmap -map {}\n\
 opt\n\
 check\n\
 stat\n\
+write_edif {}\n\
 write_json {}\n",
         quote_yosys_path(fde_simlib),
+        quote_yosys_path(fde_techmap),
         quote_yosys_path(fde_cells_map),
         FDE_LUT_WIDTH,
         quote_yosys_path(fde_cells_map),
+        quote_yosys_path(edif_path),
         quote_yosys_path(netlist_path)
     )
 }
@@ -413,7 +438,91 @@ fn sanitize_source_path(path: &str, index: usize) -> PathBuf {
     sanitized
 }
 
-fn create_workdir(timestamp_ms: u64) -> Result<PathBuf, String> {
+fn sanitize_file_stem(value: &str) -> String {
+    let mut sanitized = String::with_capacity(value.len());
+    for character in value.chars() {
+        if character.is_ascii_alphanumeric() || character == '-' || character == '_' {
+            sanitized.push(character);
+        } else if !sanitized.ends_with('_') {
+            sanitized.push('_');
+        }
+    }
+
+    let trimmed = sanitized.trim_matches('_');
+    if trimmed.is_empty() {
+        "artifact".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn plan_synthesis_artifacts(
+    workdir: &Path,
+    request: &SynthesisRequestV1,
+) -> PlannedSynthesisArtifacts {
+    let project_name = request
+        .project_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .unwrap_or("project");
+    let base_name = sanitize_file_stem(&format!("{}_{}", project_name, request.top_module));
+
+    PlannedSynthesisArtifacts {
+        work_dir: workdir.to_path_buf(),
+        script_path: workdir.join(format!("{}_synth.ys", base_name)),
+        netlist_path: workdir.join(format!("{}_netlist.json", base_name)),
+        edif_path: workdir.join(format!("{}_syn.edf", base_name)),
+    }
+}
+
+impl PlannedSynthesisArtifacts {
+    fn to_snapshot(&self) -> SynthesisArtifactsV1 {
+        SynthesisArtifactsV1 {
+            work_dir: self.work_dir.to_string_lossy().to_string(),
+            script_path: self
+                .script_path
+                .is_file()
+                .then(|| self.script_path.to_string_lossy().to_string()),
+            netlist_json_path: self
+                .netlist_path
+                .is_file()
+                .then(|| self.netlist_path.to_string_lossy().to_string()),
+            edif_path: self
+                .edif_path
+                .is_file()
+                .then(|| self.edif_path.to_string_lossy().to_string()),
+            flow_revision: Some(SYNTHESIS_ARTIFACT_FLOW_REVISION.to_string()),
+        }
+    }
+}
+
+fn resolve_workdir(
+    request: &SynthesisRequestV1,
+    timestamp_ms: u64,
+) -> Result<(PathBuf, bool), String> {
+    if let Some(project_dir) = request
+        .project_dir
+        .as_deref()
+        .map(str::trim)
+        .filter(|path| !path.is_empty())
+    {
+        let project_name = request
+            .project_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .unwrap_or("project");
+        let base_name = sanitize_file_stem(&format!("{}_{}", project_name, request.top_module));
+        let workdir = PathBuf::from(project_dir)
+            .join(".aspen")
+            .join("synthesis")
+            .join(base_name);
+        let _ = fs::remove_dir_all(&workdir);
+        fs::create_dir_all(&workdir).map_err(|err| err.to_string())?;
+        return Ok((workdir, false));
+    }
+
     let counter = WORKDIR_COUNTER.fetch_add(1, Ordering::Relaxed);
     let candidate = env::temp_dir().join(format!(
         "aspen-yosys-{}-{}-{}",
@@ -422,7 +531,7 @@ fn create_workdir(timestamp_ms: u64) -> Result<PathBuf, String> {
         counter
     ));
     fs::create_dir_all(&candidate).map_err(|err| err.to_string())?;
-    Ok(candidate)
+    Ok((candidate, true))
 }
 
 fn quote_yosys_path(path: &Path) -> String {
@@ -639,8 +748,15 @@ mod tests {
     #[test]
     fn create_workdir_generates_unique_paths_for_same_timestamp() {
         let timestamp_ms = 12345;
-        let first = create_workdir(timestamp_ms).unwrap();
-        let second = create_workdir(timestamp_ms).unwrap();
+        let request = SynthesisRequestV1 {
+            op_id: "op".to_string(),
+            project_name: None,
+            project_dir: None,
+            top_module: "top".to_string(),
+            files: Vec::new(),
+        };
+        let (first, _) = resolve_workdir(&request, timestamp_ms).unwrap();
+        let (second, _) = resolve_workdir(&request, timestamp_ms).unwrap();
 
         assert_ne!(first, second);
         assert!(first.is_dir());
@@ -659,20 +775,23 @@ mod tests {
         let fde_simlib = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join(FDE_RESOURCE_DIR)
             .join(FDE_SIMLIB_FILE);
+        let fde_techmap = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join(FDE_RESOURCE_DIR)
+            .join(FDE_TECHMAP_FILE);
         let fde_cells_map = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join(FDE_RESOURCE_DIR)
             .join(FDE_CELLS_MAP_FILE);
         if !yosys_bin.is_file() {
             return;
         }
-        if !fde_simlib.is_file() || !fde_cells_map.is_file() {
+        if !fde_simlib.is_file() || !fde_techmap.is_file() || !fde_cells_map.is_file() {
             return;
         }
 
-        let generated_at_ms = now_millis().unwrap();
-        let workdir = create_workdir(generated_at_ms).unwrap();
         let request = SynthesisRequestV1 {
             op_id: "test-op".to_string(),
+            project_name: Some("test-project".to_string()),
+            project_dir: None,
             top_module: "top".to_string(),
             files: vec![SynthesisSourceFileV1 {
                 path: "top.v".to_string(),
@@ -709,12 +828,15 @@ endmodule
                 .to_string(),
             }],
         };
+        let generated_at_ms = now_millis().unwrap();
+        let (workdir, _) = resolve_workdir(&request, generated_at_ms).unwrap();
 
         let report = run_yosys_in_workdir(
             &SynthesisToolchainPaths {
                 yosys_bin: &yosys_bin,
                 yosys_env: resolve_yosys_environment(&yosys_bin),
                 fde_simlib: &fde_simlib,
+                fde_techmap: &fde_techmap,
                 fde_cells_map: &fde_cells_map,
             },
             &workdir,
@@ -727,6 +849,11 @@ endmodule
         let _ = fs::remove_dir_all(&workdir);
 
         assert!(report.success, "{}", report.log);
+        assert!(report
+            .artifacts
+            .as_ref()
+            .and_then(|artifacts| artifacts.edif_path.as_ref())
+            .is_some());
         assert!(report.stats.cell_count > 0);
         assert_eq!(report.top_ports.len(), 4);
         assert!(report
@@ -759,8 +886,15 @@ endmodule
 
     #[test]
     fn parse_synthesized_netlist_filters_internal_yosys_cells_and_extracts_ports() {
+        let request = SynthesisRequestV1 {
+            op_id: "op".to_string(),
+            project_name: None,
+            project_dir: None,
+            top_module: "top".to_string(),
+            files: Vec::new(),
+        };
         let generated_at_ms = now_millis().unwrap();
-        let workdir = create_workdir(generated_at_ms).unwrap();
+        let (workdir, _) = resolve_workdir(&request, generated_at_ms).unwrap();
         let netlist_path = workdir.join("netlist.json");
         let netlist = json!({
             "modules": {

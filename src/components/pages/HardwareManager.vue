@@ -32,6 +32,7 @@ import {
   resolveFpgaDeviceId,
   type FpgaDeviceId,
 } from '@/lib/fpga-device-catalog'
+import { getImplementationBitstreamPath } from '@/lib/implementation-artifacts'
 import { useI18n } from '@/lib/i18n'
 import { hardwareStore } from '@/stores/hardware'
 import { projectStore } from '@/stores/project'
@@ -144,12 +145,27 @@ const canOpenProgramDialog = computed(() => {
 })
 
 const defaultBitstreamPath = computed(() => {
+  const implementationBitstreamPath =
+    hardwareStore.implementationReport.value?.artifacts.bitstream_path?.trim()
+  if (implementationBitstreamPath) {
+    return implementationBitstreamPath
+  }
+
   const artifactPath = hardwareState.value.artifact?.path?.trim()
   if (artifactPath) {
     return artifactPath
   }
 
   const projectPath = projectStore.projectPath
+  const inferredImplementationBitstream = getImplementationBitstreamPath(
+    projectPath,
+    projectStore.toSnapshot().name,
+    projectStore.topModuleName || 'top',
+  )
+  if (inferredImplementationBitstream) {
+    return inferredImplementationBitstream
+  }
+
   if (!projectPath) {
     return ''
   }

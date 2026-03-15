@@ -9,7 +9,8 @@ use std::{
 use hardware::{
     BitstreamGenerationResult, HardwareActionV1, HardwareDataStreamConfigV1,
     HardwareDataStreamStatusV1, HardwareEventReason, HardwareRuntime, HardwareStateV1,
-    HardwareStatus, SynthesisReportV1, SynthesisRequestV1,
+    HardwareStatus, ImplementationReportV1, ImplementationRequestV1, SynthesisReportV1,
+    SynthesisRequestV1,
 };
 use tauri::Emitter;
 use vlfd_rs::{Device, HotplugEvent, HotplugEventKind, HotplugOptions, HotplugRegistration};
@@ -151,6 +152,16 @@ async fn run_yosys_synthesis(
 }
 
 #[tauri::command]
+async fn run_fde_implementation(
+    app: tauri::AppHandle,
+    request: ImplementationRequestV1,
+) -> Result<ImplementationReportV1, String> {
+    tauri::async_runtime::spawn_blocking(move || hardware::run_fde_implementation(&app, request))
+        .await
+        .map_err(|err| err.to_string())?
+}
+
+#[tauri::command]
 fn read_project_file(path: String) -> Result<String, String> {
     fs::read_to_string(Path::new(&path)).map_err(|err| err.to_string())
 }
@@ -263,6 +274,7 @@ pub fn run() {
             program_bitstream,
             generate_bitstream,
             run_yosys_synthesis,
+            run_fde_implementation,
             read_project_file,
             write_project_file,
             start_hotplug_watch,

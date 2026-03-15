@@ -3,7 +3,6 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import NewProjectDialog from '@/components/project/NewProjectDialog.vue'
-import TopModuleSelect from '@/components/TopModuleSelect.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -163,7 +162,7 @@ function goToSynthesis() {
         </p>
       </div>
       <div class="flex items-center gap-2">
-        <TopModuleSelect />
+        <Badge variant="outline">{{ t('topModuleHint', { name: topModule }) }}</Badge>
         <Badge variant="outline">{{ boardDescriptor.displayName }}</Badge>
         <Badge variant="secondary">{{ projectStore.targetDeviceId }}</Badge>
       </div>
