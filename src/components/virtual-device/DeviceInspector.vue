@@ -145,7 +145,13 @@ const boundSignalCount = computed(() => {
   return getCanvasDeviceBoundSignalCount(props.device)
 })
 
+const streamRunning = computed(() => hardwareStore.dataStreamStatus.value.running)
+
 const liveLevel = computed(() => {
+  if (!streamRunning.value) {
+    return false
+  }
+
   const deviceId = props.device?.id
   if (deviceId) {
     const deviceTelemetry = hardwareStore.deviceTelemetry.value[deviceId]

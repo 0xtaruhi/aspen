@@ -45,6 +45,7 @@ const transientDevicePositions = ref<Record<string, { x: number; y: number }>>({
 const animatingDeviceIds = ref<Record<string, boolean>>({})
 
 const devices = computed(() => hardwareStore.state.value.canvas_devices)
+const streamRunning = computed(() => hardwareStore.dataStreamStatus.value.running)
 
 const wires = ref<
   Array<{ id: string; x1: number; y1: number; x2: number; y2: number; color: string }>
@@ -273,6 +274,16 @@ function toggleSwitch(device: CanvasDeviceSnapshot, value: boolean) {
 }
 
 function renderedDevice(device: CanvasDeviceSnapshot): CanvasDeviceSnapshot {
+  if (!streamRunning.value) {
+    return {
+      ...device,
+      state: {
+        ...device.state,
+        is_on: false,
+      },
+    }
+  }
+
   const boundSignal = getCanvasDeviceBoundSignal(device)
   if (!boundSignal || !deviceReceivesSignal(device.type)) {
     return device
@@ -294,7 +305,7 @@ function renderedDevice(device: CanvasDeviceSnapshot): CanvasDeviceSnapshot {
 
 function rendererProps(device: CanvasDeviceSnapshot) {
   const resolvedDevice = renderedDevice(device)
-  const telemetry = hardwareStore.deviceTelemetry.value[device.id]
+  const telemetry = streamRunning.value ? hardwareStore.deviceTelemetry.value[device.id] : undefined
 
   if (isCanvasMatrixDevice(device.type)) {
     const dimensions = getCanvasMatrixDimensions(resolvedDevice)
@@ -303,7 +314,7 @@ function rendererProps(device: CanvasDeviceSnapshot) {
       ...baseProps,
       columns: telemetry?.pixel_columns || dimensions?.columns || 8,
       rows: telemetry?.pixel_rows || dimensions?.rows || 8,
-      pixels: telemetry?.pixels ?? [],
+      pixels: streamRunning.value ? (telemetry?.pixels ?? []) : [],
     }
   }
 
@@ -313,12 +324,13 @@ function rendererProps(device: CanvasDeviceSnapshot) {
     const digits = config?.digits || 1
     return {
       ...baseProps,
-      digitSegmentMasks:
-        telemetry?.digit_segment_masks ??
-        Array.from({ length: digits }, (_, index) => {
-          return index === 0 ? (telemetry?.segment_mask ?? 0) : 0
-        }),
-      segmentMask: telemetry?.segment_mask ?? 0,
+      digitSegmentMasks: streamRunning.value
+        ? (telemetry?.digit_segment_masks ??
+          Array.from({ length: digits }, (_, index) => {
+            return index === 0 ? (telemetry?.segment_mask ?? 0) : 0
+          }))
+        : Array.from({ length: digits }, () => 0),
+      segmentMask: streamRunning.value ? (telemetry?.segment_mask ?? 0) : 0,
     }
   }
 

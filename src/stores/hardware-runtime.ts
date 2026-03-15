@@ -45,15 +45,8 @@ type DeviceTelemetrySnapshot = HardwareCanvasDeviceTelemetryEntryV1 & {
   updated_at_ms: number
 }
 
-type StreamRateSample = {
-  generated_at_ms: number
-  completed_cycles: number
-  sequence: number
-}
-
 const DATA_DEFAULT_MIN_BATCH_CYCLES = 128
 const DATA_DEFAULT_MAX_WAIT_US = 2000
-const DATA_RATE_WINDOW_MS = 1000
 
 const initialRuntimeState: RuntimeState = {
   version: 1,
@@ -107,12 +100,7 @@ let pendingDataBatchMeta: Pick<
   | 'queue_capacity'
   | 'last_batch_at_ms'
   | 'last_batch_cycles'
-  | 'actual_hz'
-  | 'transfer_rate_hz'
 > | null = null
-let streamCompletedCycles = 0
-let streamDroppedCycles = 0
-let streamRateSamples: StreamRateSample[] = []
 
 const hardwareStateListeners = new Set<(state: HardwareStateV1) => void>()
 
@@ -176,61 +164,6 @@ function clearTelemetryFlushHandle() {
   }
 }
 
-function resetLocalStreamMetrics() {
-  streamCompletedCycles = 0
-  streamDroppedCycles = 0
-  streamRateSamples = []
-}
-
-function pushStreamRateSample(sample: StreamRateSample) {
-  streamRateSamples.push(sample)
-  const windowStartMs = sample.generated_at_ms - DATA_RATE_WINDOW_MS
-
-  while (streamRateSamples.length > 1 && streamRateSamples[1].generated_at_ms <= windowStartMs) {
-    streamRateSamples.shift()
-  }
-}
-
-function calculateWindowRates(
-  generatedAtMs: number,
-  batchCycles: number,
-  droppedSamples: number,
-  sequence: number,
-) {
-  if (sequence <= 1) {
-    resetLocalStreamMetrics()
-  }
-
-  const droppedDelta = Math.max(0, droppedSamples - streamDroppedCycles)
-  streamDroppedCycles = droppedSamples
-  streamCompletedCycles += batchCycles + droppedDelta
-
-  pushStreamRateSample({
-    generated_at_ms: generatedAtMs,
-    completed_cycles: streamCompletedCycles,
-    sequence,
-  })
-
-  const baselineSample = streamRateSamples[0]
-  if (!baselineSample) {
-    return { actualHz: 0, transferRateHz: 0 }
-  }
-
-  const elapsedMs = generatedAtMs - baselineSample.generated_at_ms
-  if (elapsedMs <= 0) {
-    return { actualHz: 0, transferRateHz: 0 }
-  }
-
-  const cycleDelta = Math.max(0, streamCompletedCycles - baselineSample.completed_cycles)
-  const transferDelta = Math.max(0, sequence - baselineSample.sequence)
-  const elapsedSeconds = elapsedMs / 1000
-
-  return {
-    actualHz: cycleDelta / elapsedSeconds,
-    transferRateHz: transferDelta / elapsedSeconds,
-  }
-}
-
 function flushTelemetry() {
   if (pendingTelemetry.size > 0) {
     for (const [signal, value] of pendingTelemetry.entries()) {
@@ -254,8 +187,6 @@ function flushTelemetry() {
     dataStreamStatus.value.queue_capacity = pendingDataBatchMeta.queue_capacity
     dataStreamStatus.value.last_batch_at_ms = pendingDataBatchMeta.last_batch_at_ms
     dataStreamStatus.value.last_batch_cycles = pendingDataBatchMeta.last_batch_cycles
-    dataStreamStatus.value.actual_hz = pendingDataBatchMeta.actual_hz
-    dataStreamStatus.value.transfer_rate_hz = pendingDataBatchMeta.transfer_rate_hz
     pendingDataBatchMeta = null
   }
 
@@ -338,13 +269,6 @@ function onDataBatchBinary(batch: HardwareDataBatchBinaryV1) {
     return
   }
 
-  const { actualHz, transferRateHz } = calculateWindowRates(
-    generatedAtMs,
-    batchCycles,
-    droppedSamples,
-    sequence,
-  )
-
   for (let index = 0; index < updateCount; index += 1) {
     const signalId = view.getUint16(offset, true)
     offset += 2
@@ -376,8 +300,6 @@ function onDataBatchBinary(batch: HardwareDataBatchBinaryV1) {
     queue_capacity: queueCapacity,
     last_batch_at_ms: generatedAtMs,
     last_batch_cycles: batchCycles,
-    actual_hz: actualHz,
-    transfer_rate_hz: transferRateHz,
   }
 
   scheduleTelemetryFlush()
@@ -424,7 +346,6 @@ function resetRuntimeViewState() {
   pendingDeviceTelemetry.clear()
   signalCatalog.clear()
   pendingDataBatchMeta = null
-  resetLocalStreamMetrics()
   dataStreamStatus.value = {
     ...dataStreamStatus.value,
     running: false,
@@ -445,7 +366,13 @@ function applyDataStreamStatus(status: HardwareDataStreamStatusV1) {
 
   if (!status.running || targetHzChanged) {
     pendingDataBatchMeta = null
-    resetLocalStreamMetrics()
+  }
+
+  if (!status.running) {
+    signalTelemetry.value = {}
+    deviceTelemetry.value = {}
+    pendingTelemetry.clear()
+    pendingDeviceTelemetry.clear()
   }
 
   dataStreamStatus.value = {
@@ -662,12 +589,10 @@ export async function setDataStreamRate(rateHz: number) {
 
 export async function startDataStream() {
   try {
-    resetLocalStreamMetrics()
     await startHardwareDataStream()
     await refreshDataStreamStatus()
   } catch (err) {
     if (isTauriUnavailable(err)) {
-      resetLocalStreamMetrics()
       applyDataStreamStatus({
         ...dataStreamStatus.value,
         running: true,
@@ -689,10 +614,11 @@ export async function stopDataStream() {
   }
 
   clearTelemetryFlushHandle()
+  signalTelemetry.value = {}
+  deviceTelemetry.value = {}
   pendingTelemetry.clear()
   pendingDeviceTelemetry.clear()
   pendingDataBatchMeta = null
-  resetLocalStreamMetrics()
 
   applyDataStreamStatus({
     ...dataStreamStatus.value,
