@@ -14,6 +14,7 @@ import { signalCatalogStore } from '@/stores/signal-catalog'
 
 const STREAM_WORDS_PER_CYCLE = 4
 const STREAM_SIGNAL_LIMIT = STREAM_WORDS_PER_CYCLE * 16
+const DISPLAY_UPDATE_INTERVAL_MS = 1000
 
 const showGallery = ref(false)
 const selectedDeviceId = ref<string | null>(null)
@@ -22,6 +23,9 @@ const galleryDropBlockInset = 60
 const streamBusy = ref(false)
 const streamMessage = ref('')
 const rateInput = ref('1000')
+const displayedActualHz = ref(0)
+let streamStatusPollTimer: ReturnType<typeof setInterval> | null = null
+let displayedHzTimer: ReturnType<typeof setInterval> | null = null
 
 const availableSignalCount = computed(() => signalCatalogStore.signals.value.length)
 const streamSignalNames = computed(() => {
@@ -32,13 +36,7 @@ const streamSignalOverflow = computed(() => {
 })
 const streamStatus = computed(() => hardwareStore.dataStreamStatus.value)
 const streamRunning = computed(() => streamStatus.value.running)
-const streamLastBatch = computed(() => {
-  if (streamStatus.value.last_batch_at_ms <= 0) {
-    return null
-  }
-
-  return new Date(streamStatus.value.last_batch_at_ms).toLocaleTimeString()
-})
+const actualHzLabel = computed(() => `${formatMetric(displayedActualHz.value)} Hz`)
 const selectedDevice = computed(() => {
   if (!selectedDeviceId.value) {
     return null
@@ -53,6 +51,36 @@ const selectedDevice = computed(() => {
 
 function toggleGallery() {
   showGallery.value = !showGallery.value
+}
+
+function clearStreamStatusPollTimer() {
+  if (streamStatusPollTimer !== null) {
+    clearInterval(streamStatusPollTimer)
+    streamStatusPollTimer = null
+  }
+}
+
+function clearDisplayedHzTimer() {
+  if (displayedHzTimer !== null) {
+    clearInterval(displayedHzTimer)
+    displayedHzTimer = null
+  }
+}
+
+function startStreamStatusPolling() {
+  clearStreamStatusPollTimer()
+  streamStatusPollTimer = setInterval(() => {
+    void hardwareStore.refreshDataStreamStatus().catch((err) => {
+      streamMessage.value = `Failed to refresh stream status: ${getErrorMessage(err)}`
+    })
+  }, 250)
+}
+
+function startDisplayedHzTimer() {
+  clearDisplayedHzTimer()
+  displayedHzTimer = setInterval(() => {
+    displayedActualHz.value = streamStatus.value.actual_hz
+  }, DISPLAY_UPDATE_INTERVAL_MS)
 }
 
 function openInspectorForDevice(id: string) {
@@ -74,6 +102,22 @@ function formatRate(rateHz: number) {
   }
 
   return rateHz.toFixed(2).replace(/\.?0+$/, '')
+}
+
+function formatMetric(rateHz: number) {
+  if (!Number.isFinite(rateHz) || rateHz <= 0) {
+    return '0'
+  }
+
+  if (rateHz >= 1_000_000) {
+    return `${(rateHz / 1_000_000).toFixed(2).replace(/\.?0+$/, '')}M`
+  }
+
+  if (rateHz >= 1_000) {
+    return `${(rateHz / 1_000).toFixed(1).replace(/\.?0+$/, '')}k`
+  }
+
+  return Math.round(rateHz).toString()
 }
 
 function parseRequestedRate() {
@@ -138,6 +182,22 @@ watch(selectedDevice, (device) => {
 })
 
 watch(
+  streamRunning,
+  (running) => {
+    if (running) {
+      startStreamStatusPolling()
+      startDisplayedHzTimer()
+      return
+    }
+
+    clearStreamStatusPollTimer()
+    clearDisplayedHzTimer()
+    displayedActualHz.value = 0
+  },
+  { immediate: true },
+)
+
+watch(
   () => streamStatus.value.target_hz,
   (targetHz) => {
     rateInput.value = formatRate(targetHz)
@@ -174,6 +234,8 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  clearStreamStatusPollTimer()
+  clearDisplayedHzTimer()
   hardwareStore.stop().catch(() => undefined)
 })
 </script>
@@ -197,7 +259,7 @@ onBeforeUnmount(() => {
         {{ availableSignalCount }}
         ports
       </Badge>
-      <Badge v-if="streamLastBatch" variant="outline">Seq {{ streamStatus.sequence }}</Badge>
+      <Badge variant="outline">{{ actualHzLabel }}</Badge>
 
       <div class="ml-auto flex items-center gap-2">
         <div class="flex items-center gap-2 rounded-md border border-border bg-background px-2">
@@ -230,7 +292,7 @@ onBeforeUnmount(() => {
     </div>
 
     <div
-      v-if="streamMessage || streamStatus.last_error || streamSignalOverflow > 0 || streamLastBatch"
+      v-if="streamMessage || streamStatus.last_error || streamSignalOverflow > 0"
       class="border-b border-border bg-background px-4 py-2 text-xs text-muted-foreground"
     >
       <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -239,10 +301,6 @@ onBeforeUnmount(() => {
         </span>
         <span v-else-if="streamMessage" class="text-destructive">
           {{ streamMessage }}
-        </span>
-        <span v-if="streamLastBatch">
-          Last batch {{ streamLastBatch }} · Queue {{ streamStatus.queue_fill }} /
-          {{ streamStatus.queue_capacity }}
         </span>
         <span v-if="streamSignalOverflow > 0" class="text-amber-600">
           {{ streamSignalOverflow }} ports exceed the 64-bit stream window and are not active in

@@ -45,15 +45,37 @@ export type CanvasDeviceType =
   | 'text_lcd'
   | 'graphic_lcd'
   | 'segment_display'
-  | 'four_digit_segment_display'
-  | 'led4x4_matrix'
-  | 'led8x8_matrix'
-  | 'led16x16_matrix'
+  | 'led_matrix'
+
+export type CanvasDeviceBindingSnapshot =
+  | {
+      kind: 'single'
+      signal: string | null
+    }
+  | {
+      kind: 'slots'
+      signals: Array<string | null>
+    }
+
+export type CanvasDeviceConfigSnapshot =
+  | {
+      kind: 'none'
+    }
+  | {
+      kind: 'segment_display'
+      digits: number
+    }
+  | {
+      kind: 'led_matrix'
+      rows: number
+      columns: number
+    }
 
 export interface CanvasDeviceStateSnapshot {
   is_on: boolean
   color: string | null
-  bound_signal: string | null
+  binding: CanvasDeviceBindingSnapshot
+  config: CanvasDeviceConfigSnapshot
 }
 
 export interface CanvasDeviceSnapshot {
@@ -117,21 +139,45 @@ export interface HardwareDataSignalCatalogV1 {
   entries: HardwareDataSignalCatalogEntryV1[]
 }
 
+export interface HardwareCanvasDeviceTelemetryEntryV1 {
+  device_id: string
+  latest: boolean
+  high_ratio: number
+  segment_mask: number | null
+  digit_segment_masks: number[]
+  pixel_columns: number
+  pixel_rows: number
+  pixels: number[]
+}
+
+export interface HardwareCanvasDeviceTelemetryV1 {
+  version: 1
+  generated_at_ms: number
+  devices: HardwareCanvasDeviceTelemetryEntryV1[]
+}
+
 export interface HardwareDataStreamConfigV1 {
   target_hz: number
   signal_order: string[]
   words_per_cycle: number
+  min_batch_cycles: number
+  max_wait_us: number
 }
 
 export interface HardwareDataStreamStatusV1 {
   running: boolean
   target_hz: number
+  actual_hz: number
+  transfer_rate_hz: number
   sequence: number
   dropped_samples: number
   queue_fill: number
   queue_capacity: number
   last_batch_at_ms: number
+  last_batch_cycles: number
   words_per_cycle: number
+  min_batch_cycles: number
+  max_wait_us: number
   configured_signal_count: number
   last_error: string | null
 }
@@ -168,6 +214,12 @@ export type HardwareActionV1 =
       signal_name?: string | null
     }
   | {
+      type: 'bind_canvas_signal_slot'
+      id: string
+      slot_index: number
+      signal_name?: string | null
+    }
+  | {
       type: 'set_canvas_switch_state'
       id: string
       is_on: boolean
@@ -196,7 +248,7 @@ export async function setHardwareDataStreamRate(
   rateHz: number,
 ): Promise<HardwareDataStreamStatusV1> {
   return invoke<HardwareDataStreamStatusV1>('set_hardware_data_stream_rate', {
-    rate_hz: rateHz,
+    rateHz,
   })
 }
 
@@ -236,6 +288,14 @@ export async function listenHardwareDataCatalog(
   callback: (catalog: HardwareDataSignalCatalogV1) => void,
 ): Promise<UnlistenFn> {
   return listen<HardwareDataSignalCatalogV1>('hardware:data_catalog', (event) => {
+    callback(event.payload)
+  })
+}
+
+export async function listenHardwareDeviceSnapshot(
+  callback: (snapshot: HardwareCanvasDeviceTelemetryV1) => void,
+): Promise<UnlistenFn> {
+  return listen<HardwareCanvasDeviceTelemetryV1>('hardware:device_snapshot', (event) => {
     callback(event.payload)
   })
 }

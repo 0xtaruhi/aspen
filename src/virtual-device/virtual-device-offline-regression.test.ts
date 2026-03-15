@@ -23,6 +23,7 @@ vi.mock('@/lib/hardware-client', async () => {
     hardwareGetState: vi.fn().mockRejectedValue(tauriUnavailableError),
     listenHardwareDataBatchBinary: vi.fn().mockRejectedValue(tauriUnavailableError),
     listenHardwareDataCatalog: vi.fn().mockRejectedValue(tauriUnavailableError),
+    listenHardwareDeviceSnapshot: vi.fn().mockRejectedValue(tauriUnavailableError),
     listenHardwareStateChanged: vi.fn().mockRejectedValue(tauriUnavailableError),
     startHardwareDataStream: vi.fn().mockRejectedValue(tauriUnavailableError),
     stopHardwareDataStream: vi.fn().mockResolvedValue(undefined),
@@ -38,14 +39,24 @@ vi.mock('@/lib/canvas-devices', () => ({
       y,
       label: `${type}-${index}`,
       state: {
-        bound_signal: null,
         color: type === 'led' ? 'red' : null,
         is_on: false,
+        binding: {
+          kind: 'single',
+          signal: null,
+        },
+        config: {
+          kind: 'none',
+        },
       },
     }),
   ),
   deviceDrivesSignal: vi.fn((type: string) => type === 'switch' || type === 'button'),
   deviceReceivesSignal: vi.fn((type: string) => type === 'led'),
+  getCanvasDeviceBoundSignal: vi.fn(
+    (device: { state: { binding: { kind: string; signal?: string | null } } }) =>
+      device.state.binding.kind === 'single' ? (device.state.binding.signal ?? null) : null,
+  ),
 }))
 
 function createTestDevice(type: 'switch' | 'led', id: string, x: number, y: number, index: number) {
@@ -56,9 +67,15 @@ function createTestDevice(type: 'switch' | 'led', id: string, x: number, y: numb
     y,
     label: `${type}-${index}`,
     state: {
-      bound_signal: null,
       color: type === 'led' ? 'red' : null,
       is_on: false,
+      binding: {
+        kind: 'single' as const,
+        signal: null,
+      },
+      config: {
+        kind: 'none' as const,
+      },
     },
   }
 }

@@ -14,6 +14,7 @@ import router, {
 const fallbackRouteByModule: Record<AppModule, AppRouteName> = {
   'project-management': 'project-management-dashboard',
   'fpga-flow': 'fpga-flow-synthesis',
+  'hardware-manager': 'hardware-manager',
   'virtual-device-platform': 'virtual-device-platform',
   settings: 'settings',
 }

@@ -2,11 +2,12 @@
 import type { VerilogPort } from '@/lib/verilog-parser'
 import type { CanvasDeviceSnapshot } from '@/lib/hardware-client'
 
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { CheckCircle2, Link2, Trash2, Unplug, X } from 'lucide-vue-next'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Select,
@@ -16,7 +17,18 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import { deviceDrivesSignal, deviceReceivesSignal } from '@/lib/canvas-devices'
+import {
+  deviceDrivesSignal,
+  deviceReceivesSignal,
+  getCanvasDeviceBoundSignal,
+  getCanvasDeviceBoundSignalCount,
+  getCanvasDeviceBoundSignals,
+  getCanvasDeviceBindingSlots,
+  getCanvasMatrixDimensions,
+  getCanvasSegmentDisplayConfig,
+  isCanvasMatrixDevice,
+  isCanvasSegmentDisplayDevice,
+} from '@/lib/canvas-devices'
 import { confirmAction } from '@/lib/confirm-action'
 import { hardwareStore } from '@/stores/hardware'
 import { settingsStore } from '@/stores/settings'
@@ -31,6 +43,14 @@ const emit = defineEmits<{
 }>()
 
 const UNBOUND_SIGNAL = '__unbound__'
+const MATRIX_DIMENSION_MIN = 1
+const MATRIX_DIMENSION_MAX = 32
+const SEGMENT_DIGITS_MIN = 1
+const SEGMENT_DIGITS_MAX = 16
+
+const matrixRowsInput = ref('')
+const matrixColumnsInput = ref('')
+const segmentDigitsInput = ref('')
 
 const capabilityLabel = computed(() => {
   if (!props.device) {
@@ -73,15 +93,68 @@ const compatibleSignals = computed<readonly VerilogPort[]>(() => {
 })
 
 const bindingValue = computed(() => {
-  return props.device?.state.bound_signal ?? UNBOUND_SIGNAL
+  if (!props.device) {
+    return UNBOUND_SIGNAL
+  }
+
+  return getCanvasDeviceBoundSignal(props.device) ?? UNBOUND_SIGNAL
+})
+
+const bindingSlots = computed(() => {
+  if (!props.device) {
+    return []
+  }
+
+  return getCanvasDeviceBindingSlots(props.device)
+})
+
+const hasSlotBindings = computed(() => bindingSlots.value.length > 0)
+
+const matrixDimensions = computed(() => {
+  if (!props.device) {
+    return null
+  }
+
+  return getCanvasMatrixDimensions(props.device)
+})
+
+const isMatrixDevice = computed(() => {
+  return props.device ? isCanvasMatrixDevice(props.device.type) : false
+})
+
+const segmentDisplayConfig = computed(() => {
+  if (!props.device) {
+    return null
+  }
+
+  return getCanvasSegmentDisplayConfig(props.device)
+})
+
+const isSegmentDisplayDevice = computed(() => {
+  return props.device ? isCanvasSegmentDisplayDevice(props.device.type) : false
+})
+
+const boundSignalCount = computed(() => {
+  if (!props.device) {
+    return 0
+  }
+
+  return getCanvasDeviceBoundSignalCount(props.device)
 })
 
 const liveLevel = computed(() => {
-  const signal = props.device?.state.bound_signal
+  const deviceId = props.device?.id
+  if (deviceId) {
+    const deviceTelemetry = hardwareStore.deviceTelemetry.value[deviceId]
+    if (deviceTelemetry) {
+      return deviceTelemetry.latest
+    }
+  }
+
+  const signal = props.device ? getCanvasDeviceBoundSignal(props.device) : null
   if (!signal) {
     return props.device?.state.is_on ?? false
   }
-
   const telemetry = hardwareStore.signalTelemetry.value[signal]
   if (telemetry && deviceReceivesSignal(props.device?.type ?? 'led')) {
     return telemetry.latest
@@ -98,6 +171,46 @@ const stateLabel = computed(() => {
   return liveLevel.value ? 'High' : 'Low'
 })
 
+watch(
+  () => {
+    const device = props.device
+    if (!device) {
+      return null
+    }
+
+    const dimensions = getCanvasMatrixDimensions(device)
+    return {
+      id: device.id,
+      rows: dimensions?.rows ?? null,
+      columns: dimensions?.columns ?? null,
+    }
+  },
+  (nextMatrixState) => {
+    matrixRowsInput.value = nextMatrixState?.rows ? String(nextMatrixState.rows) : ''
+    matrixColumnsInput.value = nextMatrixState?.columns ? String(nextMatrixState.columns) : ''
+  },
+  { immediate: true },
+)
+
+watch(
+  () => {
+    const device = props.device
+    if (!device) {
+      return null
+    }
+
+    const config = getCanvasSegmentDisplayConfig(device)
+    return {
+      id: device.id,
+      digits: config?.digits ?? null,
+    }
+  },
+  (nextSegmentState) => {
+    segmentDigitsInput.value = nextSegmentState?.digits ? String(nextSegmentState.digits) : ''
+  },
+  { immediate: true },
+)
+
 function handleBindingUpdate(value: unknown) {
   if (!props.device || typeof value !== 'string') {
     return
@@ -106,12 +219,138 @@ function handleBindingUpdate(value: unknown) {
   void hardwareStore.bindCanvasSignal(props.device.id, value === UNBOUND_SIGNAL ? null : value)
 }
 
+function slotBindingValue(slotIndex: number) {
+  return props.device
+    ? (getCanvasDeviceBoundSignals(props.device)[slotIndex] ?? UNBOUND_SIGNAL)
+    : UNBOUND_SIGNAL
+}
+
+function handleSlotBindingUpdate(slotIndex: number, value: unknown) {
+  if (!props.device || typeof value !== 'string') {
+    return
+  }
+
+  void hardwareStore.bindCanvasSignalSlot(
+    props.device.id,
+    slotIndex,
+    value === UNBOUND_SIGNAL ? null : value,
+  )
+}
+
 function clearBinding() {
   if (!props.device) {
     return
   }
 
+  if (hasSlotBindings.value) {
+    void Promise.all(
+      bindingSlots.value.map((_, slotIndex) => {
+        return hardwareStore.bindCanvasSignalSlot(props.device!.id, slotIndex, null)
+      }),
+    )
+    return
+  }
+
   void hardwareStore.bindCanvasSignal(props.device.id, null)
+}
+
+function normalizeMatrixDimensionInput(rawValue: string, fallback: number) {
+  const parsed = Number.parseInt(rawValue, 10)
+  if (Number.isNaN(parsed)) {
+    return fallback
+  }
+
+  return Math.min(MATRIX_DIMENSION_MAX, Math.max(MATRIX_DIMENSION_MIN, parsed))
+}
+
+function normalizeSegmentDigitInput(rawValue: string, fallback: number) {
+  const parsed = Number.parseInt(rawValue, 10)
+  if (Number.isNaN(parsed)) {
+    return fallback
+  }
+
+  return Math.min(SEGMENT_DIGITS_MAX, Math.max(SEGMENT_DIGITS_MIN, parsed))
+}
+
+async function commitMatrixDimensions() {
+  if (!props.device || !matrixDimensions.value) {
+    return
+  }
+
+  const nextRows = normalizeMatrixDimensionInput(matrixRowsInput.value, matrixDimensions.value.rows)
+  const nextColumns = normalizeMatrixDimensionInput(
+    matrixColumnsInput.value,
+    matrixDimensions.value.columns,
+  )
+
+  matrixRowsInput.value = String(nextRows)
+  matrixColumnsInput.value = String(nextColumns)
+
+  if (
+    nextRows === matrixDimensions.value.rows &&
+    nextColumns === matrixDimensions.value.columns &&
+    props.device.type === 'led_matrix'
+  ) {
+    return
+  }
+
+  const nextBoundSignals = Array.from({ length: nextRows + nextColumns }, (_, index) => {
+    return getCanvasDeviceBoundSignals(props.device!)[index] ?? null
+  })
+
+  await hardwareStore.upsertCanvasDevice({
+    ...props.device,
+    type: 'led_matrix',
+    state: {
+      ...props.device.state,
+      binding: {
+        kind: 'slots',
+        signals: nextBoundSignals,
+      },
+      config: {
+        kind: 'led_matrix',
+        rows: nextRows,
+        columns: nextColumns,
+      },
+    },
+  })
+}
+
+async function commitSegmentDigits() {
+  if (!props.device || !segmentDisplayConfig.value) {
+    return
+  }
+
+  const nextDigits = normalizeSegmentDigitInput(
+    segmentDigitsInput.value,
+    segmentDisplayConfig.value.digits,
+  )
+  segmentDigitsInput.value = String(nextDigits)
+
+  if (nextDigits === segmentDisplayConfig.value.digits && props.device.type === 'segment_display') {
+    return
+  }
+
+  const nextSlotCount = nextDigits > 1 ? 8 + nextDigits : 8
+  const nextBoundSignals = Array.from({ length: nextSlotCount }, (_, index) => {
+    return getCanvasDeviceBoundSignals(props.device!)[index] ?? null
+  })
+
+  await hardwareStore.upsertCanvasDevice({
+    ...props.device,
+    type: 'segment_display',
+    state: {
+      ...props.device.state,
+      binding: {
+        kind: 'slots',
+        signals: nextBoundSignals,
+      },
+      config: {
+        kind: 'segment_display',
+        digits: nextDigits,
+      },
+    },
+  })
 }
 
 async function removeDevice() {
@@ -155,12 +394,86 @@ async function removeDevice() {
         <div class="mt-4 flex flex-wrap gap-2">
           <Badge variant="secondary">{{ capabilityLabel }}</Badge>
           <Badge variant="outline">Level: {{ stateLabel }}</Badge>
-          <Badge v-if="device.state.bound_signal" variant="outline">
-            {{ device.state.bound_signal }}
+          <Badge v-if="getCanvasDeviceBoundSignal(device)" variant="outline">
+            {{ getCanvasDeviceBoundSignal(device) }}
+          </Badge>
+          <Badge v-else-if="boundSignalCount > 0" variant="outline">
+            {{ boundSignalCount }} bindings
           </Badge>
         </div>
 
         <Separator class="my-5" />
+
+        <section v-if="isSegmentDisplayDevice && segmentDisplayConfig" class="space-y-3">
+          <div>
+            <p class="text-sm font-medium">Digits</p>
+            <p class="mt-1 text-xs leading-5 text-muted-foreground">
+              Resize the display and keep any overlapping segment and digit-select bindings.
+            </p>
+          </div>
+
+          <div class="space-y-1">
+            <label class="text-xs font-medium text-muted-foreground" for="segment-digits">
+              Digit count
+            </label>
+            <Input
+              id="segment-digits"
+              v-model="segmentDigitsInput"
+              type="number"
+              :min="SEGMENT_DIGITS_MIN"
+              :max="SEGMENT_DIGITS_MAX"
+              step="1"
+              @blur="commitSegmentDigits"
+              @keydown.enter.prevent="commitSegmentDigits"
+            />
+          </div>
+        </section>
+
+        <Separator v-if="isSegmentDisplayDevice && segmentDisplayConfig" class="my-5" />
+
+        <section v-if="isMatrixDevice && matrixDimensions" class="space-y-3">
+          <div>
+            <p class="text-sm font-medium">Matrix Size</p>
+            <p class="mt-1 text-xs leading-5 text-muted-foreground">
+              Resize the matrix and keep any overlapping row and column bindings.
+            </p>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div class="space-y-1">
+              <label class="text-xs font-medium text-muted-foreground" for="matrix-rows">
+                Rows
+              </label>
+              <Input
+                id="matrix-rows"
+                v-model="matrixRowsInput"
+                type="number"
+                :min="MATRIX_DIMENSION_MIN"
+                :max="MATRIX_DIMENSION_MAX"
+                step="1"
+                @blur="commitMatrixDimensions"
+                @keydown.enter.prevent="commitMatrixDimensions"
+              />
+            </div>
+            <div class="space-y-1">
+              <label class="text-xs font-medium text-muted-foreground" for="matrix-columns">
+                Columns
+              </label>
+              <Input
+                id="matrix-columns"
+                v-model="matrixColumnsInput"
+                type="number"
+                :min="MATRIX_DIMENSION_MIN"
+                :max="MATRIX_DIMENSION_MAX"
+                step="1"
+                @blur="commitMatrixDimensions"
+                @keydown.enter.prevent="commitMatrixDimensions"
+              />
+            </div>
+          </div>
+        </section>
+
+        <Separator v-if="isMatrixDevice && matrixDimensions" class="my-5" />
 
         <section class="space-y-3">
           <div>
@@ -170,7 +483,45 @@ async function removeDevice() {
             </p>
           </div>
 
-          <Select :model-value="bindingValue" @update:model-value="handleBindingUpdate">
+          <div v-if="hasSlotBindings" class="space-y-3">
+            <div v-for="(slot, slotIndex) in bindingSlots" :key="slot.key" class="space-y-1">
+              <div class="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{{ slot.label }}</span>
+                <span class="font-mono">{{
+                  slotBindingValue(slotIndex) === UNBOUND_SIGNAL
+                    ? 'Unbound'
+                    : slotBindingValue(slotIndex)
+                }}</span>
+              </div>
+              <Select
+                :model-value="slotBindingValue(slotIndex)"
+                @update:model-value="(value) => handleSlotBindingUpdate(slotIndex, value)"
+              >
+                <SelectTrigger class="w-full">
+                  <SelectValue :placeholder="`Choose signal for ${slot.label}`" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem :value="UNBOUND_SIGNAL">No binding</SelectItem>
+                  <SelectItem
+                    v-for="signal in compatibleSignals"
+                    :key="`${slot.key}-${signal.name}`"
+                    :value="signal.name"
+                  >
+                    <div class="flex w-full items-center gap-2">
+                      <span class="font-mono text-xs">{{ signal.name }}</span>
+                      <span
+                        class="ml-auto text-[11px] uppercase tracking-wide text-muted-foreground"
+                      >
+                        {{ signal.direction }}
+                      </span>
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <Select v-else :model-value="bindingValue" @update:model-value="handleBindingUpdate">
             <SelectTrigger class="w-full">
               <SelectValue placeholder="Choose a top-level port" />
             </SelectTrigger>
@@ -211,7 +562,25 @@ async function removeDevice() {
             <div class="rounded-2xl border border-border bg-background p-3">
               <p class="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Signal</p>
               <p class="mt-2 font-medium">
-                {{ device.state.bound_signal ? 'Bound' : 'Unbound' }}
+                {{ boundSignalCount > 0 ? `${boundSignalCount} bound` : 'Unbound' }}
+              </p>
+            </div>
+            <div
+              v-if="isSegmentDisplayDevice && segmentDisplayConfig"
+              class="rounded-2xl border border-border bg-background p-3"
+            >
+              <p class="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Digits</p>
+              <p class="mt-2 font-medium">
+                {{ segmentDisplayConfig.digits }}
+              </p>
+            </div>
+            <div
+              v-if="isMatrixDevice && matrixDimensions"
+              class="rounded-2xl border border-border bg-background p-3"
+            >
+              <p class="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Matrix</p>
+              <p class="mt-2 font-medium">
+                {{ matrixDimensions.columns }} x {{ matrixDimensions.rows }}
               </p>
             </div>
           </div>
@@ -233,7 +602,7 @@ async function removeDevice() {
             <Button
               variant="outline"
               class="flex-1 gap-2"
-              :disabled="!device.state.bound_signal"
+              :disabled="boundSignalCount === 0"
               @click="clearBinding"
             >
               <Unplug class="h-4 w-4" />

@@ -56,10 +56,7 @@ const items = computed<GalleryItem[]>(() => [
   { type: 'text_lcd', title: 'TextLCD', icon: Type },
   { type: 'graphic_lcd', title: 'GraphicLCD', icon: Monitor },
   { type: 'segment_display', title: 'SegmentDisplay', icon: Square },
-  { type: 'four_digit_segment_display', title: '4DigitSegment', icon: Grid2x2 },
-  { type: 'led4x4_matrix', title: 'LED4x4', icon: Grid3X3 },
-  { type: 'led8x8_matrix', title: 'LED8x8', icon: Grid3X3 },
-  { type: 'led16x16_matrix', title: 'LED16x16', icon: Grid3X3 },
+  { type: 'led_matrix', title: 'Matrix', icon: Grid3X3 },
 ])
 </script>
 

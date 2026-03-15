@@ -6,6 +6,8 @@ import { ref } from 'vue'
 
 import {
   type HardwareActionV1,
+  type HardwareCanvasDeviceTelemetryEntryV1,
+  type HardwareCanvasDeviceTelemetryV1,
   type HardwareDataBatchBinaryV1,
   type HardwareDataStreamConfigV1,
   type HardwareDataSignalCatalogV1,
@@ -18,6 +20,7 @@ import {
   hardwareGetState,
   listenHardwareDataBatchBinary,
   listenHardwareDataCatalog,
+  listenHardwareDeviceSnapshot,
   listenHardwareStateChanged,
   setHardwareDataStreamRate,
   startHardwareDataStream,
@@ -38,6 +41,20 @@ type SignalTelemetrySnapshot = {
   updated_at_ms: number
 }
 
+type DeviceTelemetrySnapshot = HardwareCanvasDeviceTelemetryEntryV1 & {
+  updated_at_ms: number
+}
+
+type StreamRateSample = {
+  generated_at_ms: number
+  completed_cycles: number
+  sequence: number
+}
+
+const DATA_DEFAULT_MIN_BATCH_CYCLES = 128
+const DATA_DEFAULT_MAX_WAIT_US = 2000
+const DATA_RATE_WINDOW_MS = 1000
+
 const initialRuntimeState: RuntimeState = {
   version: 1,
   phase: 'idle',
@@ -52,15 +69,21 @@ const runtimeState = ref<RuntimeState>({ ...initialRuntimeState })
 const hotplugLog = ref('')
 const isStarted = ref(false)
 const signalTelemetry = ref<Record<string, SignalTelemetrySnapshot>>({})
+const deviceTelemetry = ref<Record<string, DeviceTelemetrySnapshot>>({})
 const dataStreamStatus = ref<HardwareDataStreamStatusV1>({
   running: false,
   target_hz: 1,
+  actual_hz: 0,
+  transfer_rate_hz: 0,
   sequence: 0,
   dropped_samples: 0,
   queue_fill: 0,
   queue_capacity: 0,
   last_batch_at_ms: 0,
+  last_batch_cycles: 0,
   words_per_cycle: 4,
+  min_batch_cycles: DATA_DEFAULT_MIN_BATCH_CYCLES,
+  max_wait_us: DATA_DEFAULT_MAX_WAIT_US,
   configured_signal_count: 0,
   last_error: null,
 })
@@ -69,15 +92,27 @@ let unlistenStateChanged: UnlistenFn | null = null
 let unlistenHotplug: UnlistenFn | null = null
 let unlistenDataBatch: UnlistenFn | null = null
 let unlistenDataCatalog: UnlistenFn | null = null
+let unlistenDeviceSnapshot: UnlistenFn | null = null
 let telemetryRafId: number | null = null
 let telemetryFlushTimerId: ReturnType<typeof setTimeout> | null = null
 
 const pendingTelemetry = new Map<string, SignalTelemetrySnapshot>()
+const pendingDeviceTelemetry = new Map<string, DeviceTelemetrySnapshot>()
 const signalCatalog = new Map<number, string>()
 let pendingDataBatchMeta: Pick<
   HardwareDataStreamStatusV1,
-  'sequence' | 'dropped_samples' | 'queue_fill' | 'queue_capacity' | 'last_batch_at_ms'
+  | 'sequence'
+  | 'dropped_samples'
+  | 'queue_fill'
+  | 'queue_capacity'
+  | 'last_batch_at_ms'
+  | 'last_batch_cycles'
+  | 'actual_hz'
+  | 'transfer_rate_hz'
 > | null = null
+let streamCompletedCycles = 0
+let streamDroppedCycles = 0
+let streamRateSamples: StreamRateSample[] = []
 
 const hardwareStateListeners = new Set<(state: HardwareStateV1) => void>()
 
@@ -141,12 +176,74 @@ function clearTelemetryFlushHandle() {
   }
 }
 
+function resetLocalStreamMetrics() {
+  streamCompletedCycles = 0
+  streamDroppedCycles = 0
+  streamRateSamples = []
+}
+
+function pushStreamRateSample(sample: StreamRateSample) {
+  streamRateSamples.push(sample)
+  const windowStartMs = sample.generated_at_ms - DATA_RATE_WINDOW_MS
+
+  while (streamRateSamples.length > 1 && streamRateSamples[1].generated_at_ms <= windowStartMs) {
+    streamRateSamples.shift()
+  }
+}
+
+function calculateWindowRates(
+  generatedAtMs: number,
+  batchCycles: number,
+  droppedSamples: number,
+  sequence: number,
+) {
+  if (sequence <= 1) {
+    resetLocalStreamMetrics()
+  }
+
+  const droppedDelta = Math.max(0, droppedSamples - streamDroppedCycles)
+  streamDroppedCycles = droppedSamples
+  streamCompletedCycles += batchCycles + droppedDelta
+
+  pushStreamRateSample({
+    generated_at_ms: generatedAtMs,
+    completed_cycles: streamCompletedCycles,
+    sequence,
+  })
+
+  const baselineSample = streamRateSamples[0]
+  if (!baselineSample) {
+    return { actualHz: 0, transferRateHz: 0 }
+  }
+
+  const elapsedMs = generatedAtMs - baselineSample.generated_at_ms
+  if (elapsedMs <= 0) {
+    return { actualHz: 0, transferRateHz: 0 }
+  }
+
+  const cycleDelta = Math.max(0, streamCompletedCycles - baselineSample.completed_cycles)
+  const transferDelta = Math.max(0, sequence - baselineSample.sequence)
+  const elapsedSeconds = elapsedMs / 1000
+
+  return {
+    actualHz: cycleDelta / elapsedSeconds,
+    transferRateHz: transferDelta / elapsedSeconds,
+  }
+}
+
 function flushTelemetry() {
   if (pendingTelemetry.size > 0) {
     for (const [signal, value] of pendingTelemetry.entries()) {
       signalTelemetry.value[signal] = value
     }
     pendingTelemetry.clear()
+  }
+
+  if (pendingDeviceTelemetry.size > 0) {
+    for (const [deviceId, value] of pendingDeviceTelemetry.entries()) {
+      deviceTelemetry.value[deviceId] = value
+    }
+    pendingDeviceTelemetry.clear()
   }
 
   if (pendingDataBatchMeta) {
@@ -156,6 +253,9 @@ function flushTelemetry() {
     dataStreamStatus.value.queue_fill = pendingDataBatchMeta.queue_fill
     dataStreamStatus.value.queue_capacity = pendingDataBatchMeta.queue_capacity
     dataStreamStatus.value.last_batch_at_ms = pendingDataBatchMeta.last_batch_at_ms
+    dataStreamStatus.value.last_batch_cycles = pendingDataBatchMeta.last_batch_cycles
+    dataStreamStatus.value.actual_hz = pendingDataBatchMeta.actual_hz
+    dataStreamStatus.value.transfer_rate_hz = pendingDataBatchMeta.transfer_rate_hz
     pendingDataBatchMeta = null
   }
 
@@ -193,6 +293,17 @@ function onDataCatalog(catalog: HardwareDataSignalCatalogV1) {
   }
 }
 
+function onDeviceSnapshot(snapshot: HardwareCanvasDeviceTelemetryV1) {
+  for (const device of snapshot.devices) {
+    pendingDeviceTelemetry.set(device.device_id, {
+      ...device,
+      updated_at_ms: snapshot.generated_at_ms,
+    })
+  }
+
+  scheduleTelemetryFlush()
+}
+
 function onDataBatchBinary(batch: HardwareDataBatchBinaryV1) {
   if (!dataStreamStatus.value.running) {
     return
@@ -200,7 +311,7 @@ function onDataBatchBinary(batch: HardwareDataBatchBinaryV1) {
 
   const bytes = new Uint8Array(batch.payload)
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-  const expectedHeaderBytes = 30
+  const expectedHeaderBytes = 32
   if (view.byteLength < expectedHeaderBytes) {
     return
   }
@@ -216,6 +327,8 @@ function onDataBatchBinary(batch: HardwareDataBatchBinaryV1) {
   offset += 2
   const queueCapacity = view.getUint16(offset, true)
   offset += 2
+  const batchCycles = view.getUint16(offset, true)
+  offset += 2
   const updateCount = view.getUint16(offset, true)
   offset += 2
 
@@ -224,6 +337,13 @@ function onDataBatchBinary(batch: HardwareDataBatchBinaryV1) {
   if (view.byteLength < expectedBytes) {
     return
   }
+
+  const { actualHz, transferRateHz } = calculateWindowRates(
+    generatedAtMs,
+    batchCycles,
+    droppedSamples,
+    sequence,
+  )
 
   for (let index = 0; index < updateCount; index += 1) {
     const signalId = view.getUint16(offset, true)
@@ -255,6 +375,9 @@ function onDataBatchBinary(batch: HardwareDataBatchBinaryV1) {
     queue_fill: queueFill,
     queue_capacity: queueCapacity,
     last_batch_at_ms: generatedAtMs,
+    last_batch_cycles: batchCycles,
+    actual_hz: actualHz,
+    transfer_rate_hz: transferRateHz,
   }
 
   scheduleTelemetryFlush()
@@ -295,22 +418,36 @@ function runtimeUnavailableMessage(action: HardwareActionV1): string {
 function resetRuntimeViewState() {
   hotplugLog.value = ''
   signalTelemetry.value = {}
+  deviceTelemetry.value = {}
   clearTelemetryFlushHandle()
   pendingTelemetry.clear()
+  pendingDeviceTelemetry.clear()
   signalCatalog.clear()
   pendingDataBatchMeta = null
+  resetLocalStreamMetrics()
   dataStreamStatus.value = {
     ...dataStreamStatus.value,
     running: false,
+    actual_hz: 0,
+    transfer_rate_hz: 0,
     queue_fill: 0,
     sequence: 0,
     dropped_samples: 0,
     last_batch_at_ms: 0,
+    last_batch_cycles: 0,
     last_error: null,
   }
 }
 
 function applyDataStreamStatus(status: HardwareDataStreamStatusV1) {
+  const targetHzChanged =
+    Math.abs(status.target_hz - dataStreamStatus.value.target_hz) > Number.EPSILON
+
+  if (!status.running || targetHzChanged) {
+    pendingDataBatchMeta = null
+    resetLocalStreamMetrics()
+  }
+
   dataStreamStatus.value = {
     ...status,
     last_error: status.last_error ?? null,
@@ -395,6 +532,10 @@ export async function start() {
       onDataBatchBinary(batch)
     })
 
+    unlistenDeviceSnapshot = await listenHardwareDeviceSnapshot((snapshot) => {
+      onDeviceSnapshot(snapshot)
+    })
+
     unlistenHotplug = await listen<HotplugPayload>('hardware:hotplug', (event) => {
       hotplugLog.value = event.payload.kind === 'arrived' ? 'Device connected' : 'Device removed'
     })
@@ -413,6 +554,10 @@ export async function start() {
     if (unlistenDataCatalog) {
       unlistenDataCatalog()
       unlistenDataCatalog = null
+    }
+    if (unlistenDeviceSnapshot) {
+      unlistenDeviceSnapshot()
+      unlistenDeviceSnapshot = null
     }
     if (unlistenHotplug) {
       unlistenHotplug()
@@ -451,6 +596,10 @@ export async function stop() {
       unlistenDataCatalog()
       unlistenDataCatalog = null
     }
+    if (unlistenDeviceSnapshot) {
+      unlistenDeviceSnapshot()
+      unlistenDeviceSnapshot = null
+    }
     if (unlistenHotplug) {
       unlistenHotplug()
       unlistenHotplug = null
@@ -468,6 +617,8 @@ export async function configureDataStream(
     target_hz: dataStreamStatus.value.target_hz || 1,
     signal_order: configuredSignalOrder(signalNames),
     words_per_cycle: Math.max(1, Math.floor(wordsPerCycle)),
+    min_batch_cycles: dataStreamStatus.value.min_batch_cycles || DATA_DEFAULT_MIN_BATCH_CYCLES,
+    max_wait_us: dataStreamStatus.value.max_wait_us || DATA_DEFAULT_MAX_WAIT_US,
   }
 
   try {
@@ -480,6 +631,8 @@ export async function configureDataStream(
         ...dataStreamStatus.value,
         target_hz: nextConfig.target_hz,
         words_per_cycle: nextConfig.words_per_cycle,
+        min_batch_cycles: nextConfig.min_batch_cycles,
+        max_wait_us: nextConfig.max_wait_us,
         configured_signal_count: nextConfig.signal_order.length,
         last_error: null,
       })
@@ -509,10 +662,12 @@ export async function setDataStreamRate(rateHz: number) {
 
 export async function startDataStream() {
   try {
+    resetLocalStreamMetrics()
     await startHardwareDataStream()
     await refreshDataStreamStatus()
   } catch (err) {
     if (isTauriUnavailable(err)) {
+      resetLocalStreamMetrics()
       applyDataStreamStatus({
         ...dataStreamStatus.value,
         running: true,
@@ -535,12 +690,17 @@ export async function stopDataStream() {
 
   clearTelemetryFlushHandle()
   pendingTelemetry.clear()
+  pendingDeviceTelemetry.clear()
   pendingDataBatchMeta = null
+  resetLocalStreamMetrics()
 
   applyDataStreamStatus({
     ...dataStreamStatus.value,
     running: false,
+    actual_hz: 0,
+    transfer_rate_hz: 0,
     queue_fill: 0,
+    last_batch_cycles: 0,
     last_error: null,
   })
 }
@@ -562,6 +722,7 @@ function subscribeHardwareState(listener: (state: HardwareStateV1) => void) {
 export const hardwareRuntimeStore = {
   runtimeState,
   signalTelemetry,
+  deviceTelemetry,
   dataStreamStatus,
   hotplugLog,
   isStarted,

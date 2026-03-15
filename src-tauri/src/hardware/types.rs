@@ -73,17 +73,82 @@ pub enum CanvasDeviceType {
     TextLcd,
     GraphicLcd,
     SegmentDisplay,
-    FourDigitSegmentDisplay,
-    Led4x4Matrix,
-    Led8x8Matrix,
-    Led16x16Matrix,
+    LedMatrix,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CanvasDeviceBindingSnapshot {
+    Single {
+        signal: Option<String>,
+    },
+    Slots {
+        #[serde(default)]
+        signals: Vec<Option<String>>,
+    },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CanvasDeviceConfigSnapshot {
+    None,
+    SegmentDisplay { digits: u16 },
+    LedMatrix { rows: u16, columns: u16 },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CanvasDeviceStateSnapshot {
     pub is_on: bool,
     pub color: Option<String>,
-    pub bound_signal: Option<String>,
+    pub binding: CanvasDeviceBindingSnapshot,
+    pub config: CanvasDeviceConfigSnapshot,
+}
+
+impl CanvasDeviceStateSnapshot {
+    pub fn single_signal(&self) -> Option<&str> {
+        match &self.binding {
+            CanvasDeviceBindingSnapshot::Single { signal } => signal.as_deref(),
+            CanvasDeviceBindingSnapshot::Slots { .. } => None,
+        }
+    }
+
+    pub fn set_single_signal(&mut self, next_signal: Option<String>) {
+        if let CanvasDeviceBindingSnapshot::Single { signal } = &mut self.binding {
+            *signal = next_signal;
+        }
+    }
+
+    pub fn slot_signals(&self) -> &[Option<String>] {
+        match &self.binding {
+            CanvasDeviceBindingSnapshot::Slots { signals } => signals,
+            CanvasDeviceBindingSnapshot::Single { .. } => &[],
+        }
+    }
+
+    pub fn set_slot_signal(&mut self, slot_index: usize, next_signal: Option<String>) {
+        if let CanvasDeviceBindingSnapshot::Slots { signals } = &mut self.binding {
+            if signals.len() <= slot_index {
+                signals.resize(slot_index + 1, None);
+            }
+            signals[slot_index] = next_signal;
+        }
+    }
+
+    pub fn segment_digits(&self) -> Option<usize> {
+        match self.config {
+            CanvasDeviceConfigSnapshot::SegmentDisplay { digits } => Some(usize::from(digits)),
+            _ => None,
+        }
+    }
+
+    pub fn matrix_dimensions(&self) -> Option<(usize, usize)> {
+        match self.config {
+            CanvasDeviceConfigSnapshot::LedMatrix { rows, columns } => {
+                Some((usize::from(rows), usize::from(columns)))
+            }
+            _ => None,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -125,7 +190,8 @@ impl Default for HardwareStateV1 {
                     state: CanvasDeviceStateSnapshot {
                         is_on: false,
                         color: Some("red".to_string()),
-                        bound_signal: None,
+                        binding: CanvasDeviceBindingSnapshot::Single { signal: None },
+                        config: CanvasDeviceConfigSnapshot::None,
                     },
                 },
                 CanvasDeviceSnapshot {
@@ -137,7 +203,8 @@ impl Default for HardwareStateV1 {
                     state: CanvasDeviceStateSnapshot {
                         is_on: false,
                         color: None,
-                        bound_signal: None,
+                        binding: CanvasDeviceBindingSnapshot::Single { signal: None },
+                        config: CanvasDeviceConfigSnapshot::None,
                     },
                 },
             ],
@@ -192,15 +259,39 @@ pub struct HardwareDataSignalCatalogV1 {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct HardwareCanvasDeviceTelemetryEntryV1 {
+    pub device_id: String,
+    pub latest: bool,
+    pub high_ratio: f32,
+    pub segment_mask: Option<u16>,
+    pub digit_segment_masks: Vec<u16>,
+    pub pixel_columns: u16,
+    pub pixel_rows: u16,
+    pub pixels: Vec<u8>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct HardwareCanvasDeviceTelemetryV1 {
+    pub version: u8,
+    pub generated_at_ms: u64,
+    pub devices: Vec<HardwareCanvasDeviceTelemetryEntryV1>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct HardwareDataStreamStatusV1 {
     pub running: bool,
     pub target_hz: f64,
+    pub actual_hz: f64,
+    pub transfer_rate_hz: f64,
     pub sequence: u64,
     pub dropped_samples: u64,
     pub queue_fill: u16,
     pub queue_capacity: u16,
     pub last_batch_at_ms: u64,
+    pub last_batch_cycles: u16,
     pub words_per_cycle: u16,
+    pub min_batch_cycles: u16,
+    pub max_wait_us: u32,
     pub configured_signal_count: u16,
     pub last_error: Option<String>,
 }
@@ -210,6 +301,8 @@ pub struct HardwareDataStreamConfigV1 {
     pub target_hz: f64,
     pub signal_order: Vec<String>,
     pub words_per_cycle: u16,
+    pub min_batch_cycles: u16,
+    pub max_wait_us: u32,
 }
 
 impl Default for HardwareDataStreamConfigV1 {
@@ -218,6 +311,8 @@ impl Default for HardwareDataStreamConfigV1 {
             target_hz: 1.0,
             signal_order: Vec::new(),
             words_per_cycle: 4,
+            min_batch_cycles: 128,
+            max_wait_us: 2_000,
         }
     }
 }
@@ -247,6 +342,11 @@ pub enum HardwareActionV1 {
     },
     BindCanvasSignal {
         id: String,
+        signal_name: Option<String>,
+    },
+    BindCanvasSignalSlot {
+        id: String,
+        slot_index: u16,
         signal_name: Option<String>,
     },
     SetCanvasSwitchState {

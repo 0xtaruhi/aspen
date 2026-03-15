@@ -54,6 +54,18 @@ const activeSurfaceLabel = computed(() => {
   return routeLabelMap[routeName]
 })
 
+const shouldShowModuleBreadcrumb = computed(() => {
+  return uiStore.activePage.value !== 'project-editor'
+})
+
+const shouldShowSurfaceBreadcrumb = computed(() => {
+  if (!shouldShowModuleBreadcrumb.value) {
+    return true
+  }
+
+  return activeModuleLabel.value !== activeSurfaceLabel.value
+})
+
 function handleGlobalKeydown(event: KeyboardEvent) {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
     event.preventDefault()
@@ -92,11 +104,14 @@ onUnmounted(() => {
 
             <Breadcrumb>
               <BreadcrumbList>
-                <BreadcrumbItem class="hidden md:block">
+                <BreadcrumbItem v-if="shouldShowModuleBreadcrumb" class="hidden md:block">
                   <BreadcrumbPage>{{ activeModuleLabel }}</BreadcrumbPage>
                 </BreadcrumbItem>
-                <BreadcrumbSeparator class="hidden md:block" />
-                <BreadcrumbItem>
+                <BreadcrumbSeparator
+                  v-if="shouldShowModuleBreadcrumb && shouldShowSurfaceBreadcrumb"
+                  class="hidden md:block"
+                />
+                <BreadcrumbItem v-if="shouldShowSurfaceBreadcrumb">
                   <BreadcrumbPage>{{ activeSurfaceLabel }}</BreadcrumbPage>
                 </BreadcrumbItem>
               </BreadcrumbList>

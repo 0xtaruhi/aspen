@@ -7,6 +7,7 @@ import {
   dispatch as dispatchRuntimeAction,
   disconnectView as disconnectRuntimeView,
   hardwareRuntimeStore,
+  refreshDataStreamStatus as refreshRuntimeDataStreamStatus,
   setDataStreamRate as setRuntimeDataStreamRate,
   startDataStream as startRuntimeDataStream,
   start as startRuntime,
@@ -110,6 +111,15 @@ async function bindCanvasSignal(id: string, signalName: string | null) {
   })
 }
 
+async function bindCanvasSignalSlot(id: string, slotIndex: number, signalName: string | null) {
+  return dispatch({
+    type: 'bind_canvas_signal_slot',
+    id,
+    slot_index: slotIndex,
+    signal_name: signalName,
+  })
+}
+
 async function setCanvasSwitchState(id: string, isOn: boolean) {
   return dispatch({
     type: 'set_canvas_switch_state',
@@ -134,6 +144,10 @@ async function setDataStreamRate(rateHz: number) {
   return setRuntimeDataStreamRate(rateHz)
 }
 
+async function refreshDataStreamStatus() {
+  return refreshRuntimeDataStreamStatus()
+}
+
 async function startDataStream() {
   return startRuntimeDataStream()
 }
@@ -150,6 +164,7 @@ async function disconnectView() {
 export const hardwareStore = {
   state,
   signalTelemetry: hardwareRuntimeStore.signalTelemetry,
+  deviceTelemetry: hardwareRuntimeStore.deviceTelemetry,
   dataStreamStatus: hardwareRuntimeStore.dataStreamStatus,
   hotplugLog: hardwareRuntimeStore.hotplugLog,
   isStarted: hardwareRuntimeStore.isStarted,
@@ -157,6 +172,7 @@ export const hardwareStore = {
   stop,
   configureDataStream,
   setDataStreamRate,
+  refreshDataStreamStatus,
   startDataStream,
   stopDataStream,
   probe,
@@ -168,6 +184,7 @@ export const hardwareStore = {
   removeCanvasDevice,
   setCanvasDevicePosition,
   bindCanvasSignal,
+  bindCanvasSignalSlot,
   setCanvasSwitchState,
   clearError,
   disconnectView,

@@ -6,14 +6,22 @@ import LedDevice from '../devices/LedDevice.vue'
 import SwitchDevice from '../devices/SwitchDevice.vue'
 import ButtonDevice from '../devices/ButtonDevice.vue'
 import GenericPanelDevice from '../devices/GenericPanelDevice.vue'
+import SegmentDisplayDevice from '../devices/SegmentDisplayDevice.vue'
+import LedMatrixDevice from '../devices/LedMatrixDevice.vue'
 import { hardwareStore } from '@/stores/hardware'
 import type { CanvasDeviceSnapshot, CanvasDeviceType } from '@/lib/hardware-client'
 import { consumePaletteDrop, paletteDragStore } from '@/stores/palette-drag'
 import {
   canvasDeviceEmitsToggle,
   createCanvasDeviceSnapshot,
+  getCanvasDeviceBoundSignal,
+  getCanvasDeviceBoundSignalCount,
   deviceReceivesSignal,
+  getCanvasMatrixDimensions,
+  getCanvasSegmentDisplayConfig,
   getCanvasDeviceRendererProps,
+  isCanvasMatrixDevice,
+  isCanvasSegmentDisplayDevice,
 } from '@/lib/canvas-devices'
 
 const props = defineProps<{
@@ -55,11 +63,8 @@ const deviceRendererByType: Record<CanvasDeviceType, Component> = {
   ps2_keyboard: GenericPanelDevice,
   text_lcd: GenericPanelDevice,
   graphic_lcd: GenericPanelDevice,
-  segment_display: GenericPanelDevice,
-  four_digit_segment_display: GenericPanelDevice,
-  led4x4_matrix: GenericPanelDevice,
-  led8x8_matrix: GenericPanelDevice,
-  led16x16_matrix: GenericPanelDevice,
+  segment_display: SegmentDisplayDevice,
+  led_matrix: LedMatrixDevice,
 }
 
 let dropIdCounter = 0
@@ -256,7 +261,7 @@ function toggleSwitch(device: CanvasDeviceSnapshot, value: boolean) {
 }
 
 function renderedDevice(device: CanvasDeviceSnapshot): CanvasDeviceSnapshot {
-  const boundSignal = device.state.bound_signal
+  const boundSignal = getCanvasDeviceBoundSignal(device)
   if (!boundSignal || !deviceReceivesSignal(device.type)) {
     return device
   }
@@ -276,7 +281,39 @@ function renderedDevice(device: CanvasDeviceSnapshot): CanvasDeviceSnapshot {
 }
 
 function rendererProps(device: CanvasDeviceSnapshot) {
-  return getCanvasDeviceRendererProps(renderedDevice(device))
+  const resolvedDevice = renderedDevice(device)
+  const telemetry = hardwareStore.deviceTelemetry.value[device.id]
+
+  if (isCanvasMatrixDevice(device.type)) {
+    const dimensions = getCanvasMatrixDimensions(resolvedDevice)
+    const baseProps = getCanvasDeviceRendererProps(resolvedDevice)
+    return {
+      ...baseProps,
+      columns: telemetry?.pixel_columns || dimensions?.columns || 8,
+      rows: telemetry?.pixel_rows || dimensions?.rows || 8,
+      pixels: telemetry?.pixels ?? [],
+    }
+  }
+
+  if (isCanvasSegmentDisplayDevice(device.type)) {
+    const config = getCanvasSegmentDisplayConfig(resolvedDevice)
+    const baseProps = getCanvasDeviceRendererProps(resolvedDevice)
+    const digits = config?.digits || 1
+    return {
+      ...baseProps,
+      digitSegmentMasks:
+        telemetry?.digit_segment_masks ??
+        Array.from({ length: digits }, (_, index) => {
+          return index === 0 ? (telemetry?.segment_mask ?? 0) : 0
+        }),
+      segmentMask: telemetry?.segment_mask ?? 0,
+    }
+  }
+
+  switch (device.type) {
+    default:
+      return getCanvasDeviceRendererProps(resolvedDevice)
+  }
 }
 
 function rendererListeners(
@@ -291,6 +328,10 @@ function rendererListeners(
       toggleSwitch(device, value)
     },
   }
+}
+
+function boundSignalsCount(device: CanvasDeviceSnapshot) {
+  return getCanvasDeviceBoundSignalCount(device)
 }
 
 const palettePreview = computed<CanvasDeviceSnapshot | null>(() => {
@@ -374,7 +415,8 @@ onMounted(() => {
         :y="devicePosition(device).y"
         :label="device.label"
         :selected="selectedDeviceId === device.id"
-        :bound-signal="device.state.bound_signal || undefined"
+        :bound-signal="getCanvasDeviceBoundSignal(device) || undefined"
+        :bound-signals-count="boundSignalsCount(device)"
         :scale="scale"
         :animated="isDeviceAnimating(device.id)"
         @select="selectDevice(device.id)"

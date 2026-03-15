@@ -1,6 +1,11 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 
-export type AppModule = 'project-management' | 'fpga-flow' | 'virtual-device-platform' | 'settings'
+export type AppModule =
+  | 'project-management'
+  | 'fpga-flow'
+  | 'hardware-manager'
+  | 'virtual-device-platform'
+  | 'settings'
 
 export type Page =
   | 'project-editor'
@@ -18,13 +23,14 @@ export type AppRouteName =
   | 'fpga-flow'
   | 'fpga-flow-synthesis'
   | 'fpga-flow-implementation'
-  | 'fpga-flow-hardware'
+  | 'hardware-manager'
   | 'virtual-device-platform'
   | 'settings'
 
 export const moduleLabelMap: Record<AppModule, string> = {
   'project-management': 'Project Management',
   'fpga-flow': 'FPGA Flow',
+  'hardware-manager': 'Hardware Manager',
   'virtual-device-platform': 'Virtual Device Platform',
   settings: 'Settings',
 }
@@ -36,7 +42,7 @@ export const routeLabelMap: Record<AppRouteName, string> = {
   'fpga-flow': 'Synthesis',
   'fpga-flow-synthesis': 'Synthesis',
   'fpga-flow-implementation': 'Implementation',
-  'fpga-flow-hardware': 'Hardware Manager',
+  'hardware-manager': 'Hardware Manager',
   'virtual-device-platform': 'Workbench',
   settings: 'Settings',
 }
@@ -48,7 +54,7 @@ export const routeModuleMap: Record<AppRouteName, AppModule> = {
   'fpga-flow': 'fpga-flow',
   'fpga-flow-synthesis': 'fpga-flow',
   'fpga-flow-implementation': 'fpga-flow',
-  'fpga-flow-hardware': 'fpga-flow',
+  'hardware-manager': 'hardware-manager',
   'virtual-device-platform': 'virtual-device-platform',
   settings: 'settings',
 }
@@ -60,7 +66,7 @@ export const routePageMap: Partial<Record<AppRouteName, Page>> = {
   'fpga-flow': 'synthesis',
   'fpga-flow-synthesis': 'synthesis',
   'fpga-flow-implementation': 'implementation',
-  'fpga-flow-hardware': 'hardware',
+  'hardware-manager': 'hardware',
   'virtual-device-platform': 'virtual-device',
   settings: 'settings',
 }
@@ -70,7 +76,7 @@ export const pageRouteNameMap: Record<Page, AppRouteName> = {
   'project-dashboard': 'project-management-dashboard',
   synthesis: 'fpga-flow-synthesis',
   implementation: 'fpga-flow-implementation',
-  hardware: 'fpga-flow-hardware',
+  hardware: 'hardware-manager',
   'virtual-device': 'virtual-device-platform',
   settings: 'settings',
 }
@@ -78,6 +84,7 @@ export const pageRouteNameMap: Record<Page, AppRouteName> = {
 export const moduleDefaultRouteName: Record<AppModule, AppRouteName> = {
   'project-management': 'project-management-dashboard',
   'fpga-flow': 'fpga-flow-synthesis',
+  'hardware-manager': 'hardware-manager',
   'virtual-device-platform': 'virtual-device-platform',
   settings: 'settings',
 }
@@ -85,6 +92,7 @@ export const moduleDefaultRouteName: Record<AppModule, AppRouteName> = {
 export const modulePathMap: Record<AppModule, string> = {
   'project-management': '/project-management',
   'fpga-flow': '/fpga-flow',
+  'hardware-manager': '/hardware-manager',
   'virtual-device-platform': '/virtual-device-platform',
   settings: '/settings',
 }
@@ -126,7 +134,11 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/fpga-flow/hardware',
-    name: 'fpga-flow-hardware',
+    redirect: { name: 'hardware-manager' },
+  },
+  {
+    path: modulePathMap['hardware-manager'],
+    name: 'hardware-manager',
     component: () => import('@/components/pages/HardwareManager.vue'),
   },
   {

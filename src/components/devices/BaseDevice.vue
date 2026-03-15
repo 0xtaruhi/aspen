@@ -18,6 +18,7 @@ const props = defineProps<{
   width?: number
   height?: number
   boundSignal?: string
+  boundSignalsCount?: number
   scale?: number
   preview?: boolean
   animated?: boolean
@@ -174,9 +175,12 @@ onUnmounted(() => {
           >
             <!-- Signal Indicator -->
             <div
-              v-if="props.boundSignal"
+              v-if="props.boundSignal || props.boundSignalsCount"
               class="h-1 w-8 bg-green-500 rounded-full opacity-80"
-              :title="props.boundSignal"
+              :title="
+                props.boundSignal ||
+                (props.boundSignalsCount ? `${props.boundSignalsCount} bound ports` : undefined)
+              "
             ></div>
           </div>
           <div class="p-2">

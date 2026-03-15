@@ -9,18 +9,25 @@ import {
   Play,
   CheckCircle2,
   FileCode,
-  Download,
   XCircle,
 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable'
-import { designContextStore } from '@/stores/design-context'
 import { hardwareStore } from '@/stores/hardware'
+import { projectStore } from '@/stores/project'
 import type { HardwarePhase } from '@/lib/hardware-client'
 
 interface HardwareStatus {
@@ -48,13 +55,12 @@ interface HardwareTarget {
 }
 
 const hardwareState = hardwareStore.state
-const streamStatus = hardwareStore.dataStreamStatus
 const hotplugLog = hardwareStore.hotplugLog
 
 const selectedTargetId = ref<string | null>(null)
+const isProgramDialogOpen = ref(false)
 const programMessage = ref('')
 const bitstreamFile = ref('')
-const generationBytes = ref<number | null>(null)
 
 const hardwareStatus = computed<HardwareStatus | null>(() => {
   const device = hardwareState.value.device
@@ -91,13 +97,6 @@ const lastRefresh = computed(() => {
   return new Date(hardwareState.value.updated_at_ms).toLocaleTimeString()
 })
 
-const streamLastBatch = computed(() => {
-  if (streamStatus.value.last_batch_at_ms <= 0) {
-    return null
-  }
-  return new Date(streamStatus.value.last_batch_at_ms).toLocaleTimeString()
-})
-
 const targets = computed<HardwareTarget[]>(() => {
   if (!hardwareStatus.value) {
     return []
@@ -116,12 +115,36 @@ const selectedDevice = computed(() => {
   return null
 })
 
-const canGenerate = computed(() => {
-  return !!selectedDevice.value && !!designContextStore.selectedSource.value && !isBusy.value
+const isDeviceConnected = computed(() => {
+  return Boolean(selectedDevice.value && hardwareStatus.value?.config.pcb_connected)
 })
 
 const canProgram = computed(() => {
-  return !!selectedDevice.value && !!bitstreamFile.value && !isBusy.value
+  return isDeviceConnected.value && !!bitstreamFile.value.trim() && !isBusy.value
+})
+
+const canOpenProgramDialog = computed(() => {
+  return isDeviceConnected.value && !isBusy.value
+})
+
+const defaultBitstreamPath = computed(() => {
+  const artifactPath = hardwareState.value.artifact?.path?.trim()
+  if (artifactPath) {
+    return artifactPath
+  }
+
+  const projectPath = projectStore.projectPath
+  if (!projectPath) {
+    return ''
+  }
+
+  const topFileName = projectStore.topFile?.name || 'top'
+  const projectDirectory = getDirectoryName(projectPath)
+  if (!projectDirectory) {
+    return `${stripFileExtension(topFileName)}.bit`
+  }
+
+  return joinPath(projectDirectory, `${stripFileExtension(topFileName)}.bit`)
 })
 
 const flowLabel = computed(() => {
@@ -169,10 +192,8 @@ watch(
   (artifact) => {
     if (artifact) {
       bitstreamFile.value = artifact.path
-      generationBytes.value = artifact.bytes
       return
     }
-    generationBytes.value = null
   },
   { immediate: true },
 )
@@ -208,7 +229,11 @@ function buildTargets(status: HardwareStatus): HardwareTarget[] {
           id: 'fpga-0',
           name: status.board,
           type: 'device',
-          status: status.config.programmed ? 'ready' : 'connected',
+          status: !status.config.pcb_connected
+            ? 'disconnected'
+            : status.config.programmed
+              ? 'ready'
+              : 'connected',
           details: {
             Chip: status.board,
             Description: status.description,
@@ -225,6 +250,31 @@ function buildTargets(status: HardwareStatus): HardwareTarget[] {
       ],
     },
   ]
+}
+
+function stripFileExtension(filename: string) {
+  return filename.replace(/\.[^.]+$/, '') || filename
+}
+
+function getDirectoryName(path: string) {
+  const normalized = path.replace(/\\/g, '/')
+  const separatorIndex = normalized.lastIndexOf('/')
+  if (separatorIndex < 0) {
+    return ''
+  }
+  if (separatorIndex === 0) {
+    return '/'
+  }
+
+  return normalized.slice(0, separatorIndex)
+}
+
+function joinPath(directory: string, filename: string) {
+  if (!directory) {
+    return filename
+  }
+
+  return directory.endsWith('/') ? `${directory}${filename}` : `${directory}/${filename}`
 }
 
 function getErrorMessage(err: unknown): string {
@@ -248,42 +298,14 @@ async function refreshStatus() {
 async function disconnect() {
   await hardwareStore.disconnectView()
   selectedTargetId.value = null
+  isProgramDialogOpen.value = false
   bitstreamFile.value = ''
-  generationBytes.value = null
   programMessage.value = ''
-}
-
-async function generateBitstream() {
-  if (!canGenerate.value) return
-
-  const sourceName = designContextStore.sourceName.value || 'top.v'
-  const sourceCode = designContextStore.sourceCode.value
-
-  if (!sourceCode.trim()) {
-    programMessage.value = 'Selected design source is empty. Choose a source file with FPGA logic.'
-    return
-  }
-
-  try {
-    const nextState = await hardwareStore.generateBitstream(
-      sourceName,
-      sourceCode,
-      bitstreamFile.value || null,
-    )
-    const artifact = nextState.artifact
-    if (artifact) {
-      bitstreamFile.value = artifact.path
-      generationBytes.value = artifact.bytes
-      programMessage.value = `Bitstream generated: ${artifact.path} (${artifact.bytes} bytes).`
-    }
-  } catch (err) {
-    programMessage.value = `Bitstream generation failed: ${getErrorMessage(err)}`
-  }
 }
 
 async function programDevice() {
   if (!canProgram.value || isProgramming.value) return
-  if (!bitstreamFile.value) {
+  if (!bitstreamFile.value.trim()) {
     programMessage.value = 'Please select or enter a bitstream file path.'
     return
   }
@@ -291,14 +313,28 @@ async function programDevice() {
   try {
     await hardwareStore.programBitstream(bitstreamFile.value)
     programMessage.value = 'Bitstream programmed successfully.'
+    isProgramDialogOpen.value = false
   } catch (err) {
     programMessage.value = `Programming failed: ${getErrorMessage(err)}`
   }
 }
 
+function openProgramDialog() {
+  if (!canOpenProgramDialog.value) {
+    return
+  }
+
+  if (!bitstreamFile.value.trim()) {
+    bitstreamFile.value = defaultBitstreamPath.value
+  }
+
+  isProgramDialogOpen.value = true
+}
+
 async function pickBitstream() {
   const selected = await openDialog({
     multiple: false,
+    defaultPath: bitstreamFile.value || defaultBitstreamPath.value || undefined,
     filters: [
       { name: 'Bitstream', extensions: ['bit', 'txt', 'bin'] },
       { name: 'All Files', extensions: ['*'] },
@@ -353,15 +389,13 @@ onBeforeUnmount(() => {
         <RefreshCw class="w-4 h-4" :class="isConnecting ? 'animate-spin' : ''" />
       </Button>
 
+      <Button size="sm" class="gap-2" :disabled="!canOpenProgramDialog" @click="openProgramDialog">
+        <Play class="w-4 h-4" />
+        Program...
+      </Button>
+
       <span v-if="lastRefresh" class="text-xs text-muted-foreground ml-2">
         Last probe: {{ lastRefresh }}
-      </span>
-
-      <span class="text-xs text-muted-foreground ml-2">
-        Stream: {{ streamStatus.running ? 'running' : 'stopped' }} · seq
-        {{ streamStatus.sequence }} · dropped {{ streamStatus.dropped_samples }} · queue
-        {{ streamStatus.queue_fill }}/{{ streamStatus.queue_capacity }}
-        <template v-if="streamLastBatch">· last {{ streamLastBatch }}</template>
       </span>
 
       <span v-if="hotplugLog" class="text-xs text-muted-foreground ml-auto">
@@ -455,11 +489,19 @@ onBeforeUnmount(() => {
                   :class="
                     hardwareStatus?.config.programmed
                       ? 'text-green-600 bg-green-500/10 border-green-200'
-                      : ''
+                      : !hardwareStatus?.config.pcb_connected
+                        ? 'text-muted-foreground'
+                        : ''
                   "
                 >
                   <CheckCircle2 class="w-3 h-3 mr-1" />
-                  {{ hardwareStatus?.config.programmed ? 'Programmed' : 'Detected' }}
+                  {{
+                    !hardwareStatus?.config.pcb_connected
+                      ? 'Disconnected'
+                      : hardwareStatus?.config.programmed
+                        ? 'Programmed'
+                        : 'Detected'
+                  }}
                 </Badge>
               </div>
 
@@ -479,77 +521,17 @@ onBeforeUnmount(() => {
 
               <Separator />
 
-              <!-- Programming Section -->
-              <div class="space-y-4">
-                <h3 class="text-lg font-semibold flex items-center gap-2">
-                  <Download class="w-5 h-5" />
-                  Program Device
-                </h3>
-
-                <div class="flex gap-4 items-end">
-                  <div class="grid w-full max-w-sm items-center gap-1.5">
-                    <label
-                      for="bitstream"
-                      class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                      >Bitstream File</label
-                    >
-                    <div class="flex w-full items-center space-x-2">
-                      <div class="relative flex-1">
-                        <FileCode class="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          id="bitstream"
-                          v-model="bitstreamFile"
-                          placeholder="/path/to/fdp3p7.bit"
-                          class="pl-9"
-                        />
-                      </div>
-                      <Button
-                        variant="secondary"
-                        type="button"
-                        :disabled="isBusy"
-                        @click="pickBitstream"
-                      >
-                        Browse...
-                      </Button>
-                    </div>
-                  </div>
-                  <Button
-                    class="w-40"
-                    variant="outline"
-                    :disabled="!canGenerate"
-                    @click="generateBitstream"
-                  >
-                    <Cpu
-                      class="w-4 h-4 mr-2"
-                      :class="flowPhase === 'generating' ? 'animate-spin' : ''"
-                    />
-                    {{ flowPhase === 'generating' ? 'Generating...' : 'Generate Bitstream' }}
-                  </Button>
-                  <Button class="w-32" :disabled="!canProgram" @click="programDevice">
-                    <Play v-if="!isProgramming" class="w-4 h-4 mr-2" />
-                    {{ isProgramming ? 'Programming...' : 'Program' }}
-                  </Button>
-                </div>
-
-                <p
-                  v-if="generationBytes !== null && flowPhase === 'bitstream_ready'"
-                  class="text-xs text-muted-foreground"
-                >
-                  Generated artifact size: {{ generationBytes }} bytes
-                </p>
-
-                <p
-                  v-if="programMessage"
-                  class="text-sm"
-                  :class="
-                    programMessage.toLowerCase().includes('failed')
-                      ? 'text-destructive'
-                      : 'text-green-600'
-                  "
-                >
-                  {{ programMessage }}
-                </p>
-              </div>
+              <p
+                v-if="programMessage"
+                class="text-sm"
+                :class="
+                  programMessage.toLowerCase().includes('failed')
+                    ? 'text-destructive'
+                    : 'text-green-600'
+                "
+              >
+                {{ programMessage }}
+              </p>
             </div>
             <div
               v-else
@@ -564,5 +546,57 @@ onBeforeUnmount(() => {
         </ResizablePanel>
       </ResizablePanelGroup>
     </div>
+
+    <Dialog :open="isProgramDialogOpen" @update:open="isProgramDialogOpen = $event">
+      <DialogContent class="sm:max-w-[560px]">
+        <DialogHeader>
+          <DialogTitle>Program Device</DialogTitle>
+          <DialogDescription>
+            Choose a bitstream for the selected board. The current project bitstream is prefilled
+            when available.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div class="grid gap-4 py-2">
+          <div class="grid gap-1.5">
+            <label
+              for="bitstream"
+              class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+            >
+              Bitstream File
+            </label>
+            <div class="flex w-full items-center gap-2">
+              <div class="relative flex-1">
+                <FileCode class="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="bitstream"
+                  v-model="bitstreamFile"
+                  placeholder="/path/to/project.bit"
+                  class="pl-9"
+                />
+              </div>
+              <Button variant="secondary" type="button" :disabled="isBusy" @click="pickBitstream">
+                Browse...
+              </Button>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-border bg-muted/30 px-4 py-3">
+            <p class="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Default</p>
+            <p class="mt-2 break-all font-mono text-sm text-foreground/90">
+              {{ defaultBitstreamPath || 'No current project bitstream path inferred yet.' }}
+            </p>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" @click="isProgramDialogOpen = false">Cancel</Button>
+          <Button :disabled="!canProgram" @click="programDevice">
+            <Play v-if="!isProgramming" class="mr-2 h-4 w-4" />
+            {{ isProgramming ? 'Programming...' : 'Program' }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>
