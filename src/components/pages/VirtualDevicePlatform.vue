@@ -36,6 +36,7 @@ const streamSignalOverflow = computed(() => {
 })
 const streamStatus = computed(() => hardwareStore.dataStreamStatus.value)
 const streamRunning = computed(() => streamStatus.value.running)
+const canApplyRate = computed(() => streamRunning.value && !streamBusy.value)
 const actualHzLabel = computed(() => `${formatMetric(displayedActualHz.value)} Hz`)
 const selectedDevice = computed(() => {
   if (!selectedDeviceId.value) {
@@ -270,10 +271,16 @@ onBeforeUnmount(() => {
             min="0.1"
             step="1"
             class="h-8 w-24 border-0 bg-transparent px-0 text-right shadow-none focus-visible:ring-0"
-            @keydown.enter.prevent="applyRate"
+            @keydown.enter.prevent="canApplyRate && applyRate()"
           />
         </div>
-        <Button type="button" size="sm" variant="outline" :disabled="streamBusy" @click="applyRate">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          :disabled="!canApplyRate"
+          @click="applyRate"
+        >
           Apply
         </Button>
         <Button
