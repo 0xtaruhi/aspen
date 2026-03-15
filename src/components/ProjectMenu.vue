@@ -9,6 +9,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
@@ -19,21 +22,29 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { useI18n } from '@/lib/i18n'
-import { openProject, saveProject, saveProjectAs } from '@/lib/project-io'
+import { openProject, openRecentProject, saveProject, saveProjectAs } from '@/lib/project-io'
 import NewProjectDialog from './project/NewProjectDialog.vue'
 import { projectStore } from '@/stores/project'
+import { recentProjectsStore } from '@/stores/recent-projects'
 
 const { isMobile } = useSidebar()
 const { t } = useI18n()
 const showNewProjectDialog = ref(false)
 const router = useRouter()
 const activeProject = computed(() => ({
-  name: `${projectStore.files[0]?.name || 'Aspen FPGA'}${projectStore.hasUnsavedChanges ? ' *' : ''}`,
+  name: projectStore.hasProject
+    ? `${projectStore.files[0]?.name || 'Aspen FPGA'}${projectStore.hasUnsavedChanges ? ' *' : ''}`
+    : t('noProjectOpen'),
   plan: t('projectManagement'),
 }))
+const recentProjects = computed(() => recentProjectsStore.state.entries)
 
 function openSettings() {
   void router.push({ name: 'settings' })
+}
+
+function handleOpenRecentProject(path: string) {
+  void openRecentProject(path)
 }
 </script>
 
@@ -85,7 +96,45 @@ function openSettings() {
             {{ t('openProject') }}
           </DropdownMenuItem>
 
-          <DropdownMenuItem class="gap-2 p-2" @click="saveProject">
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger class="gap-2 p-2">
+              <div class="flex size-6 items-center justify-center rounded-sm border">
+                <FolderOpen class="size-4" />
+              </div>
+              {{ t('openRecent') }}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent class="w-72 rounded-lg">
+              <DropdownMenuLabel class="text-xs text-muted-foreground">
+                {{ t('recentProjects') }}
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                v-if="recentProjects.length === 0"
+                disabled
+                class="p-2 text-muted-foreground"
+              >
+                {{ t('noRecentProjects') }}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                v-for="entry in recentProjects"
+                v-else
+                :key="entry.path"
+                class="flex flex-col items-start gap-1 p-2"
+                @click="handleOpenRecentProject(entry.path)"
+              >
+                <span class="max-w-full truncate text-sm font-medium">{{ entry.name }}</span>
+                <span class="max-w-full truncate text-xs text-muted-foreground">
+                  {{ entry.path }}
+                </span>
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+
+          <DropdownMenuItem
+            class="gap-2 p-2"
+            :disabled="!projectStore.hasProject"
+            @click="saveProject"
+          >
             <div class="flex size-6 items-center justify-center rounded-sm border">
               <Save class="size-4" />
             </div>
@@ -93,7 +142,11 @@ function openSettings() {
             <DropdownMenuShortcut>Ctrl+S</DropdownMenuShortcut>
           </DropdownMenuItem>
 
-          <DropdownMenuItem class="gap-2 p-2" @click="saveProjectAs">
+          <DropdownMenuItem
+            class="gap-2 p-2"
+            :disabled="!projectStore.hasProject"
+            @click="saveProjectAs"
+          >
             <div class="flex size-6 items-center justify-center rounded-sm border">
               <Save class="size-4" />
             </div>

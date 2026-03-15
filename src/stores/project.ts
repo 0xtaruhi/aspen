@@ -187,59 +187,11 @@ function normalizeSnapshot(value: unknown): ProjectSnapshot {
 }
 
 export const projectStore = reactive({
-  files: [
-    {
-      id: 'root',
-      name: 'src',
-      type: 'folder',
-      isOpen: true,
-      children: [
-        {
-          id: '1',
-          name: 'top_module.v',
-          type: 'file',
-          content: `module top_module(
-    input clk,
-    input rst,
-    input [7:0] sw,
-    output [7:0] led
-);
+  files: [] as ProjectNode[],
 
-    wire [7:0] count;
-
-    counter u_counter (
-        .clk(clk),
-        .rst(rst),
-        .count(count)
-    );
-
-    assign led = count ^ sw;
-
-endmodule`,
-        },
-        {
-          id: '2',
-          name: 'counter.v',
-          type: 'file',
-          content: `module counter(
-    input clk,
-    input rst,
-    output reg [7:0] count
-);
-
-    always @(posedge clk) begin
-        if (rst) count <= 0;
-        else count <= count + 1;
-    end
-
-endmodule`,
-        },
-      ],
-    },
-  ] as ProjectNode[],
-
-  activeFileId: '1',
-  topFileId: '1',
+  activeFileId: '',
+  selectedNodeId: '',
+  topFileId: '',
   targetDeviceId: defaultFpgaDeviceId,
   projectPath: null as string | null,
   savedSnapshotJson: '' as string,
@@ -262,8 +214,16 @@ endmodule`,
     return this.findNode(this.activeFileId)
   },
 
+  get selectedNode() {
+    return this.findNode(this.selectedNodeId)
+  },
+
   get rootNode() {
     return this.files.length === 1 && this.files[0]?.type === 'folder' ? this.files[0] : null
+  },
+
+  get hasProject() {
+    return this.files.length > 0
   },
 
   get code() {
@@ -319,6 +279,7 @@ endmodule`,
 
     this.files = nextFiles
     this.activeFileId = nextActiveFileId
+    this.selectedNodeId = nextActiveFileId
     this.topFileId = nextTopFileId
     this.targetDeviceId = parsed.targetDeviceId
     this.markSaved(options.projectPath ?? null)
@@ -333,6 +294,11 @@ endmodule`,
 
   setActiveFile(id: string) {
     this.activeFileId = id
+    this.selectedNodeId = id
+  },
+
+  setSelectedNode(id: string) {
+    this.selectedNodeId = id
   },
 
   setTopFile(id: string) {
@@ -374,6 +340,7 @@ endmodule`,
         content: '',
       })
       this.activeFileId = id
+      this.selectedNodeId = id
       parent.isOpen = true
     }
   },
@@ -390,7 +357,45 @@ endmodule`,
         children: [],
         isOpen: true,
       })
+      this.selectedNodeId = id
       parent.isOpen = true
+    }
+  },
+
+  importFiles(parentId: string, files: Array<{ name: string; content: string }>) {
+    const parent = this.findNode(parentId)
+    if (!parent || parent.type !== 'folder' || files.length === 0) {
+      return
+    }
+
+    if (!parent.children) {
+      parent.children = []
+    }
+
+    const createdIds: string[] = []
+    for (const [index, file] of files.entries()) {
+      const id = `${Date.now()}-${index}`
+      parent.children.push({
+        id,
+        name: file.name,
+        type: 'file',
+        content: file.content,
+      })
+      createdIds.push(id)
+    }
+
+    parent.isOpen = true
+
+    if (!this.activeFileId && createdIds[0]) {
+      this.activeFileId = createdIds[0]
+    }
+
+    if (createdIds[0]) {
+      this.selectedNodeId = createdIds[0]
+    }
+
+    if (!this.topFileId) {
+      this.topFileId = resolveTopFileId(this.files)
     }
   },
 
@@ -410,6 +415,9 @@ endmodule`,
     remove(this.files)
     if (this.activeFileId === id) {
       this.activeFileId = ''
+    }
+    if (this.selectedNodeId === id) {
+      this.selectedNodeId = ''
     }
     if (this.topFileId === id) {
       this.topFileId = resolveTopFileId(this.files)
@@ -452,6 +460,7 @@ endmodule`,
 endmodule`,
       })
       this.activeFileId = '1'
+      this.selectedNodeId = '1'
       this.topFileId = '1'
     } else if (template === 'uart') {
       this.files[0].children?.push({
@@ -503,22 +512,23 @@ endmodule`,
 endmodule`,
       })
       this.activeFileId = '1'
+      this.selectedNodeId = '1'
       this.topFileId = '1'
     } else {
-      // Empty or other templates
-      this.files[0].children?.push({
-        id: '1',
-        name: 'top.v',
-        type: 'file',
-        content: `module top(
-    input clk
-);
-endmodule`,
-      })
-      this.activeFileId = '1'
-      this.topFileId = '1'
+      this.activeFileId = ''
+      this.selectedNodeId = ''
+      this.topFileId = ''
     }
 
+    this.targetDeviceId = defaultFpgaDeviceId
+    this.markSaved(null)
+  },
+
+  clearProject() {
+    this.files = []
+    this.activeFileId = ''
+    this.selectedNodeId = ''
+    this.topFileId = ''
     this.targetDeviceId = defaultFpgaDeviceId
     this.markSaved(null)
   },

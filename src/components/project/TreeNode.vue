@@ -14,6 +14,7 @@ import { useRouter } from 'vue-router'
 import { Badge } from '@/components/ui/badge'
 import { useI18n } from '@/lib/i18n'
 import { projectStore, type ProjectNode } from '@/stores/project'
+import { requestProjectTextInput } from '@/stores/project-text-input'
 import { settingsStore } from '@/stores/settings'
 import {
   ContextMenu,
@@ -35,32 +36,58 @@ function isHardwareSourceFile(name: string) {
   return name.endsWith('.v') || name.endsWith('.sv')
 }
 
+function selectNode() {
+  projectStore.setSelectedNode(props.node.id)
+}
+
 function toggleFolder() {
   if (props.node.type === 'folder') {
+    selectNode()
     props.node.isOpen = !props.node.isOpen
   }
 }
 
-function handleRename() {
-  const newName = prompt(t('enterNewName'), props.node.name)
-  if (newName) {
-    projectStore.renameNode(props.node.id, newName)
+async function handleRename() {
+  selectNode()
+  const newName = await requestProjectTextInput({
+    title: t('rename'),
+    confirmLabel: t('rename'),
+    initialValue: props.node.name,
+  })
+  if (!newName) {
+    return
   }
+
+  projectStore.renameNode(props.node.id, newName)
 }
 
-function handleNewFile() {
-  const name = prompt(t('enterFileName'), 'new_file.v')
-  if (name) {
-    projectStore.createFile(props.node.id, name)
-    void router.push({ name: 'project-management-editor' })
+async function handleNewFile() {
+  selectNode()
+  const name = await requestProjectTextInput({
+    title: t('newFile'),
+    confirmLabel: t('newFile'),
+    initialValue: 'new_file.v',
+  })
+  if (!name) {
+    return
   }
+
+  projectStore.createFile(props.node.id, name)
+  void router.push({ name: 'project-management-editor' })
 }
 
-function handleNewFolder() {
-  const name = prompt(t('enterFolderName'), t('newFolder'))
-  if (name) {
-    projectStore.createFolder(props.node.id, name)
+async function handleNewFolder() {
+  selectNode()
+  const name = await requestProjectTextInput({
+    title: t('newFolder'),
+    confirmLabel: t('newFolder'),
+    initialValue: t('newFolder'),
+  })
+  if (!name) {
+    return
   }
+
+  projectStore.createFolder(props.node.id, name)
 }
 
 async function handleDelete() {
@@ -79,6 +106,26 @@ function openFile(id: string) {
   void router.push({ name: 'project-management-editor' })
 }
 
+function deferContextAction(action: () => void | Promise<void>) {
+  window.setTimeout(action, 0)
+}
+
+function requestRename() {
+  deferContextAction(handleRename)
+}
+
+function requestDelete() {
+  deferContextAction(handleDelete)
+}
+
+function requestNewFile() {
+  deferContextAction(handleNewFile)
+}
+
+function requestNewFolder() {
+  deferContextAction(handleNewFolder)
+}
+
 function setAsTopFile() {
   if (props.node.type === 'file') {
     projectStore.setTopFile(props.node.id)
@@ -92,8 +139,9 @@ function setAsTopFile() {
       <ContextMenuTrigger>
         <div
           class="flex items-center gap-1.5 py-1 px-2 rounded-md hover:bg-accent/50 cursor-pointer transition-colors"
-          :class="{ 'bg-accent text-accent-foreground': projectStore.activeFileId === node.id }"
+          :class="{ 'bg-accent text-accent-foreground': projectStore.selectedNodeId === node.id }"
           @click="node.type === 'folder' ? toggleFolder() : openFile(node.id)"
+          @contextmenu="selectNode"
         >
           <component
             :is="node.type === 'folder' ? (node.isOpen ? ChevronDown : ChevronRight) : FileCode"
@@ -130,18 +178,18 @@ function setAsTopFile() {
           </ContextMenuItem>
           <ContextMenuSeparator />
         </template>
-        <ContextMenuItem @select="handleRename">
+        <ContextMenuItem @select="requestRename">
           <Edit2 class="w-4 h-4 mr-2" /> {{ t('rename') }}
         </ContextMenuItem>
-        <ContextMenuItem @select="handleDelete" class="text-destructive">
+        <ContextMenuItem @select="requestDelete" class="text-destructive">
           <Trash2 class="w-4 h-4 mr-2" /> {{ t('delete') }}
         </ContextMenuItem>
         <template v-if="node.type === 'folder'">
           <ContextMenuSeparator />
-          <ContextMenuItem @select="handleNewFile">
+          <ContextMenuItem @select="requestNewFile">
             <Plus class="w-4 h-4 mr-2" /> {{ t('newFile') }}
           </ContextMenuItem>
-          <ContextMenuItem @select="handleNewFolder">
+          <ContextMenuItem @select="requestNewFolder">
             <FolderPlus class="w-4 h-4 mr-2" /> {{ t('newFolder') }}
           </ContextMenuItem>
         </template>

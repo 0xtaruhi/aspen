@@ -5,7 +5,7 @@ import { projectStore } from './project'
 
 describe('design context selection regression', () => {
   it('keeps top-file design context independent from active editor file changes', () => {
-    projectStore.createNewProject('RegressionProject', 'empty')
+    projectStore.createNewProject('RegressionProject', 'blinky')
     projectStore.createFile('root', 'helper.v')
 
     const helperFileId = projectStore.files[0]?.children?.find(
@@ -15,7 +15,7 @@ describe('design context selection regression', () => {
     projectStore.setActiveFile(helperFileId || '')
 
     expect(designContextStore.selectedSource.value?.id).toBe('1')
-    expect(designContextStore.sourceName.value).toBe('top.v')
+    expect(designContextStore.sourceName.value).toBe('blinky.v')
     expect(projectStore.topFileId).toBe('1')
     expect(projectStore.activeFileId).toBe(helperFileId)
   })

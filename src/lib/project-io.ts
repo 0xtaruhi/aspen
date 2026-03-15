@@ -3,6 +3,7 @@ import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialo
 
 import { translate } from '@/lib/i18n'
 import { projectStore } from '@/stores/project'
+import { recentProjectsStore } from '@/stores/recent-projects'
 
 function getErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
@@ -61,6 +62,43 @@ function saveProjectInBrowserFallback(serialized: string, filename: string) {
   URL.revokeObjectURL(url)
 }
 
+async function importFilesInBrowserFallback() {
+  if (typeof document === 'undefined') {
+    return false
+  }
+
+  const rootNode = projectStore.rootNode
+  if (!rootNode) {
+    return false
+  }
+
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.multiple = true
+
+  return await new Promise<boolean>((resolve) => {
+    input.onchange = async () => {
+      const files = Array.from(input.files ?? [])
+      if (files.length === 0) {
+        resolve(false)
+        return
+      }
+
+      const importedFiles = await Promise.all(
+        files.map(async (file) => ({
+          name: file.name,
+          content: await file.text(),
+        })),
+      )
+
+      projectStore.importFiles(rootNode.id, importedFiles)
+      resolve(true)
+    }
+
+    input.click()
+  })
+}
+
 function getDefaultFilename() {
   const snapshot = projectStore.toSnapshot()
   return `${snapshot.name || 'project'}.aspen.json`
@@ -68,6 +106,23 @@ function getDefaultFilename() {
 
 function serializeProject() {
   return JSON.stringify(projectStore.toSnapshot(), null, 2)
+}
+
+function shouldForgetRecentProject(err: unknown) {
+  const message = getErrorMessage(err).toLowerCase()
+  return (
+    message.includes('no such file') ||
+    message.includes('not found') ||
+    message.includes('cannot find the path')
+  )
+}
+
+async function loadProjectFromPath(path: string) {
+  const content = await invoke<string>('read_project_file', { path })
+  const data = JSON.parse(content) as unknown
+  projectStore.loadFromSnapshot(data, { projectPath: path })
+  recentProjectsStore.rememberProject(path, projectStore.toSnapshot().name)
+  return true
 }
 
 export async function openProject() {
@@ -81,10 +136,7 @@ export async function openProject() {
       return false
     }
 
-    const content = await invoke<string>('read_project_file', { path: selected })
-    const data = JSON.parse(content) as unknown
-    projectStore.loadFromSnapshot(data, { projectPath: selected })
-    return true
+    return await loadProjectFromPath(selected)
   } catch (err) {
     if (isTauriUnavailable(err)) {
       await openProjectInBrowserFallback()
@@ -96,7 +148,62 @@ export async function openProject() {
   }
 }
 
+export async function openRecentProject(path: string) {
+  try {
+    return await loadProjectFromPath(path)
+  } catch (err) {
+    if (shouldForgetRecentProject(err)) {
+      recentProjectsStore.removeProject(path)
+    }
+
+    window.alert(translate('openProjectFailed', { message: getErrorMessage(err) }))
+    return false
+  }
+}
+
+export async function importProjectFiles() {
+  const rootNode = projectStore.rootNode
+  if (!rootNode) {
+    return false
+  }
+
+  try {
+    const selected = await openDialog({
+      multiple: true,
+      filters: [{ name: translate('sourceFiles'), extensions: ['v', 'sv', 'vh', 'txt'] }],
+    })
+
+    const selectedPaths =
+      typeof selected === 'string' ? [selected] : Array.isArray(selected) ? selected : []
+
+    if (selectedPaths.length === 0) {
+      return false
+    }
+
+    const importedFiles = await Promise.all(
+      selectedPaths.map(async (path) => ({
+        name: path.replace(/\\/g, '/').split('/').pop() || path,
+        content: await invoke<string>('read_project_file', { path }),
+      })),
+    )
+
+    projectStore.importFiles(rootNode.id, importedFiles)
+    return true
+  } catch (err) {
+    if (isTauriUnavailable(err)) {
+      return await importFilesInBrowserFallback()
+    }
+
+    window.alert(translate('openProjectFailed', { message: getErrorMessage(err) }))
+    return false
+  }
+}
+
 export async function saveProjectAs() {
+  if (!projectStore.hasProject) {
+    return false
+  }
+
   const serialized = serializeProject()
   const defaultPath = projectStore.projectPath ?? getDefaultFilename()
 
@@ -112,6 +219,7 @@ export async function saveProjectAs() {
 
     await invoke('write_project_file', { path: selected, content: serialized })
     projectStore.markSaved(selected)
+    recentProjectsStore.rememberProject(selected, projectStore.toSnapshot().name)
     return true
   } catch (err) {
     if (isTauriUnavailable(err)) {
@@ -126,6 +234,10 @@ export async function saveProjectAs() {
 }
 
 export async function saveProject() {
+  if (!projectStore.hasProject) {
+    return false
+  }
+
   const serialized = serializeProject()
 
   try {
@@ -135,6 +247,7 @@ export async function saveProject() {
         content: serialized,
       })
       projectStore.markSaved(projectStore.projectPath)
+      recentProjectsStore.rememberProject(projectStore.projectPath, projectStore.toSnapshot().name)
       return true
     }
 

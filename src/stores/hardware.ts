@@ -24,6 +24,7 @@ import {
 } from './hardware-runtime'
 import { listenHardwareSynthesisLog, runHardwareSynthesis } from '@/lib/hardware-client'
 import { appendSynthesisLogChunk } from '../lib/synthesis-log'
+import { buildSynthesisInputSignature } from '../lib/synthesis-request-signature'
 import { virtualDeviceStore } from './virtual-device'
 
 const state = computed<HardwareStateV1>(() => {
@@ -91,9 +92,11 @@ async function runSynthesis(request: SynthesisRequestV1): Promise<SynthesisRepor
   synthesisMessage.value = ''
   synthesisLiveLog.value = ''
   synthesisOperationId.value = request.op_id
+  const requestSignature = buildSynthesisInputSignature(request.top_module, request.files)
   try {
     const report = await runHardwareSynthesis(request)
     synthesisReport.value = report
+    synthesisReportSignature.value = requestSignature
     return report
   } catch (err) {
     synthesisMessage.value = getErrorMessage(err)
@@ -191,6 +194,7 @@ async function disconnectView() {
 
 const synthesisRunning = ref(false)
 const synthesisReport = ref<SynthesisReportV1 | null>(null)
+const synthesisReportSignature = ref<string | null>(null)
 const synthesisLiveLog = ref('')
 const synthesisMessage = ref('')
 const synthesisOperationId = ref<string | null>(null)
@@ -239,6 +243,7 @@ function resetSynthesisState() {
   synthesisOperationId.value = null
   synthesisLiveLog.value = ''
   synthesisReport.value = null
+  synthesisReportSignature.value = null
   synthesisMessage.value = ''
 }
 
@@ -251,6 +256,7 @@ export const hardwareStore = {
   isStarted: hardwareRuntimeStore.isStarted,
   synthesisRunning: readonly(synthesisRunning),
   synthesisReport: readonly(synthesisReport),
+  synthesisReportSignature: readonly(synthesisReportSignature),
   synthesisLiveLog: readonly(synthesisLiveLog),
   synthesisMessage: readonly(synthesisMessage),
   start,

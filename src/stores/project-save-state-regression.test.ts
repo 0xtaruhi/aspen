@@ -5,8 +5,25 @@ import { defaultFpgaDeviceId } from '../lib/fpga-device-catalog'
 import { projectStore } from './project'
 
 describe('project save-state regression', () => {
+  it('can return to an empty workspace without a default project', () => {
+    projectStore.createNewProject('TemporaryProject', 'empty')
+
+    expect(projectStore.hasProject).toBe(true)
+    expect(projectStore.files[0]?.children ?? []).toEqual([])
+    expect(projectStore.activeFileId).toBe('')
+    expect(projectStore.topFileId).toBe('')
+
+    projectStore.clearProject()
+
+    expect(projectStore.hasProject).toBe(false)
+    expect(projectStore.files).toEqual([])
+    expect(projectStore.activeFileId).toBe('')
+    expect(projectStore.topFileId).toBe('')
+    expect(projectStore.hasUnsavedChanges).toBe(false)
+  })
+
   it('tracks dirty files and clears them after marking the project saved', () => {
-    projectStore.createNewProject('SaveStateProject', 'empty')
+    projectStore.createNewProject('SaveStateProject', 'blinky')
 
     expect(projectStore.hasUnsavedChanges).toBe(false)
     expect(projectStore.isFileDirty('1')).toBe(false)
@@ -24,7 +41,7 @@ describe('project save-state regression', () => {
   })
 
   it('persists the project target device in snapshots', () => {
-    projectStore.createNewProject('DeviceProject', 'empty')
+    projectStore.createNewProject('DeviceProject', 'blinky')
 
     expect(projectStore.toSnapshot().targetDeviceId).toBe(defaultFpgaDeviceId)
 
@@ -42,6 +59,8 @@ describe('project save-state regression', () => {
   })
 
   it('falls back to the default target device for legacy snapshots', () => {
+    projectStore.createNewProject('LegacyProjectSeed', 'blinky')
+
     projectStore.loadFromSnapshot({
       version: 1,
       name: 'LegacyProject',

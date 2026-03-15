@@ -87,7 +87,11 @@ const shouldShowSurfaceBreadcrumb = computed(() => {
 })
 
 function handleGlobalKeydown(event: KeyboardEvent) {
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+  if (
+    (event.ctrlKey || event.metaKey) &&
+    event.key.toLowerCase() === 's' &&
+    projectStore.hasProject
+  ) {
     event.preventDefault()
     void saveProject()
   }
