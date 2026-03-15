@@ -3,6 +3,7 @@ import type { SynthesisSourceFileV1 } from '@/lib/hardware-client'
 
 import { computed, nextTick, ref, watch } from 'vue'
 
+import TopModuleSelect from '@/components/TopModuleSelect.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -185,6 +186,7 @@ watch(
         </p>
       </div>
       <div class="flex gap-2 items-center">
+        <TopModuleSelect :disabled="isBusy" />
         <Badge
           variant="outline"
           :class="
@@ -248,7 +250,7 @@ watch(
         <CardContent class="flex-1 min-h-0 p-0">
           <div
             ref="synthesisLogViewportRef"
-            class="h-full w-full overflow-auto bg-muted/40 p-4 font-mono text-xs text-foreground"
+            class="allow-text-select h-full w-full overflow-auto bg-muted/40 p-4 font-mono text-xs text-foreground"
           >
             <pre class="whitespace-pre-wrap">{{ synthesisLog }}</pre>
           </div>

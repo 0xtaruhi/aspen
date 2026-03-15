@@ -5,6 +5,19 @@ import {
   normalizeFpgaDeviceId,
   type FpgaDeviceId,
 } from '../lib/fpga-device-catalog'
+import {
+  defaultFpgaBoardId,
+  getDefaultFpgaBoardIdForDevice,
+  normalizeFpgaBoardId,
+  type FpgaBoardId,
+} from '../lib/fpga-board-catalog'
+import {
+  cloneProjectConstraintSnapshot,
+  emptyProjectConstraintSnapshot,
+  normalizeProjectConstraintSnapshot,
+  type ProjectConstraintSnapshot,
+  type ProjectPinConstraint,
+} from '../lib/project-constraints'
 import { parseVerilogPorts, type VerilogPort } from '../lib/verilog-parser'
 
 export type ProjectNode = {
@@ -22,7 +35,10 @@ export type ProjectSnapshot = {
   files: ProjectNode[]
   activeFileId: string
   topFileId: string
+  topModuleName: string
   targetDeviceId: FpgaDeviceId
+  targetBoardId: FpgaBoardId
+  pinConstraints: ProjectConstraintSnapshot
 }
 
 type FileSignatureMap = Record<string, string>
@@ -173,16 +189,25 @@ function normalizeSnapshot(value: unknown): ProjectSnapshot {
     throw new Error('Project files are invalid')
   }
 
+  const normalizedTargetDeviceId = normalizeFpgaDeviceId(value.targetDeviceId)
+  const resolvedTopFileId =
+    typeof value.topFileId === 'string' && value.topFileId.length > 0
+      ? value.topFileId
+      : resolveTopFileId(value.files)
+
   return {
     version: 1,
     name: value.name,
     files: cloneProjectNodes(value.files),
     activeFileId: value.activeFileId,
-    topFileId:
-      typeof value.topFileId === 'string' && value.topFileId.length > 0
-        ? value.topFileId
-        : resolveTopFileId(value.files),
-    targetDeviceId: normalizeFpgaDeviceId(value.targetDeviceId),
+    topFileId: resolvedTopFileId,
+    topModuleName: typeof value.topModuleName === 'string' ? value.topModuleName : '',
+    targetDeviceId: normalizedTargetDeviceId,
+    targetBoardId: normalizeFpgaBoardId(
+      value.targetBoardId,
+      getDefaultFpgaBoardIdForDevice(normalizedTargetDeviceId),
+    ),
+    pinConstraints: normalizeProjectConstraintSnapshot(value.pinConstraints, resolvedTopFileId),
   }
 }
 
@@ -192,7 +217,10 @@ export const projectStore = reactive({
   activeFileId: '',
   selectedNodeId: '',
   topFileId: '',
+  topModuleName: '',
   targetDeviceId: defaultFpgaDeviceId,
+  targetBoardId: defaultFpgaBoardId,
+  pinConstraints: emptyProjectConstraintSnapshot(),
   projectPath: null as string | null,
   savedSnapshotJson: '' as string,
   savedFileSignatures: {} as FileSignatureMap,
@@ -263,7 +291,10 @@ export const projectStore = reactive({
       files: cloneProjectNodes(this.files),
       activeFileId: this.activeFileId,
       topFileId: this.topFileId,
+      topModuleName: this.topModuleName,
       targetDeviceId: this.targetDeviceId,
+      targetBoardId: this.targetBoardId,
+      pinConstraints: cloneProjectConstraintSnapshot(this.pinConstraints),
     }
   },
 
@@ -281,7 +312,10 @@ export const projectStore = reactive({
     this.activeFileId = nextActiveFileId
     this.selectedNodeId = nextActiveFileId
     this.topFileId = nextTopFileId
+    this.topModuleName = parsed.topFileId === nextTopFileId ? parsed.topModuleName : ''
     this.targetDeviceId = parsed.targetDeviceId
+    this.targetBoardId = parsed.targetBoardId
+    this.pinConstraints = cloneProjectConstraintSnapshot(parsed.pinConstraints)
     this.markSaved(options.projectPath ?? null)
   },
 
@@ -304,12 +338,71 @@ export const projectStore = reactive({
   setTopFile(id: string) {
     const node = this.findNode(id)
     if (node?.type === 'file' && isHardwareSourceFile(node.name)) {
+      const topFileChanged = this.topFileId !== id
       this.topFileId = id
+      if (topFileChanged) {
+        this.topModuleName = ''
+      }
+      if (this.pinConstraints.topFileId !== id) {
+        this.pinConstraints = {
+          version: 1,
+          topFileId: id,
+          assignments: [],
+        }
+      }
     }
   },
 
   setTargetDevice(deviceId: FpgaDeviceId) {
     this.targetDeviceId = deviceId
+    this.targetBoardId = getDefaultFpgaBoardIdForDevice(deviceId)
+  },
+
+  setTargetBoard(boardId: FpgaBoardId) {
+    this.targetBoardId = boardId
+  },
+
+  setTopModuleName(name: string) {
+    this.topModuleName = name.trim()
+  },
+
+  replacePinConstraints(topFileId: string, assignments: ProjectPinConstraint[]) {
+    this.pinConstraints = {
+      version: 1,
+      topFileId,
+      assignments: assignments.map((entry) => ({
+        ...entry,
+      })),
+    }
+  },
+
+  setPinConstraint(topFileId: string, assignment: ProjectPinConstraint | null) {
+    if (!assignment) {
+      return
+    }
+
+    const nextAssignments =
+      this.pinConstraints.topFileId === topFileId
+        ? this.pinConstraints.assignments.filter((entry) => entry.portName !== assignment.portName)
+        : []
+
+    nextAssignments.push({
+      ...assignment,
+    })
+
+    this.replacePinConstraints(topFileId, nextAssignments)
+  },
+
+  clearPinConstraint(topFileId: string, portName: string) {
+    const nextAssignments =
+      this.pinConstraints.topFileId === topFileId
+        ? this.pinConstraints.assignments.filter((entry) => entry.portName !== portName)
+        : []
+    this.replacePinConstraints(topFileId, nextAssignments)
+  },
+
+  clearPinConstraints(topFileId?: string) {
+    this.replacePinConstraints(topFileId ?? this.topFileId, [])
   },
 
   markSaved(projectPath?: string | null) {
@@ -396,6 +489,7 @@ export const projectStore = reactive({
 
     if (!this.topFileId) {
       this.topFileId = resolveTopFileId(this.files)
+      this.pinConstraints.topFileId = this.topFileId
     }
   },
 
@@ -421,6 +515,12 @@ export const projectStore = reactive({
     }
     if (this.topFileId === id) {
       this.topFileId = resolveTopFileId(this.files)
+      this.topModuleName = ''
+      this.pinConstraints = {
+        version: 1,
+        topFileId: this.topFileId,
+        assignments: [],
+      }
     }
   },
 
@@ -462,6 +562,7 @@ endmodule`,
       this.activeFileId = '1'
       this.selectedNodeId = '1'
       this.topFileId = '1'
+      this.topModuleName = 'blinky'
     } else if (template === 'uart') {
       this.files[0].children?.push({
         id: '1',
@@ -514,13 +615,21 @@ endmodule`,
       this.activeFileId = '1'
       this.selectedNodeId = '1'
       this.topFileId = '1'
+      this.topModuleName = 'uart_tx'
     } else {
       this.activeFileId = ''
       this.selectedNodeId = ''
       this.topFileId = ''
+      this.topModuleName = ''
     }
 
     this.targetDeviceId = defaultFpgaDeviceId
+    this.targetBoardId = defaultFpgaBoardId
+    this.pinConstraints = {
+      version: 1,
+      topFileId: this.topFileId,
+      assignments: [],
+    }
     this.markSaved(null)
   },
 
@@ -529,7 +638,10 @@ endmodule`,
     this.activeFileId = ''
     this.selectedNodeId = ''
     this.topFileId = ''
+    this.topModuleName = ''
     this.targetDeviceId = defaultFpgaDeviceId
+    this.targetBoardId = defaultFpgaBoardId
+    this.pinConstraints = emptyProjectConstraintSnapshot()
     this.markSaved(null)
   },
 })

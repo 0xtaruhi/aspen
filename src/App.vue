@@ -36,6 +36,7 @@ const routeLabelKeyMap = {
   'project-management-dashboard': 'dashboard',
   'fpga-flow': 'synthesis',
   'fpga-flow-synthesis': 'synthesis',
+  'fpga-flow-pin-planning': 'pinPlanning',
   'fpga-flow-implementation': 'implementation',
   'hardware-manager': 'hardwareManager',
   'virtual-device-platform': 'workbench',

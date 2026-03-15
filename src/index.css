@@ -124,6 +124,20 @@
     font-feature-settings:
       'rlig' 1,
       'calt' 1;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  input,
+  textarea,
+  select,
+  [contenteditable='true'],
+  .allow-text-select,
+  .allow-text-select *,
+  .monaco-editor,
+  .monaco-editor * {
+    -webkit-user-select: text;
+    user-select: text;
   }
 }
 

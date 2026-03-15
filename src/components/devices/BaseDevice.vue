@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onUnmounted, ref } from 'vue'
+import { nextTick, onUnmounted, ref, watch } from 'vue'
+import { Settings2 } from 'lucide-vue-next'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -8,6 +9,7 @@ import {
 } from '@/components/ui/context-menu'
 import { confirmAction } from '@/lib/confirm-action'
 import { useI18n } from '@/lib/i18n'
+import { Input } from '@/components/ui/input'
 import { settingsStore } from '@/stores/settings'
 
 const props = defineProps<{
@@ -31,10 +33,12 @@ const emit = defineEmits<{
   (e: 'open-settings', id: string): void
   (e: 'delete', id: string): void
   (e: 'drag-end', id: string, x: number, y: number): void
+  (e: 'rename', id: string, label: string): void
 }>()
 const { t } = useI18n()
 
 const el = ref<HTMLElement | null>(null)
+const renameInputRef = ref<HTMLInputElement | null>(null)
 const dragState = ref<{
   startX: number
   startY: number
@@ -43,6 +47,18 @@ const dragState = ref<{
   currentX: number
   currentY: number
 } | null>(null)
+const isRenaming = ref(false)
+const renameValue = ref('')
+
+watch(
+  () => props.label,
+  (nextLabel) => {
+    if (!isRenaming.value) {
+      renameValue.value = nextLabel
+    }
+  },
+  { immediate: true },
+)
 
 function onMouseDown(e: MouseEvent) {
   if (props.preview) {
@@ -68,6 +84,44 @@ function deferContextAction(action: () => void | Promise<void>) {
 
 function requestOpenSettings() {
   deferContextAction(openSettings)
+}
+
+function handleSettingsButtonClick() {
+  openSettings()
+}
+
+function startRename() {
+  if (props.preview) {
+    return
+  }
+
+  isRenaming.value = true
+  renameValue.value = props.label
+  void nextTick(() => {
+    renameInputRef.value?.focus()
+    renameInputRef.value?.select()
+  })
+}
+
+function commitRename() {
+  if (!isRenaming.value) {
+    return
+  }
+
+  const nextLabel = renameValue.value.trim()
+  isRenaming.value = false
+
+  if (!nextLabel || nextLabel === props.label) {
+    renameValue.value = props.label
+    return
+  }
+
+  emit('rename', props.id, nextLabel)
+}
+
+function cancelRename() {
+  isRenaming.value = false
+  renameValue.value = props.label
 }
 
 function requestRemoveDevice() {
@@ -111,6 +165,10 @@ function onPointerMove(e: PointerEvent) {
 
 function startDrag(e: PointerEvent) {
   if (props.preview) {
+    return
+  }
+
+  if (isRenaming.value) {
     return
   }
 
@@ -169,23 +227,46 @@ onUnmounted(() => {
           class="relative bg-card border border-border rounded-md shadow-sm overflow-hidden"
           :class="props.preview ? 'border-primary/60 ring-1 ring-primary/30' : ''"
         >
-          <!-- Drag Handle / Header -->
+          <button
+            v-if="!props.preview"
+            type="button"
+            class="absolute top-2.5 right-2.5 z-10 inline-flex h-7 w-7 items-center justify-center rounded-md border border-border/70 bg-background/90 text-muted-foreground opacity-0 shadow-sm transition hover:bg-accent hover:text-accent-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 group-hover:opacity-100"
+            :title="t('settingsAction')"
+            :aria-label="t('settingsAction')"
+            @mousedown.stop
+            @click.stop="handleSettingsButtonClick"
+          >
+            <Settings2 class="h-3.5 w-3.5" />
+          </button>
+
+          <!-- Header / Drag Handle -->
           <div
-            class="h-2 w-full bg-muted/50 flex items-center justify-center"
+            class="flex min-h-10 w-full items-center gap-3 border-b border-border/70 bg-muted/45 px-3 py-2 pr-12"
             :class="props.preview ? 'cursor-copy' : 'cursor-grab active:cursor-grabbing'"
             @pointerdown="startDrag"
           >
-            <!-- Signal Indicator -->
-            <div
-              v-if="props.boundSignal || props.boundSignalsCount"
-              class="h-1 w-8 bg-green-500 rounded-full opacity-80"
-              :title="
-                props.boundSignal ||
-                (props.boundSignalsCount
-                  ? t('bindingCount', { count: props.boundSignalsCount })
-                  : undefined)
-              "
-            ></div>
+            <div class="min-w-0 flex-1">
+              <Input
+                v-if="isRenaming"
+                ref="renameInputRef"
+                v-model="renameValue"
+                class="h-7 border-border/70 bg-background/90 px-2 text-sm font-medium"
+                @click.stop
+                @pointerdown.stop
+                @blur="commitRename"
+                @keydown.enter.prevent="commitRename"
+                @keydown.esc.prevent="cancelRename"
+              />
+              <button
+                v-else
+                type="button"
+                class="block max-w-full truncate text-sm font-medium text-foreground"
+                @click.stop
+                @dblclick.stop="startRename"
+              >
+                {{ props.label }}
+              </button>
+            </div>
           </div>
           <div class="p-2">
             <slot />

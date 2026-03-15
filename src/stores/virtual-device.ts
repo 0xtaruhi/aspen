@@ -17,6 +17,7 @@ type VirtualDeviceAction = Extract<
   HardwareActionV1,
   | { type: 'upsert_canvas_device' }
   | { type: 'remove_canvas_device' }
+  | { type: 'clear_canvas_devices' }
   | { type: 'set_canvas_device_position' }
   | { type: 'bind_canvas_signal' }
   | { type: 'bind_canvas_signal_slot' }
@@ -27,6 +28,7 @@ function isVirtualDeviceAction(action: HardwareActionV1): action is VirtualDevic
   return (
     action.type === 'upsert_canvas_device' ||
     action.type === 'remove_canvas_device' ||
+    action.type === 'clear_canvas_devices' ||
     action.type === 'set_canvas_device_position' ||
     action.type === 'bind_canvas_signal' ||
     action.type === 'bind_canvas_signal_slot' ||
@@ -163,6 +165,10 @@ function applyLocalAction(action: HardwareActionV1): boolean {
     }
     case 'remove_canvas_device': {
       setCanvasDevices(nextDevices.filter((device) => device.id !== virtualAction.id))
+      return true
+    }
+    case 'clear_canvas_devices': {
+      setCanvasDevices([])
       return true
     }
     case 'set_canvas_device_position': {

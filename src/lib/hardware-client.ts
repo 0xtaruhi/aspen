@@ -69,6 +69,12 @@ export interface SynthesisStatsV1 {
   cell_type_counts: SynthesisCellTypeCountV1[]
 }
 
+export interface SynthesisTopPortV1 {
+  name: string
+  direction: 'input' | 'output' | 'inout'
+  width: string
+}
+
 export interface SynthesisReportV1 {
   version: 1
   op_id: string
@@ -81,6 +87,7 @@ export interface SynthesisReportV1 {
   errors: number
   log: string
   stats: SynthesisStatsV1
+  top_ports: SynthesisTopPortV1[]
   generated_at_ms: number
 }
 
@@ -251,6 +258,9 @@ export type HardwareActionV1 =
   | {
       type: 'remove_canvas_device'
       id: string
+    }
+  | {
+      type: 'clear_canvas_devices'
     }
   | {
       type: 'set_canvas_device_position'

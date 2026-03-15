@@ -88,6 +88,13 @@ const data = computed(() => ({
           isRunning: isSynthesisRunning.value,
         },
         {
+          title: 'Pin Planning',
+          label: t('pinPlanning'),
+          url: '/fpga-flow/pin-planning',
+          action: () => navigate('/fpga-flow/pin-planning'),
+          isActive: activeRouteName.value === 'fpga-flow-pin-planning',
+        },
+        {
           title: 'Implementation',
           label: t('implementation'),
           url: '/fpga-flow/implementation',

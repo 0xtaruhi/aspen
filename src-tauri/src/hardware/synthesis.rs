@@ -17,7 +17,7 @@ use tauri::{path::BaseDirectory, AppHandle, Emitter, Manager};
 
 use super::types::{
     SynthesisCellTypeCountV1, SynthesisLogChunkV1, SynthesisReportV1, SynthesisRequestV1,
-    SynthesisSourceFileV1, SynthesisStatsV1,
+    SynthesisSourceFileV1, SynthesisStatsV1, SynthesisTopPortV1,
 };
 
 const BUNDLED_YOSYS_DIR: &str = "vendor/yosys";
@@ -26,6 +26,11 @@ const FDE_SIMLIB_FILE: &str = "fdesimlib.v";
 const FDE_CELLS_MAP_FILE: &str = "cells_map.v";
 const FDE_LUT_WIDTH: u8 = 4;
 static WORKDIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+struct ParsedSynthesisNetlist {
+    stats: SynthesisStatsV1,
+    top_ports: Vec<SynthesisTopPortV1>,
+}
 
 struct SynthesisToolchainPaths<'a> {
     yosys_bin: &'a Path,
@@ -161,11 +166,12 @@ where
             errors: logged_errors.max(1),
             log,
             stats: SynthesisStatsV1::default(),
+            top_ports: Vec::new(),
             generated_at_ms,
         });
     }
 
-    let stats = parse_netlist_stats(&netlist_path, &request.top_module)?;
+    let parsed_netlist = parse_synthesized_netlist(&netlist_path, &request.top_module)?;
     Ok(SynthesisReportV1 {
         version: 1,
         op_id: request.op_id.clone(),
@@ -177,7 +183,8 @@ where
         warnings,
         errors: logged_errors,
         log,
-        stats,
+        stats: parsed_netlist.stats,
+        top_ports: parsed_netlist.top_ports,
         generated_at_ms,
     })
 }
@@ -443,7 +450,10 @@ fn now_millis() -> Result<u64, String> {
         .min(u128::from(u64::MAX)) as u64)
 }
 
-fn parse_netlist_stats(netlist_path: &Path, top_module: &str) -> Result<SynthesisStatsV1, String> {
+fn parse_synthesized_netlist(
+    netlist_path: &Path,
+    top_module: &str,
+) -> Result<ParsedSynthesisNetlist, String> {
     let netlist = fs::read_to_string(netlist_path).map_err(|err| err.to_string())?;
     let json: Value = serde_json::from_str(&netlist).map_err(|err| err.to_string())?;
     let top = json
@@ -456,6 +466,7 @@ fn parse_netlist_stats(netlist_path: &Path, top_module: &str) -> Result<Synthesi
                 top_module
             )
         })?;
+    let top_ports = parse_top_ports(top)?;
 
     let netnames = top
         .get("netnames")
@@ -528,17 +539,74 @@ fn parse_netlist_stats(netlist_path: &Path, top_module: &str) -> Result<Synthesi
             .then_with(|| left.cell_type.cmp(&right.cell_type))
     });
 
-    Ok(SynthesisStatsV1 {
-        wire_count,
-        wire_bits,
-        public_wire_count,
-        public_wire_bits,
-        memory_count,
-        memory_bits,
-        cell_count: sorted_cell_types.iter().map(|entry| entry.count).sum(),
-        sequential_cell_count,
-        cell_type_counts: sorted_cell_types,
+    Ok(ParsedSynthesisNetlist {
+        stats: SynthesisStatsV1 {
+            wire_count,
+            wire_bits,
+            public_wire_count,
+            public_wire_bits,
+            memory_count,
+            memory_bits,
+            cell_count: sorted_cell_types.iter().map(|entry| entry.count).sum(),
+            sequential_cell_count,
+            cell_type_counts: sorted_cell_types,
+        },
+        top_ports,
     })
+}
+
+fn parse_top_ports(top: &Value) -> Result<Vec<SynthesisTopPortV1>, String> {
+    let Some(ports) = top.get("ports").and_then(Value::as_object) else {
+        return Ok(Vec::new());
+    };
+
+    ports
+        .iter()
+        .map(|(name, port)| {
+            let direction = port
+                .get("direction")
+                .and_then(Value::as_str)
+                .ok_or_else(|| format!("Port '{}' is missing direction metadata", name))?;
+            let width = build_yosys_port_width(port);
+
+            let normalized_direction = match direction {
+                "input" => "input",
+                "output" => "output",
+                "inout" => "inout",
+                other => {
+                    return Err(format!(
+                        "Port '{}' uses unsupported Yosys direction '{}'",
+                        name, other
+                    ))
+                }
+            };
+
+            Ok(SynthesisTopPortV1 {
+                name: name.clone(),
+                direction: normalized_direction.to_string(),
+                width,
+            })
+        })
+        .collect()
+}
+
+fn build_yosys_port_width(port: &Value) -> String {
+    let bit_count = port
+        .get("bits")
+        .and_then(Value::as_array)
+        .map(|bits| bits.len())
+        .unwrap_or(0);
+    if bit_count <= 1 {
+        return String::new();
+    }
+
+    let offset = port.get("offset").and_then(Value::as_i64).unwrap_or(0);
+    let upto = port.get("upto").and_then(Value::as_u64).unwrap_or(0) == 1;
+    let span = bit_count as i64 - 1;
+    let left = if upto { offset } else { offset + span };
+    let right = if upto { offset + span } else { offset };
+
+    format!("[{}:{}]", left, right)
 }
 
 fn is_sequential_cell_type(cell_type: &str) -> bool {
@@ -660,6 +728,15 @@ endmodule
 
         assert!(report.success, "{}", report.log);
         assert!(report.stats.cell_count > 0);
+        assert_eq!(report.top_ports.len(), 4);
+        assert!(report
+            .top_ports
+            .iter()
+            .any(|port| port.name == "clk" && port.direction == "input" && port.width.is_empty()));
+        assert!(report
+            .top_ports
+            .iter()
+            .any(|port| port.name == "led" && port.direction == "output"));
         assert!(
             report
                 .stats
@@ -681,13 +758,25 @@ endmodule
     }
 
     #[test]
-    fn parse_netlist_stats_filters_internal_yosys_cells() {
+    fn parse_synthesized_netlist_filters_internal_yosys_cells_and_extracts_ports() {
         let generated_at_ms = now_millis().unwrap();
         let workdir = create_workdir(generated_at_ms).unwrap();
         let netlist_path = workdir.join("netlist.json");
         let netlist = json!({
             "modules": {
                 "top": {
+                    "ports": {
+                        "clk": {
+                            "direction": "input",
+                            "bits": [2]
+                        },
+                        "led": {
+                            "direction": "output",
+                            "bits": [3, 4, 5, 6],
+                            "offset": 0,
+                            "upto": 0
+                        }
+                    },
                     "netnames": {},
                     "memories": {},
                     "cells": {
@@ -700,15 +789,20 @@ endmodule
         });
 
         fs::write(&netlist_path, serde_json::to_vec(&netlist).unwrap()).unwrap();
-        let stats = parse_netlist_stats(&netlist_path, "top").unwrap();
+        let parsed = parse_synthesized_netlist(&netlist_path, "top").unwrap();
         let _ = fs::remove_dir_all(&workdir);
 
-        assert_eq!(stats.cell_count, 2);
-        assert_eq!(stats.sequential_cell_count, 1);
-        assert_eq!(stats.cell_type_counts.len(), 2);
-        assert!(stats
+        assert_eq!(parsed.stats.cell_count, 2);
+        assert_eq!(parsed.stats.sequential_cell_count, 1);
+        assert_eq!(parsed.stats.cell_type_counts.len(), 2);
+        assert!(parsed
+            .stats
             .cell_type_counts
             .iter()
             .all(|entry| !entry.cell_type.starts_with('$')));
+        assert_eq!(parsed.top_ports.len(), 2);
+        assert_eq!(parsed.top_ports[0].name, "clk");
+        assert_eq!(parsed.top_ports[1].name, "led");
+        assert_eq!(parsed.top_ports[1].width, "[3:0]");
     }
 }

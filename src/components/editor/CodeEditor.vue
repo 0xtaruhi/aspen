@@ -139,5 +139,8 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div ref="container" class="w-full h-full overflow-hidden border-r border-border"></div>
+  <div
+    ref="container"
+    class="allow-text-select w-full h-full overflow-hidden border-r border-border"
+  ></div>
 </template>

@@ -343,6 +343,7 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
       title: translate('keypad'),
       isOn: device.state.is_on,
       interactive: true,
+      variant: 'keypad',
     }),
     emitsToggle: true,
     capabilities: {
@@ -358,6 +359,7 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
       title: translate('smallKeypad'),
       isOn: device.state.is_on,
       interactive: true,
+      variant: 'small_keypad',
     }),
     emitsToggle: true,
     capabilities: {
@@ -373,6 +375,7 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
       title: translate('rotaryButton'),
       isOn: device.state.is_on,
       interactive: true,
+      variant: 'rotary_button',
     }),
     emitsToggle: true,
     capabilities: {
@@ -388,6 +391,7 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
       title: translate('ps2Keyboard'),
       isOn: device.state.is_on,
       interactive: true,
+      variant: 'ps2_keyboard',
     }),
     emitsToggle: true,
     capabilities: {
@@ -402,6 +406,7 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
     toRendererProps: (device) => ({
       title: translate('textLcd'),
       isOn: device.state.is_on,
+      variant: 'text_lcd',
     }),
     emitsToggle: false,
     capabilities: {
@@ -416,6 +421,7 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
     toRendererProps: (device) => ({
       title: translate('graphicLcd'),
       isOn: device.state.is_on,
+      variant: 'graphic_lcd',
     }),
     emitsToggle: false,
     capabilities: {

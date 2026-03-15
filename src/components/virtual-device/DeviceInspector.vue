@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { VerilogPort } from '@/lib/verilog-parser'
 import type { CanvasDeviceSnapshot } from '@/lib/hardware-client'
+import type { SignalCatalogEntry } from '@/stores/signal-catalog'
 
 import { computed, ref, watch } from 'vue'
 import { CheckCircle2, Link2, Trash2, Unplug, X } from 'lucide-vue-next'
@@ -52,6 +52,7 @@ const SEGMENT_DIGITS_MAX = 16
 const matrixRowsInput = ref('')
 const matrixColumnsInput = ref('')
 const segmentDigitsInput = ref('')
+const deviceNameInput = ref('')
 const { t } = useI18n()
 
 const capabilityLabel = computed(() => {
@@ -73,7 +74,7 @@ const capabilityLabel = computed(() => {
   return t('bidirectionalDevice')
 })
 
-const compatibleSignals = computed<readonly VerilogPort[]>(() => {
+const compatibleSignals = computed<readonly SignalCatalogEntry[]>(() => {
   if (!props.device) {
     return []
   }
@@ -180,6 +181,24 @@ watch(
       return null
     }
 
+    return {
+      id: device.id,
+      label: device.label,
+    }
+  },
+  (nextDeviceState) => {
+    deviceNameInput.value = nextDeviceState?.label ?? ''
+  },
+  { immediate: true },
+)
+
+watch(
+  () => {
+    const device = props.device
+    if (!device) {
+      return null
+    }
+
     const dimensions = getCanvasMatrixDimensions(device)
     return {
       id: device.id,
@@ -256,7 +275,7 @@ function clearBinding() {
   void hardwareStore.bindCanvasSignal(props.device.id, null)
 }
 
-function formatSignalDirection(direction: VerilogPort['direction']) {
+function formatSignalDirection(direction: SignalCatalogEntry['direction']) {
   switch (direction) {
     case 'input':
       return t('inputDirection')
@@ -285,6 +304,25 @@ function normalizeSegmentDigitInput(rawValue: string, fallback: number) {
   }
 
   return Math.min(SEGMENT_DIGITS_MAX, Math.max(SEGMENT_DIGITS_MIN, parsed))
+}
+
+async function commitDeviceName() {
+  if (!props.device) {
+    return
+  }
+
+  const nextLabel = deviceNameInput.value.trim()
+  const resolvedLabel = nextLabel.length > 0 ? nextLabel : props.device.label
+  deviceNameInput.value = resolvedLabel
+
+  if (resolvedLabel === props.device.label) {
+    return
+  }
+
+  await hardwareStore.upsertCanvasDevice({
+    ...props.device,
+    label: resolvedLabel,
+  })
 }
 
 async function commitMatrixDimensions() {
@@ -419,6 +457,21 @@ async function removeDevice() {
 
         <Separator class="my-5" />
 
+        <section class="space-y-3">
+          <div>
+            <p class="text-sm font-medium">{{ t('name') }}</p>
+          </div>
+
+          <Input
+            v-model="deviceNameInput"
+            :placeholder="t('name')"
+            @blur="commitDeviceName"
+            @keydown.enter.prevent="commitDeviceName"
+          />
+        </section>
+
+        <Separator class="my-5" />
+
         <section v-if="isSegmentDisplayDevice && segmentDisplayConfig" class="space-y-3">
           <div>
             <p class="text-sm font-medium">{{ t('digits') }}</p>
@@ -523,7 +576,7 @@ async function removeDevice() {
                     :value="signal.name"
                   >
                     <div class="flex w-full items-center gap-2">
-                      <span class="font-mono text-xs">{{ signal.name }}</span>
+                      <span class="font-mono text-xs">{{ signal.bindingLabel }}</span>
                       <span
                         class="ml-auto text-[11px] uppercase tracking-wide text-muted-foreground"
                       >
@@ -548,7 +601,7 @@ async function removeDevice() {
                 :value="signal.name"
               >
                 <div class="flex w-full items-center gap-2">
-                  <span class="font-mono text-xs">{{ signal.name }}</span>
+                  <span class="font-mono text-xs">{{ signal.bindingLabel }}</span>
                   <span class="ml-auto text-[11px] uppercase tracking-wide text-muted-foreground">
                     {{ formatSignalDirection(signal.direction) }}
                   </span>

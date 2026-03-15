@@ -125,6 +125,12 @@ async function removeCanvasDevice(id: string) {
   })
 }
 
+async function clearCanvasDevices() {
+  return dispatch({
+    type: 'clear_canvas_devices',
+  })
+}
+
 async function setCanvasDevicePosition(id: string, x: number, y: number) {
   return dispatch({
     type: 'set_canvas_device_position',
@@ -274,6 +280,7 @@ export const hardwareStore = {
   programBitstream,
   upsertCanvasDevice,
   removeCanvasDevice,
+  clearCanvasDevices,
   setCanvasDevicePosition,
   bindCanvasSignal,
   bindCanvasSignalSlot,

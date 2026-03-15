@@ -335,6 +335,7 @@ pub enum HardwareActionV1 {
     RemoveCanvasDevice {
         id: String,
     },
+    ClearCanvasDevices,
     SetCanvasDevicePosition {
         id: String,
         x: f64,
@@ -402,6 +403,13 @@ pub struct SynthesisStatsV1 {
     pub cell_type_counts: Vec<SynthesisCellTypeCountV1>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct SynthesisTopPortV1 {
+    pub name: String,
+    pub direction: String,
+    pub width: String,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SynthesisReportV1 {
     pub version: u8,
@@ -415,6 +423,7 @@ pub struct SynthesisReportV1 {
     pub errors: u32,
     pub log: String,
     pub stats: SynthesisStatsV1,
+    pub top_ports: Vec<SynthesisTopPortV1>,
     pub generated_at_ms: u64,
 }
 

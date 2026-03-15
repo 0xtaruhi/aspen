@@ -30,6 +30,12 @@ export default defineConfig({
       },
       {
         test: {
+          name: 'lib',
+          include: ['src/lib/**/*.{test,spec}.{ts,tsx}'],
+        },
+      },
+      {
+        test: {
           name: 'virtual-device',
           include: [
             'src/**/virtual-device/**/*.{test,spec}.{ts,tsx}',

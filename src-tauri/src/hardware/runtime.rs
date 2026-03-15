@@ -348,6 +348,9 @@ impl HardwareRuntime {
                     state.canvas_devices.retain(|item| item.id != id);
                 })
             }
+            HardwareActionV1::ClearCanvasDevices => self.apply_state_update(app, reason, |state| {
+                state.canvas_devices.clear();
+            }),
             HardwareActionV1::SetCanvasDevicePosition { id, x, y } => {
                 self.apply_state_update(app, reason, |state| {
                     if let Some(device) = state.canvas_devices.iter_mut().find(|item| item.id == id)

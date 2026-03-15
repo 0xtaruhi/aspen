@@ -132,6 +132,18 @@ function openDeviceSettings(id: string) {
   emit('open-settings', id)
 }
 
+async function renameDevice(id: string, label: string) {
+  const device = devices.value.find((candidate) => candidate.id === id)
+  if (!device || device.label === label) {
+    return
+  }
+
+  await hardwareStore.upsertCanvasDevice({
+    ...device,
+    label,
+  })
+}
+
 function removeDevice(id: string) {
   clearSnapAnimation(id)
   delete animatingDeviceIds.value[id]
@@ -424,6 +436,7 @@ onMounted(() => {
         @drag-end="(id, x, y) => finishDeviceDrag(id, x, y)"
         @open-settings="openDeviceSettings"
         @delete="removeDevice"
+        @rename="renameDevice"
       >
         <component
           :is="deviceRendererByType[device.type]"

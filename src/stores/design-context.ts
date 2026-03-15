@@ -2,6 +2,7 @@ import type { VerilogPort } from '../lib/verilog-parser'
 
 import { computed } from 'vue'
 
+import { extractVerilogModuleNames } from '../lib/verilog-modules'
 import { parseVerilogPorts } from '../lib/verilog-parser'
 import { projectStore } from './project'
 
@@ -97,13 +98,17 @@ const hardwareSources = computed(() => {
 })
 
 const moduleNames = computed(() => {
-  return Array.from(
-    sourceCode.value.matchAll(/\bmodule\s+([A-Za-z_][A-Za-z0-9_]*)/g),
-    (match: RegExpMatchArray) => match[1],
-  )
+  return extractVerilogModuleNames(sourceCode.value)
 })
 
-const primaryModule = computed(() => moduleNames.value[0] || 'top')
+const primaryModule = computed(() => {
+  const explicitTopModule = projectStore.topModuleName.trim()
+  if (explicitTopModule && moduleNames.value.includes(explicitTopModule)) {
+    return explicitTopModule
+  }
+
+  return moduleNames.value[0] || 'top'
+})
 
 const codeLines = computed(() => {
   return sourceCode.value

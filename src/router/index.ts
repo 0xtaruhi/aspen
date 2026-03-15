@@ -11,6 +11,7 @@ export type Page =
   | 'project-editor'
   | 'project-dashboard'
   | 'synthesis'
+  | 'pin-planning'
   | 'implementation'
   | 'hardware'
   | 'virtual-device'
@@ -22,6 +23,7 @@ export type AppRouteName =
   | 'project-management-dashboard'
   | 'fpga-flow'
   | 'fpga-flow-synthesis'
+  | 'fpga-flow-pin-planning'
   | 'fpga-flow-implementation'
   | 'hardware-manager'
   | 'virtual-device-platform'
@@ -41,6 +43,7 @@ export const routeLabelMap: Record<AppRouteName, string> = {
   'project-management-dashboard': 'Dashboard',
   'fpga-flow': 'Synthesis',
   'fpga-flow-synthesis': 'Synthesis',
+  'fpga-flow-pin-planning': 'Pin Planning',
   'fpga-flow-implementation': 'Implementation',
   'hardware-manager': 'Hardware Manager',
   'virtual-device-platform': 'Workbench',
@@ -53,6 +56,7 @@ export const routeModuleMap: Record<AppRouteName, AppModule> = {
   'project-management-dashboard': 'project-management',
   'fpga-flow': 'fpga-flow',
   'fpga-flow-synthesis': 'fpga-flow',
+  'fpga-flow-pin-planning': 'fpga-flow',
   'fpga-flow-implementation': 'fpga-flow',
   'hardware-manager': 'hardware-manager',
   'virtual-device-platform': 'virtual-device-platform',
@@ -65,6 +69,7 @@ export const routePageMap: Partial<Record<AppRouteName, Page>> = {
   'project-management-dashboard': 'project-dashboard',
   'fpga-flow': 'synthesis',
   'fpga-flow-synthesis': 'synthesis',
+  'fpga-flow-pin-planning': 'pin-planning',
   'fpga-flow-implementation': 'implementation',
   'hardware-manager': 'hardware',
   'virtual-device-platform': 'virtual-device',
@@ -75,6 +80,7 @@ export const pageRouteNameMap: Record<Page, AppRouteName> = {
   'project-editor': 'project-management-editor',
   'project-dashboard': 'project-management-dashboard',
   synthesis: 'fpga-flow-synthesis',
+  'pin-planning': 'fpga-flow-pin-planning',
   implementation: 'fpga-flow-implementation',
   hardware: 'hardware-manager',
   'virtual-device': 'virtual-device-platform',
@@ -126,6 +132,11 @@ const routes: RouteRecordRaw[] = [
     path: '/fpga-flow/synthesis',
     name: 'fpga-flow-synthesis',
     component: () => import('@/components/pages/Synthesis.vue'),
+  },
+  {
+    path: '/fpga-flow/pin-planning',
+    name: 'fpga-flow-pin-planning',
+    component: () => import('@/components/pages/PinPlanning.vue'),
   },
   {
     path: '/fpga-flow/implementation',

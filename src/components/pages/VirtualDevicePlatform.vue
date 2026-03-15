@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { LayoutGrid, Play, Square } from 'lucide-vue-next'
+import { LayoutGrid, Play, Square, Trash2 } from 'lucide-vue-next'
 
 import DeviceCanvas from '@/components/canvas/DeviceCanvas.vue'
 import ComponentGallery from '@/components/ComponentGallery.vue'
@@ -9,7 +9,9 @@ import DeviceInspector from '@/components/virtual-device/DeviceInspector.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { confirmAction } from '@/lib/confirm-action'
 import { useI18n } from '@/lib/i18n'
+import { designContextStore } from '@/stores/design-context'
 import { hardwareStore } from '@/stores/hardware'
 import { signalCatalogStore } from '@/stores/signal-catalog'
 
@@ -30,12 +32,19 @@ let displayedHzTimer: ReturnType<typeof setInterval> | null = null
 const { t } = useI18n()
 
 const availableSignalCount = computed(() => signalCatalogStore.signals.value.length)
+const hasAnySynthesisSignals = computed(() =>
+  Boolean(signalCatalogStore.latestSynthesisReport.value),
+)
+const hasAuthoritativeSignals = computed(() =>
+  Boolean(signalCatalogStore.currentSynthesisReport.value),
+)
 const streamSignalNames = computed(() => {
   return signalCatalogStore.signals.value.slice(0, STREAM_SIGNAL_LIMIT).map((signal) => signal.name)
 })
 const streamSignalOverflow = computed(() => {
   return Math.max(0, availableSignalCount.value - streamSignalNames.value.length)
 })
+const hasCanvasDevices = computed(() => hardwareStore.state.value.canvas_devices.length > 0)
 const streamStatus = computed(() => hardwareStore.dataStreamStatus.value)
 const streamRunning = computed(() => streamStatus.value.running)
 const canApplyRate = computed(() => streamRunning.value && !streamBusy.value)
@@ -181,6 +190,33 @@ async function stopStream() {
   }
 }
 
+async function clearCanvas() {
+  if (!hasCanvasDevices.value) {
+    return
+  }
+
+  if (
+    !(await confirmAction(t('clearCanvasConfirm'), {
+      title: t('clearCanvasTitle'),
+    }))
+  ) {
+    return
+  }
+
+  streamBusy.value = true
+  streamMessage.value = ''
+
+  try {
+    inspectorOpen.value = false
+    selectedDeviceId.value = null
+    await hardwareStore.clearCanvasDevices()
+  } catch (err) {
+    streamMessage.value = getErrorMessage(err)
+  } finally {
+    streamBusy.value = false
+  }
+}
+
 watch(selectedDevice, (device) => {
   if (!device) {
     inspectorOpen.value = false
@@ -270,6 +306,17 @@ onBeforeUnmount(() => {
       <Badge variant="outline">{{ actualHzLabel }}</Badge>
 
       <div class="ml-auto flex items-center gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          class="gap-2 text-destructive hover:text-destructive"
+          :disabled="streamBusy || !hasCanvasDevices"
+          @click="clearCanvas"
+        >
+          <Trash2 class="h-4 w-4" />
+          {{ t('clearCanvas') }}
+        </Button>
         <div class="flex items-center gap-2 rounded-md border border-border bg-background px-2">
           <span class="text-xs text-muted-foreground">Hz</span>
           <Input
@@ -306,7 +353,13 @@ onBeforeUnmount(() => {
     </div>
 
     <div
-      v-if="streamMessage || streamStatus.last_error || streamSignalOverflow > 0"
+      v-if="
+        streamMessage ||
+        streamStatus.last_error ||
+        streamSignalOverflow > 0 ||
+        (designContextStore.selectedSource.value && !hasAnySynthesisSignals) ||
+        (hasAnySynthesisSignals && !hasAuthoritativeSignals)
+      "
       class="border-b border-border bg-background px-4 py-2 text-xs text-muted-foreground"
     >
       <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -318,6 +371,15 @@ onBeforeUnmount(() => {
         </span>
         <span v-if="streamSignalOverflow > 0" class="text-amber-600">
           {{ t('streamOverflowWarning', { count: streamSignalOverflow }) }}
+        </span>
+        <span
+          v-if="designContextStore.selectedSource.value && !hasAnySynthesisSignals"
+          class="text-amber-600"
+        >
+          {{ t('workbenchRequiresSynthesisDescription') }}
+        </span>
+        <span v-else-if="hasAnySynthesisSignals && !hasAuthoritativeSignals" class="text-amber-600">
+          {{ t('workbenchSynthesisOutdatedDescription') }}
         </span>
       </div>
     </div>

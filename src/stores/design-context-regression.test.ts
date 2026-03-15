@@ -19,4 +19,39 @@ describe('design context selection regression', () => {
     expect(projectStore.topFileId).toBe('1')
     expect(projectStore.activeFileId).toBe(helperFileId)
   })
+
+  it('prefers the explicit project top module over the first module in the file', () => {
+    projectStore.createNewProject('TopModuleProject', 'empty')
+    projectStore.files = [
+      {
+        id: 'root',
+        name: 'TopModuleProject',
+        type: 'folder',
+        isOpen: true,
+        children: [
+          {
+            id: 'top-file',
+            name: 'top.v',
+            type: 'file',
+            content: `module helper(input wire a, output wire y);
+  assign y = a;
+endmodule
+
+module actual_top(input wire clk, output wire led);
+  assign led = clk;
+endmodule`,
+          },
+        ],
+      },
+    ]
+    projectStore.topFileId = 'top-file'
+    projectStore.activeFileId = 'top-file'
+    projectStore.selectedNodeId = 'top-file'
+
+    expect(designContextStore.primaryModule.value).toBe('helper')
+
+    projectStore.setTopModuleName('actual_top')
+
+    expect(designContextStore.primaryModule.value).toBe('actual_top')
+  })
 })
