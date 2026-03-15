@@ -12,6 +12,23 @@ vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn().mockRejectedValue(tauriUnavailableError),
 }))
 
+vi.mock('@/lib/project-io', () => ({
+  saveProjectToCurrentPath: vi.fn().mockResolvedValue(false),
+}))
+
+vi.mock('@/lib/i18n', () => ({
+  translate: vi.fn((key: string, params?: Record<string, string>) => {
+    if (!params) {
+      return key
+    }
+
+    return Object.entries(params).reduce(
+      (message, [name, value]) => message.replace(`{${name}}`, value),
+      key,
+    )
+  }),
+}))
+
 vi.mock('@/lib/hardware-client', async () => {
   const actual =
     await vi.importActual<typeof import('@/lib/hardware-client')>('@/lib/hardware-client')

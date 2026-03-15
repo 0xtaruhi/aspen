@@ -9,6 +9,8 @@ import type {
 
 import { computed, readonly, ref, watch } from 'vue'
 
+import { saveProjectToCurrentPath } from '@/lib/project-io'
+import { translate } from '@/lib/i18n'
 import {
   configureDataStream as configureRuntimeDataStream,
   dispatch as dispatchRuntimeAction,
@@ -106,6 +108,13 @@ async function runSynthesis(request: SynthesisRequestV1): Promise<SynthesisRepor
       signature: requestSignature,
       report,
     })
+    try {
+      await saveProjectToCurrentPath({ silent: true })
+    } catch (err) {
+      synthesisMessage.value = translate('autoSaveProjectFailed', {
+        message: getErrorMessage(err),
+      })
+    }
     return report
   } catch (err) {
     synthesisMessage.value = getErrorMessage(err)

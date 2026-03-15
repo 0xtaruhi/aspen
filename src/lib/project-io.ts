@@ -241,13 +241,7 @@ export async function saveProject() {
   const serialized = serializeProject()
 
   try {
-    if (projectStore.projectPath) {
-      await invoke('write_project_file', {
-        path: projectStore.projectPath,
-        content: serialized,
-      })
-      projectStore.markSaved(projectStore.projectPath)
-      recentProjectsStore.rememberProject(projectStore.projectPath, projectStore.toSnapshot().name)
+    if (await saveProjectToCurrentPath({ silent: false })) {
       return true
     }
 
@@ -262,5 +256,33 @@ export async function saveProject() {
 
     window.alert(translate('saveProjectFailed', { message: getErrorMessage(err) }))
     return false
+  }
+}
+
+export async function saveProjectToCurrentPath(options: { silent?: boolean } = {}) {
+  if (!projectStore.hasProject || !projectStore.projectPath) {
+    return false
+  }
+
+  const serialized = serializeProject()
+
+  try {
+    await invoke('write_project_file', {
+      path: projectStore.projectPath,
+      content: serialized,
+    })
+    projectStore.markSaved(projectStore.projectPath)
+    recentProjectsStore.rememberProject(projectStore.projectPath, projectStore.toSnapshot().name)
+    return true
+  } catch (err) {
+    if (isTauriUnavailable(err)) {
+      return false
+    }
+
+    if (!options.silent) {
+      window.alert(translate('saveProjectFailed', { message: getErrorMessage(err) }))
+    }
+
+    throw err
   }
 }
