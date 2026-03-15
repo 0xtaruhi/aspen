@@ -2,12 +2,12 @@ import type {
   CanvasDeviceSnapshot,
   HardwareActionV1,
   HardwareStateV1,
-  SynthesisLogChunkV1,
   SynthesisReportV1,
+  SynthesisLogChunkV1,
   SynthesisRequestV1,
 } from '@/lib/hardware-client'
 
-import { computed, readonly, ref } from 'vue'
+import { computed, readonly, ref, watch } from 'vue'
 
 import {
   configureDataStream as configureRuntimeDataStream,
@@ -25,6 +25,7 @@ import {
 import { listenHardwareSynthesisLog, runHardwareSynthesis } from '@/lib/hardware-client'
 import { appendSynthesisLogChunk } from '../lib/synthesis-log'
 import { buildSynthesisInputSignature } from '../lib/synthesis-request-signature'
+import { projectStore, type ProjectSynthesisCacheSnapshot } from './project'
 import { virtualDeviceStore } from './virtual-device'
 
 const state = computed<HardwareStateV1>(() => {
@@ -95,8 +96,16 @@ async function runSynthesis(request: SynthesisRequestV1): Promise<SynthesisRepor
   const requestSignature = buildSynthesisInputSignature(request.top_module, request.files)
   try {
     const report = await runHardwareSynthesis(request)
-    synthesisReport.value = report
-    synthesisReportSignature.value = requestSignature
+    applyPersistedSynthesisState({
+      version: 1,
+      signature: requestSignature,
+      report,
+    })
+    projectStore.setSynthesisCache({
+      version: 1,
+      signature: requestSignature,
+      report,
+    })
     return report
   } catch (err) {
     synthesisMessage.value = getErrorMessage(err)
@@ -219,6 +228,15 @@ function onSynthesisLogChunk(chunk: SynthesisLogChunkV1) {
   )
 }
 
+function applyPersistedSynthesisState(snapshot: ProjectSynthesisCacheSnapshot | null) {
+  synthesisRunning.value = false
+  synthesisOperationId.value = null
+  synthesisMessage.value = ''
+  synthesisLiveLog.value = ''
+  synthesisReport.value = snapshot?.report ?? null
+  synthesisReportSignature.value = snapshot?.signature ?? null
+}
+
 async function ensureSynthesisLogListener() {
   if (unlistenSynthesisLog) {
     return
@@ -246,12 +264,17 @@ async function ensureSynthesisLogListener() {
 }
 
 function resetSynthesisState() {
-  synthesisOperationId.value = null
-  synthesisLiveLog.value = ''
-  synthesisReport.value = null
-  synthesisReportSignature.value = null
-  synthesisMessage.value = ''
+  applyPersistedSynthesisState(null)
+  projectStore.setSynthesisCache(null)
 }
+
+watch(
+  () => projectStore.synthesisCache,
+  (snapshot) => {
+    applyPersistedSynthesisState(snapshot)
+  },
+  { immediate: true },
+)
 
 export const hardwareStore = {
   state,

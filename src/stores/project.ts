@@ -1,3 +1,5 @@
+import type { SynthesisReportV1 } from '@/lib/hardware-client'
+
 import { reactive } from 'vue'
 
 import {
@@ -39,6 +41,13 @@ export type ProjectSnapshot = {
   targetDeviceId: FpgaDeviceId
   targetBoardId: FpgaBoardId
   pinConstraints: ProjectConstraintSnapshot
+  synthesisCache: ProjectSynthesisCacheSnapshot | null
+}
+
+export type ProjectSynthesisCacheSnapshot = {
+  version: 1
+  signature: string
+  report: SynthesisReportV1
 }
 
 type FileSignatureMap = Record<string, string>
@@ -52,6 +61,20 @@ function cloneProjectNodes(nodes: ProjectNode[]): ProjectNode[] {
     isOpen: node.isOpen,
     children: node.children ? cloneProjectNodes(node.children) : undefined,
   }))
+}
+
+function cloneProjectSynthesisCacheSnapshot(
+  snapshot: ProjectSynthesisCacheSnapshot | null,
+): ProjectSynthesisCacheSnapshot | null {
+  if (!snapshot) {
+    return null
+  }
+
+  return {
+    version: 1,
+    signature: snapshot.signature,
+    report: JSON.parse(JSON.stringify(snapshot.report)) as SynthesisReportV1,
+  }
 }
 
 function createFileSignature(node: ProjectNode): string {
@@ -168,6 +191,54 @@ function isProjectNode(value: unknown): value is ProjectNode {
   return true
 }
 
+function isSynthesisReport(value: unknown): value is SynthesisReportV1 {
+  if (!isRecord(value)) {
+    return false
+  }
+
+  if (
+    value.version !== 1 ||
+    typeof value.op_id !== 'string' ||
+    typeof value.success !== 'boolean' ||
+    typeof value.top_module !== 'string' ||
+    typeof value.source_count !== 'number' ||
+    typeof value.tool_path !== 'string' ||
+    typeof value.elapsed_ms !== 'number' ||
+    typeof value.warnings !== 'number' ||
+    typeof value.errors !== 'number' ||
+    typeof value.log !== 'string' ||
+    !isRecord(value.stats) ||
+    !Array.isArray(value.top_ports) ||
+    typeof value.generated_at_ms !== 'number'
+  ) {
+    return false
+  }
+
+  return true
+}
+
+function normalizeProjectSynthesisCacheSnapshot(
+  value: unknown,
+): ProjectSynthesisCacheSnapshot | null {
+  if (!isRecord(value)) {
+    return null
+  }
+
+  if (
+    value.version !== 1 ||
+    typeof value.signature !== 'string' ||
+    !isSynthesisReport(value.report)
+  ) {
+    return null
+  }
+
+  return cloneProjectSynthesisCacheSnapshot({
+    version: 1,
+    signature: value.signature,
+    report: value.report,
+  })
+}
+
 function normalizeSnapshot(value: unknown): ProjectSnapshot {
   if (!isRecord(value)) {
     throw new Error('Invalid project file format')
@@ -208,6 +279,7 @@ function normalizeSnapshot(value: unknown): ProjectSnapshot {
       getDefaultFpgaBoardIdForDevice(normalizedTargetDeviceId),
     ),
     pinConstraints: normalizeProjectConstraintSnapshot(value.pinConstraints, resolvedTopFileId),
+    synthesisCache: normalizeProjectSynthesisCacheSnapshot(value.synthesisCache),
   }
 }
 
@@ -221,6 +293,7 @@ export const projectStore = reactive({
   targetDeviceId: defaultFpgaDeviceId,
   targetBoardId: defaultFpgaBoardId,
   pinConstraints: emptyProjectConstraintSnapshot(),
+  synthesisCache: null as ProjectSynthesisCacheSnapshot | null,
   projectPath: null as string | null,
   savedSnapshotJson: '' as string,
   savedFileSignatures: {} as FileSignatureMap,
@@ -295,6 +368,7 @@ export const projectStore = reactive({
       targetDeviceId: this.targetDeviceId,
       targetBoardId: this.targetBoardId,
       pinConstraints: cloneProjectConstraintSnapshot(this.pinConstraints),
+      synthesisCache: cloneProjectSynthesisCacheSnapshot(this.synthesisCache),
     }
   },
 
@@ -316,6 +390,7 @@ export const projectStore = reactive({
     this.targetDeviceId = parsed.targetDeviceId
     this.targetBoardId = parsed.targetBoardId
     this.pinConstraints = cloneProjectConstraintSnapshot(parsed.pinConstraints)
+    this.synthesisCache = cloneProjectSynthesisCacheSnapshot(parsed.synthesisCache)
     this.markSaved(options.projectPath ?? null)
   },
 
@@ -403,6 +478,10 @@ export const projectStore = reactive({
 
   clearPinConstraints(topFileId?: string) {
     this.replacePinConstraints(topFileId ?? this.topFileId, [])
+  },
+
+  setSynthesisCache(snapshot: ProjectSynthesisCacheSnapshot | null) {
+    this.synthesisCache = cloneProjectSynthesisCacheSnapshot(snapshot)
   },
 
   markSaved(projectPath?: string | null) {
@@ -630,6 +709,7 @@ endmodule`,
       topFileId: this.topFileId,
       assignments: [],
     }
+    this.synthesisCache = null
     this.markSaved(null)
   },
 
@@ -642,6 +722,7 @@ endmodule`,
     this.targetDeviceId = defaultFpgaDeviceId
     this.targetBoardId = defaultFpgaBoardId
     this.pinConstraints = emptyProjectConstraintSnapshot()
+    this.synthesisCache = null
     this.markSaved(null)
   },
 })

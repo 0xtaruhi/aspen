@@ -105,4 +105,47 @@ describe('project save-state regression', () => {
     expect(projectStore.targetDeviceId).toBe(defaultFpgaDeviceId)
     expect(projectStore.topModuleName).toBe('')
   })
+
+  it('persists synthesis cache snapshots with the project', () => {
+    projectStore.createNewProject('SynthProject', 'blinky')
+    projectStore.setSynthesisCache({
+      version: 1,
+      signature: 'sig-123',
+      report: {
+        version: 1,
+        op_id: 'op-1',
+        success: true,
+        top_module: 'blinky',
+        source_count: 1,
+        tool_path: '/tmp/yosys',
+        elapsed_ms: 123,
+        warnings: 0,
+        errors: 0,
+        log: 'ok',
+        stats: {
+          wire_count: 1,
+          wire_bits: 1,
+          public_wire_count: 1,
+          public_wire_bits: 1,
+          memory_count: 0,
+          memory_bits: 0,
+          cell_count: 1,
+          sequential_cell_count: 1,
+          cell_type_counts: [{ cell_type: 'DFFRHQ', count: 1 }],
+        },
+        top_ports: [{ name: 'clk', direction: 'input', width: '1' }],
+        generated_at_ms: 123,
+      },
+    })
+
+    const snapshot = projectStore.toSnapshot()
+    expect(snapshot.synthesisCache?.signature).toBe('sig-123')
+    expect(snapshot.synthesisCache?.report.top_module).toBe('blinky')
+
+    projectStore.loadFromSnapshot(snapshot)
+
+    expect(projectStore.synthesisCache?.signature).toBe('sig-123')
+    expect(projectStore.synthesisCache?.report.top_module).toBe('blinky')
+    expect(projectStore.synthesisCache?.report.stats.cell_count).toBe(1)
+  })
 })
