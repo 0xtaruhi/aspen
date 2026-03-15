@@ -1,4 +1,10 @@
-import type { CanvasDeviceSnapshot, HardwareActionV1, HardwareStateV1 } from '@/lib/hardware-client'
+import type {
+  CanvasDeviceSnapshot,
+  HardwareActionV1,
+  HardwareStateV1,
+  SynthesisReportV1,
+  SynthesisRequestV1,
+} from '@/lib/hardware-client'
 
 import { computed } from 'vue'
 
@@ -15,6 +21,7 @@ import {
   stop as stopRuntime,
   syncState as syncRuntimeState,
 } from './hardware-runtime'
+import { runHardwareSynthesis } from '@/lib/hardware-client'
 import { virtualDeviceStore } from './virtual-device'
 
 const state = computed<HardwareStateV1>(() => {
@@ -74,6 +81,10 @@ async function programBitstream(bitstreamPath?: string | null) {
     type: 'program_bitstream',
     bitstream_path: bitstreamPath ?? null,
   })
+}
+
+async function runSynthesis(request: SynthesisRequestV1): Promise<SynthesisReportV1> {
+  return runHardwareSynthesis(request)
 }
 
 async function clearError() {
@@ -178,6 +189,7 @@ export const hardwareStore = {
   probe,
   dispatch,
   syncState,
+  runSynthesis,
   generateBitstream,
   programBitstream,
   upsertCanvasDevice,

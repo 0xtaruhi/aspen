@@ -8,9 +8,13 @@ on:
   pull_request:
 
 jobs:
-  frontend:
-    name: Frontend Checks
-    runs-on: ubuntu-latest
+  checks:
+    name: Checks (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,8 +30,27 @@ jobs:
           node-version: 20
           cache: pnpm
 
+      - name: Install Linux desktop dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            curl \
+            file \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            patchelf \
+            wget
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Download bundled Yosys toolchain
+        run: pnpm prepare:yosys-bundle
 
       - name: Frontend typecheck
         run: pnpm typecheck
@@ -38,18 +61,59 @@ jobs:
       - name: Frontend vitest regression
         run: pnpm exec vitest run
 
-  rust:
-    name: Rust Checks
-    runs-on: macos-latest
+      - name: Rust fmt check
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+
+      - name: Rust test
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Rust clippy
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets
+
+  desktop-build:
+    name: Desktop Build (${{ matrix.os }})
+    needs: checks
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Rust fmt check
-        run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
 
-      - name: Rust check
-        run: cargo check --manifest-path src-tauri/Cargo.toml
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
 
-      - name: Rust test
-        run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: Install Linux desktop dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            curl \
+            file \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            patchelf \
+            wget
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download bundled Yosys resources
+        run: pnpm prepare:yosys-bundle
+
+      - name: Build Tauri desktop app
+        run: pnpm tauri build --debug --no-bundle --ci -c src-tauri/tauri.yosys.conf.json

@@ -7,6 +7,8 @@ Follow repository facts first, then these conventions.
 
 - Frontend stack: Vue 3 + TypeScript + Vite.
 - Desktop shell: Tauri v2 (Rust in `src-tauri/`).
+- FPGA synthesis: Yosys, invoked from the Tauri backend for the Synthesis page.
+- Runtime synthesis must use Aspen's bundled Yosys toolchain; do not fall back to a system `yosys` on `PATH`.
 - Package manager: pnpm.
 - Type safety baseline: strict TypeScript (`strict: true`, unused checks on).
 - UI foundation: Tailwind CSS v4 + shadcn-vue/reka-ui patterns.
@@ -28,14 +30,16 @@ Follow repository facts first, then these conventions.
 - `src/index.css`: global Tailwind/theme tokens.
 - `src-tauri/src/main.rs`: Rust binary entrypoint.
 - `src-tauri/src/lib.rs`: Tauri commands and app wiring.
+- `src-tauri/src/hardware/synthesis.rs`: Yosys runner and synthesis report generation.
 - `src-tauri/tauri.conf.json`: Tauri build/dev config.
+- `src-tauri/tauri.yosys.conf.json`: optional Tauri bundle config used when packaging Aspen with a bundled Yosys toolchain.
 
 ## Source of Truth for Commands
 
 - `package.json` scripts are primary for JS/TS workflows.
 - `src-tauri/tauri.conf.json` controls Tauri pre-dev/pre-build hooks.
 - Prettier is configured via `.prettierrc.json` and `.prettierignore`.
-- No frontend test config (`vitest.config.*`, `jest.config.*`, `playwright.config.*`) is present right now.
+- Frontend tests are configured via `vitest.config.ts`.
 
 ## Install and Run
 
@@ -43,6 +47,7 @@ Follow repository facts first, then these conventions.
 - Frontend dev server: `pnpm dev`
 - Tauri dev app: `pnpm tauri dev`
 - Frontend preview: `pnpm preview`
+- Download, prune, and bundle the official OSS CAD Suite into `src-tauri/vendor/yosys`: `pnpm prepare:yosys-bundle`
 
 ## Build, Lint, Typecheck, Test
 
@@ -52,6 +57,7 @@ Follow repository facts first, then these conventions.
 - Frontend format write: `pnpm format`
 - Frontend format check: `pnpm format:check`
 - Tauri production build: `pnpm tauri build`
+- Tauri build with bundled Yosys resources: `pnpm tauri build --no-bundle -c src-tauri/tauri.yosys.conf.json`
 - Standalone typecheck: `pnpm exec vue-tsc --noEmit`
 - Rust formatting: `cargo fmt --manifest-path src-tauri/Cargo.toml`
 - Rust tests: `cargo test --manifest-path src-tauri/Cargo.toml`
@@ -72,7 +78,7 @@ Follow repository facts first, then these conventions.
 
 Current repository status:
 
-- Frontend: no configured test runner yet, so no working frontend single-test command exists.
+- Frontend: Vitest is configured.
 - Rust: single test execution is available via Cargo.
 
 Use these when Rust tests exist:
@@ -82,8 +88,6 @@ Use these when Rust tests exist:
 - Run one Rust integration/unit target exactly:
   - `cargo test --manifest-path src-tauri/Cargo.toml module::tests::case_name`
 
-If frontend Vitest is added later, use:
-
 - Single test file: `pnpm exec vitest path/to/file.test.ts`
 - Single test by name: `pnpm exec vitest path/to/file.test.ts -t "test name"`
 
@@ -92,6 +96,7 @@ If frontend Vitest is added later, use:
 - `pnpm build`
 - `pnpm tauri build` for desktop-impacting changes
 - `cargo test --manifest-path src-tauri/Cargo.toml` when Rust code changes
+- Verify Yosys-backed synthesis if you touched `src-tauri/src/hardware/synthesis.rs`, `src/components/pages/Synthesis.vue`, or CI/toolchain packaging.
 - Manual smoke test in `pnpm dev` and `pnpm tauri dev`
 
 ## TypeScript and Vue Style

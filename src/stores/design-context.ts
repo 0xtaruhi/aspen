@@ -46,6 +46,33 @@ function findNodePathById(
   return ''
 }
 
+function collectDesignSources(
+  nodes: typeof projectStore.files,
+  parentSegments: string[] = [],
+): DesignSource[] {
+  const sources: DesignSource[] = []
+
+  for (const node of nodes) {
+    const pathSegments = [...parentSegments, node.name]
+    if (node.type === 'file') {
+      sources.push({
+        id: node.id,
+        name: node.name,
+        path: pathSegments.join('/'),
+        code: node.content || '',
+        isHardwareSource: isHardwareSourceFile(node.name),
+      })
+      continue
+    }
+
+    if (node.children) {
+      sources.push(...collectDesignSources(node.children, pathSegments))
+    }
+  }
+
+  return sources
+}
+
 const selectedSource = computed<DesignSource | null>(() => {
   const topFile = projectStore.topFile
   if (!topFile || topFile.type !== 'file') {
@@ -64,6 +91,10 @@ const selectedSource = computed<DesignSource | null>(() => {
 const sourceName = computed(() => selectedSource.value?.name ?? 'No top file selected')
 const sourcePath = computed(() => selectedSource.value?.path ?? '')
 const sourceCode = computed(() => selectedSource.value?.code ?? '')
+const projectSources = computed(() => collectDesignSources(projectStore.files))
+const hardwareSources = computed(() => {
+  return projectSources.value.filter((source) => source.isHardwareSource)
+})
 
 const moduleNames = computed(() => {
   return Array.from(
@@ -124,6 +155,8 @@ export const designContextStore = {
   sourceName,
   sourcePath,
   sourceCode,
+  projectSources,
+  hardwareSources,
   moduleNames,
   primaryModule,
   codeLines,

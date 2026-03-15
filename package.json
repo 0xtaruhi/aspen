@@ -9,6 +9,7 @@
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest",
     "test:ci": "vitest run --passWithNoTests",
+    "prepare:yosys-bundle": "node scripts/prepare-yosys-bundle.mjs",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
     "preview": "vite preview",

@@ -363,6 +363,52 @@ pub struct BitstreamGenerationResult {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SynthesisSourceFileV1 {
+    pub path: String,
+    pub content: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SynthesisRequestV1 {
+    pub top_module: String,
+    pub files: Vec<SynthesisSourceFileV1>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct SynthesisCellTypeCountV1 {
+    pub cell_type: String,
+    pub count: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct SynthesisStatsV1 {
+    pub wire_count: u64,
+    pub wire_bits: u64,
+    pub public_wire_count: u64,
+    pub public_wire_bits: u64,
+    pub memory_count: u64,
+    pub memory_bits: u64,
+    pub cell_count: u64,
+    pub sequential_cell_count: u64,
+    pub cell_type_counts: Vec<SynthesisCellTypeCountV1>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SynthesisReportV1 {
+    pub version: u8,
+    pub success: bool,
+    pub top_module: String,
+    pub source_count: u16,
+    pub tool_path: String,
+    pub elapsed_ms: u64,
+    pub warnings: u32,
+    pub errors: u32,
+    pub log: String,
+    pub stats: SynthesisStatsV1,
+    pub generated_at_ms: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct HardwareStatus {
     pub board: String,
     pub description: String,

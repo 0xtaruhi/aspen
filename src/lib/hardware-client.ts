@@ -34,6 +34,47 @@ export interface HardwareArtifactSnapshot {
   bytes: number
 }
 
+export interface SynthesisSourceFileV1 {
+  path: string
+  content: string
+}
+
+export interface SynthesisRequestV1 {
+  top_module: string
+  files: SynthesisSourceFileV1[]
+}
+
+export interface SynthesisCellTypeCountV1 {
+  cell_type: string
+  count: number
+}
+
+export interface SynthesisStatsV1 {
+  wire_count: number
+  wire_bits: number
+  public_wire_count: number
+  public_wire_bits: number
+  memory_count: number
+  memory_bits: number
+  cell_count: number
+  sequential_cell_count: number
+  cell_type_counts: SynthesisCellTypeCountV1[]
+}
+
+export interface SynthesisReportV1 {
+  version: 1
+  success: boolean
+  top_module: string
+  source_count: number
+  tool_path: string
+  elapsed_ms: number
+  warnings: number
+  errors: number
+  log: string
+  stats: SynthesisStatsV1
+  generated_at_ms: number
+}
+
 export type CanvasDeviceType =
   | 'led'
   | 'switch'
@@ -232,6 +273,12 @@ export async function hardwareGetState(): Promise<HardwareStateV1> {
 
 export async function hardwareDispatch(action: HardwareActionV1): Promise<HardwareStateV1> {
   return invoke<HardwareStateV1>('hardware_dispatch', { action })
+}
+
+export async function runHardwareSynthesis(
+  request: SynthesisRequestV1,
+): Promise<SynthesisReportV1> {
+  return invoke<SynthesisReportV1>('run_yosys_synthesis', { request })
 }
 
 export async function hardwareGetDataStreamStatus(): Promise<HardwareDataStreamStatusV1> {
