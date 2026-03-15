@@ -51,8 +51,7 @@ async function main() {
     return
   }
 
-  const release = await fetchReleaseMetadata()
-  const asset = selectAsset(release.assets)
+  const { release, asset } = await resolveReleaseAndAsset()
   const downloadDir = join(tmpdir(), `aspen-yosys-${process.pid}-${Date.now()}`)
   const archivePath = join(downloadDir, asset.name)
   const extractDir = join(downloadDir, 'extract')
@@ -109,11 +108,47 @@ function resolveTargetAssetHint() {
   )
 }
 
-async function fetchReleaseMetadata() {
-  const url = explicitVersion
-    ? `https://api.github.com/repos/${releaseRepo}/releases/tags/${encodeURIComponent(explicitVersion)}`
-    : `https://api.github.com/repos/${releaseRepo}/releases/latest`
+async function resolveReleaseAndAsset() {
+  if (explicitVersion) {
+    const release = await fetchJson(
+      `https://api.github.com/repos/${releaseRepo}/releases/tags/${encodeURIComponent(explicitVersion)}`,
+      'release metadata',
+    )
+    if (!release || !Array.isArray(release.assets)) {
+      throw new Error('OSS CAD Suite release metadata did not contain an asset list.')
+    }
 
+    return {
+      release,
+      asset: selectAsset(release.assets),
+    }
+  }
+
+  const releases = await fetchJson(
+    `https://api.github.com/repos/${releaseRepo}/releases?per_page=12`,
+    'release list',
+  )
+  if (!Array.isArray(releases)) {
+    throw new Error('OSS CAD Suite release list did not contain a valid array payload.')
+  }
+
+  for (const release of releases) {
+    if (!release || !Array.isArray(release.assets)) {
+      continue
+    }
+
+    const asset = selectAsset(release.assets, { allowMissing: true })
+    if (asset) {
+      return { release, asset }
+    }
+  }
+
+  throw new Error(
+    `No recent OSS CAD Suite release contained a '${targetAssetHint}' archive for this platform.`,
+  )
+}
+
+async function fetchJson(url, label) {
   const response = await fetch(url, {
     headers: {
       Accept: 'application/vnd.github+json',
@@ -124,30 +159,34 @@ async function fetchReleaseMetadata() {
 
   if (!response.ok) {
     throw new Error(
-      `Failed to fetch OSS CAD Suite release metadata (${response.status} ${response.statusText}).`,
+      `Failed to fetch OSS CAD Suite ${label} (${response.status} ${response.statusText}).`,
     )
   }
 
-  const json = await response.json()
-  if (!json || !Array.isArray(json.assets)) {
-    throw new Error('OSS CAD Suite release metadata did not contain an asset list.')
-  }
-
-  return json
+  return response.json()
 }
 
-function selectAsset(assets) {
+function selectAsset(assets, { allowMissing = false } = {}) {
   const normalizedHint = targetAssetHint.toLowerCase()
+  const preferredExtensions = targetAssetHint.startsWith('windows-')
+    ? ['.exe', '.zip', '.tgz']
+    : ['.tgz', '.zip']
   const candidates = assets.filter((asset) => {
     const name = String(asset.name || '').toLowerCase()
-    return name.includes(normalizedHint) && (name.endsWith('.tgz') || name.endsWith('.zip'))
+    return (
+      name.includes(normalizedHint) &&
+      preferredExtensions.some((extension) => name.endsWith(extension))
+    )
   })
 
   if (candidates.length === 0) {
+    if (allowMissing) {
+      return null
+    }
+
     throw new Error(`No OSS CAD Suite asset matched '${targetAssetHint}' in the selected release.`)
   }
 
-  const preferredExtensions = process.platform === 'win32' ? ['.zip', '.tgz'] : ['.tgz', '.zip']
   for (const extension of preferredExtensions) {
     const asset = candidates.find((candidate) =>
       String(candidate.name || '')
@@ -202,6 +241,17 @@ function tryNativeDownload(url, destinationPath) {
 }
 
 function extractArchive(archivePath, extractDir) {
+  if (archivePath.toLowerCase().endsWith('.exe')) {
+    const sevenZipResult = spawnSync('7z', ['x', archivePath, `-o${extractDir}`, '-y'], {
+      stdio: 'inherit',
+    })
+    if (sevenZipResult.status === 0) {
+      return
+    }
+
+    throw new Error(`Failed to extract ${basename(archivePath)}.`)
+  }
+
   if (archivePath.toLowerCase().endsWith('.zip')) {
     if (process.platform === 'win32') {
       const result = spawnSync(
