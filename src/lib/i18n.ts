@@ -144,6 +144,35 @@ const messages = {
     runImplementation: 'Run Implementation',
     implementationFailedReviewStages:
       'One or more implementation stages failed. Review the stage badges and log below.',
+    flowSettings: 'Flow Settings',
+    implementationFlowSettings: 'Implementation Flow Settings',
+    implementationFlowIdle: 'Not run yet',
+    implementationPlaceEngine: 'Place Engine',
+    implementationPlaceEngineDescription:
+      'Placement decides where logic clusters land before routing starts.',
+    implementationRouteEngine: 'Route Engine',
+    implementationRouteEngineDescription:
+      'Routing decides how aggressive the solver should be when connecting the placed design.',
+    implementationModeBalanced: 'Balanced',
+    implementationModeFast: 'Fast',
+    implementationModeFastest: 'Fastest',
+    implementationPlaceModeTimingDriven: 'Timing-Driven',
+    implementationPlaceModeTimingDrivenDescription:
+      'Best default. Spends more time optimizing placement for timing closure.',
+    implementationPlaceModeBoundingBox: 'Bounding Box',
+    implementationPlaceModeBoundingBoxDescription:
+      'Faster placement heuristic. Useful when you want quick feedback before final timing runs.',
+    implementationRouteModeTimingDriven: 'Timing-Driven',
+    implementationRouteModeTimingDrivenDescription:
+      'Highest quality routing. Usually the slowest, but best for the final bitstream.',
+    implementationRouteModeDirectSearch: 'Direct Search',
+    implementationRouteModeDirectSearchDescription:
+      'Lower search overhead and faster iteration. Good for quick feasibility checks.',
+    implementationRouteModeBreadthFirst: 'Breadth-First',
+    implementationRouteModeBreadthFirstDescription:
+      'Most aggressive speed-oriented mode. Useful when timing is secondary to turnaround time.',
+    implementationPlaceSummary: 'Place: {mode}',
+    implementationRouteSummary: 'Route: {mode}',
     implementationLog: 'Implementation Log',
     implementationArtifacts: 'Implementation Artifacts',
     runImplementationToGenerateArtifacts:
@@ -509,6 +538,32 @@ const messages = {
       '请先为当前综合出的所有顶层端口分配封装引脚，再运行映射、打包、布局和布线。',
     runImplementation: '运行实现',
     implementationFailedReviewStages: '一个或多个实现阶段失败了，请查看下面的阶段状态和日志。',
+    flowSettings: '流程设置',
+    implementationFlowSettings: '实现流程设置',
+    implementationFlowIdle: '尚未运行',
+    implementationPlaceEngine: '布局算法',
+    implementationPlaceEngineDescription: '布局阶段决定逻辑簇先落在哪些区域，再进入布线。',
+    implementationRouteEngine: '布线算法',
+    implementationRouteEngineDescription:
+      '布线阶段决定求解器用多激进的策略去连接已经布局好的设计。',
+    implementationModeBalanced: '均衡',
+    implementationModeFast: '更快',
+    implementationModeFastest: '最快',
+    implementationPlaceModeTimingDriven: 'Timing-Driven',
+    implementationPlaceModeTimingDrivenDescription:
+      '默认推荐。会花更多时间优化布局质量和时序收敛。',
+    implementationPlaceModeBoundingBox: 'Bounding Box',
+    implementationPlaceModeBoundingBoxDescription: '更快的布局启发式，适合先快速看一轮可实现性。',
+    implementationRouteModeTimingDriven: 'Timing-Driven',
+    implementationRouteModeTimingDrivenDescription:
+      '质量最高，通常也是最慢的模式，适合最终 bitstream。',
+    implementationRouteModeDirectSearch: 'Direct Search',
+    implementationRouteModeDirectSearchDescription: '搜索开销更低，迭代更快，适合先做快速验证。',
+    implementationRouteModeBreadthFirst: 'Breadth-First',
+    implementationRouteModeBreadthFirstDescription:
+      '最偏向速度的模式，适合时序不是首要目标时快速出结果。',
+    implementationPlaceSummary: '布局: {mode}',
+    implementationRouteSummary: '布线: {mode}',
     implementationLog: '实现日志',
     implementationArtifacts: '实现产物',
     runImplementationToGenerateArtifacts: '运行实现后会生成 routed netlist 和 bitstream。',

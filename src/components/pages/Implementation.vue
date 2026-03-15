@@ -1,9 +1,15 @@
 <script setup lang="ts">
 import type { ImplementationRequestV1, SynthesisSourceFileV1 } from '@/lib/hardware-client'
+import type {
+  ImplementationPlaceMode,
+  ImplementationRouteMode,
+} from '@/lib/implementation-settings'
 
+import { SlidersHorizontal } from 'lucide-vue-next'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
+import RightDrawer from '@/components/RightDrawer.vue'
 import NewProjectDialog from '@/components/project/NewProjectDialog.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -21,6 +27,7 @@ const router = useRouter()
 const { t } = useI18n()
 
 const showNewProjectDialog = ref(false)
+const showSettingsDrawer = ref(false)
 const implementationLogViewportRef = ref<HTMLDivElement | null>(null)
 
 const isBusy = hardwareStore.implementationRunning
@@ -163,6 +170,72 @@ const implementationLog = computed(() => {
   return implementationMessage.value
 })
 
+const placeModeOptions = computed<
+  Array<{
+    value: ImplementationPlaceMode
+    label: string
+    description: string
+    tone: string
+  }>
+>(() => [
+  {
+    value: 'timing_driven',
+    label: t('implementationPlaceModeTimingDriven'),
+    description: t('implementationPlaceModeTimingDrivenDescription'),
+    tone: t('implementationModeBalanced'),
+  },
+  {
+    value: 'bounding_box',
+    label: t('implementationPlaceModeBoundingBox'),
+    description: t('implementationPlaceModeBoundingBoxDescription'),
+    tone: t('implementationModeFast'),
+  },
+])
+
+const routeModeOptions = computed<
+  Array<{
+    value: ImplementationRouteMode
+    label: string
+    description: string
+    tone: string
+  }>
+>(() => [
+  {
+    value: 'timing_driven',
+    label: t('implementationRouteModeTimingDriven'),
+    description: t('implementationRouteModeTimingDrivenDescription'),
+    tone: t('implementationModeBalanced'),
+  },
+  {
+    value: 'direct_search',
+    label: t('implementationRouteModeDirectSearch'),
+    description: t('implementationRouteModeDirectSearchDescription'),
+    tone: t('implementationModeFast'),
+  },
+  {
+    value: 'breadth_first',
+    label: t('implementationRouteModeBreadthFirst'),
+    description: t('implementationRouteModeBreadthFirstDescription'),
+    tone: t('implementationModeFastest'),
+  },
+])
+
+const selectedPlaceModeLabel = computed(() => {
+  return (
+    placeModeOptions.value.find(
+      (option) => option.value === projectStore.implementationSettings.placeMode,
+    )?.label ?? t('implementationPlaceModeTimingDriven')
+  )
+})
+
+const selectedRouteModeLabel = computed(() => {
+  return (
+    routeModeOptions.value.find(
+      (option) => option.value === projectStore.implementationSettings.routeMode,
+    )?.label ?? t('implementationRouteModeTimingDriven')
+  )
+})
+
 const artifactRows = computed(() => {
   const artifacts = implementationReport.value?.artifacts
   if (!artifacts) {
@@ -229,6 +302,8 @@ async function runImplementation() {
     top_module: designContextStore.primaryModule.value,
     target_device_id: projectStore.targetDeviceId,
     constraint_xml: implementationConstraintXml.value,
+    place_mode: projectStore.implementationSettings.placeMode,
+    route_mode: projectStore.implementationSettings.routeMode,
     synthesized_edif_path: reusableSynthesizedEdifPath.value,
     files: implementationSources.value,
   }
@@ -246,6 +321,14 @@ function openPinPlanning() {
 
 function goToSynthesis() {
   void router.push({ name: 'fpga-flow-synthesis' })
+}
+
+function setPlaceMode(mode: ImplementationPlaceMode) {
+  projectStore.setImplementationPlaceMode(mode)
+}
+
+function setRouteMode(mode: ImplementationRouteMode) {
+  projectStore.setImplementationRouteMode(mode)
 }
 
 async function scrollImplementationLogToBottom() {
@@ -266,6 +349,8 @@ watch(
         .join('\u0001'),
     () => implementationConstraintXml.value,
     () => projectStore.targetDeviceId,
+    () => projectStore.implementationSettings.placeMode,
+    () => projectStore.implementationSettings.routeMode,
   ],
   () => {
     hardwareStore.resetImplementationState()
@@ -284,32 +369,111 @@ watch(
 <template>
   <NewProjectDialog v-model:open="showNewProjectDialog" />
   <div class="p-8 space-y-8 h-full flex flex-col animate-in fade-in duration-500">
-    <div class="flex items-center justify-between shrink-0 gap-4">
-      <div>
+    <div class="flex items-start justify-between shrink-0 gap-6">
+      <div class="space-y-2">
         <h2 class="text-3xl font-bold tracking-tight">{{ t('implementation') }}</h2>
-        <p class="text-muted-foreground">
+        <p class="max-w-3xl text-sm text-muted-foreground">
           {{ t('implementationDescription', { name: designContextStore.sourceName.value }) }}
         </p>
       </div>
-      <div class="flex gap-2 items-center">
-        <Badge variant="outline">
-          {{ t('topModuleHint', { name: designContextStore.primaryModule.value }) }}
-        </Badge>
+      <div class="flex items-center gap-2">
+        <RightDrawer
+          v-model="showSettingsDrawer"
+          :title="t('implementationFlowSettings')"
+          :width="420"
+        >
+          <template #trigger>
+            <Button type="button" size="sm" variant="outline" class="gap-2">
+              <SlidersHorizontal class="h-4 w-4" />
+              {{ t('flowSettings') }}
+            </Button>
+          </template>
+
+          <div class="space-y-6">
+            <section class="space-y-3">
+              <div class="space-y-1">
+                <div class="text-sm font-semibold">{{ t('implementationPlaceEngine') }}</div>
+                <p class="text-xs leading-5 text-muted-foreground">
+                  {{ t('implementationPlaceEngineDescription') }}
+                </p>
+              </div>
+              <div class="space-y-2">
+                <button
+                  v-for="option in placeModeOptions"
+                  :key="option.value"
+                  type="button"
+                  class="w-full rounded-2xl border px-4 py-3 text-left transition-colors"
+                  :class="
+                    projectStore.implementationSettings.placeMode === option.value
+                      ? 'border-foreground/20 bg-foreground/[0.06]'
+                      : 'border-border/70 bg-background hover:border-foreground/15 hover:bg-muted/40'
+                  "
+                  @click="setPlaceMode(option.value)"
+                >
+                  <div class="flex items-start justify-between gap-4">
+                    <div class="space-y-1">
+                      <div class="text-sm font-medium">{{ option.label }}</div>
+                      <div class="text-xs leading-5 text-muted-foreground">
+                        {{ option.description }}
+                      </div>
+                    </div>
+                    <Badge variant="outline" class="shrink-0">
+                      {{ option.tone }}
+                    </Badge>
+                  </div>
+                </button>
+              </div>
+            </section>
+
+            <section class="space-y-3">
+              <div class="space-y-1">
+                <div class="text-sm font-semibold">{{ t('implementationRouteEngine') }}</div>
+                <p class="text-xs leading-5 text-muted-foreground">
+                  {{ t('implementationRouteEngineDescription') }}
+                </p>
+              </div>
+              <div class="space-y-2">
+                <button
+                  v-for="option in routeModeOptions"
+                  :key="option.value"
+                  type="button"
+                  class="w-full rounded-2xl border px-4 py-3 text-left transition-colors"
+                  :class="
+                    projectStore.implementationSettings.routeMode === option.value
+                      ? 'border-foreground/20 bg-foreground/[0.06]'
+                      : 'border-border/70 bg-background hover:border-foreground/15 hover:bg-muted/40'
+                  "
+                  @click="setRouteMode(option.value)"
+                >
+                  <div class="flex items-start justify-between gap-4">
+                    <div class="space-y-1">
+                      <div class="text-sm font-medium">{{ option.label }}</div>
+                      <div class="text-xs leading-5 text-muted-foreground">
+                        {{ option.description }}
+                      </div>
+                    </div>
+                    <Badge variant="outline" class="shrink-0">
+                      {{ option.tone }}
+                    </Badge>
+                  </div>
+                </button>
+              </div>
+            </section>
+          </div>
+        </RightDrawer>
+
         <Badge
           variant="outline"
           :class="
             implementationReport?.success
-              ? 'bg-green-500/10 text-green-500 border-green-500/20'
+              ? 'bg-green-500/10 text-green-600 border-green-500/20'
               : implementationReport && !implementationReport.success
-                ? 'bg-red-500/10 text-red-500 border-red-500/20'
+                ? 'bg-red-500/10 text-red-600 border-red-500/20'
                 : ''
           "
         >
           {{ implementationStatus }}
         </Badge>
-        <span class="text-sm text-muted-foreground">
-          {{ implementationReport ? formatDuration(implementationReport.elapsed_ms) : projectName }}
-        </span>
         <Button
           type="button"
           size="sm"
@@ -397,43 +561,60 @@ watch(
         {{ implementationErrorMessage }}
       </div>
 
-      <Card class="shrink-0">
-        <CardContent class="flex flex-wrap items-center gap-3 py-4">
-          <Badge variant="outline">{{ projectStore.targetDeviceId }}</Badge>
-          <Badge
-            v-if="implementationReport"
-            variant="outline"
-            :class="
-              implementationReport.timing_success
-                ? 'border-green-500/20 bg-green-500/10 text-green-600'
-                : 'border-amber-500/20 bg-amber-500/10 text-amber-600'
-            "
-          >
-            {{
-              implementationReport.timing_success
-                ? t('timingCompleted')
-                : t('timingCompletedWithWarnings')
-            }}
-          </Badge>
-          <div class="flex flex-wrap gap-2">
-            <Badge
-              v-for="stage in stageCards"
-              :key="stage.stage"
-              variant="outline"
-              :class="stageBadgeClass(stage)"
-            >
-              {{ stage.title }}
+      <Card class="shrink-0 overflow-hidden border-border/70">
+        <CardContent class="flex flex-wrap items-center justify-between gap-4 py-4">
+          <div class="flex flex-wrap items-center gap-2">
+            <Badge variant="outline">{{ projectStore.targetDeviceId }}</Badge>
+            <Badge variant="outline">
+              {{ t('implementationPlaceSummary', { mode: selectedPlaceModeLabel }) }}
             </Badge>
+            <Badge variant="outline">
+              {{ t('implementationRouteSummary', { mode: selectedRouteModeLabel }) }}
+            </Badge>
+            <Badge
+              v-if="implementationReport"
+              variant="outline"
+              :class="
+                implementationReport.timing_success
+                  ? 'border-green-500/20 bg-green-500/10 text-green-600'
+                  : 'border-amber-500/20 bg-amber-500/10 text-amber-600'
+              "
+            >
+              {{
+                implementationReport.timing_success
+                  ? t('timingCompleted')
+                  : t('timingCompletedWithWarnings')
+              }}
+            </Badge>
+          </div>
+          <div class="flex items-center gap-3 text-sm text-muted-foreground">
+            <span>
+              {{
+                implementationReport
+                  ? formatDuration(implementationReport.elapsed_ms)
+                  : t('implementationFlowIdle')
+              }}
+            </span>
+            <div class="flex flex-wrap justify-end gap-2">
+              <Badge
+                v-for="stage in stageCards"
+                :key="stage.stage"
+                variant="outline"
+                :class="stageBadgeClass(stage)"
+              >
+                {{ stage.title }}
+              </Badge>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px] flex-1 min-h-0">
+      <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px] flex-1 min-h-0">
         <Card class="min-h-0 flex flex-col">
           <CardHeader class="flex-row items-center justify-between space-y-0">
             <CardTitle>{{ t('implementationLog') }}</CardTitle>
             <span class="text-xs text-muted-foreground">
-              {{ projectStore.topFile?.name || designContextStore.sourceName.value }}
+              {{ designContextStore.sourceName.value }}
             </span>
           </CardHeader>
           <CardContent class="flex-1 min-h-0 p-0">
@@ -453,13 +634,35 @@ watch(
           <CardContent class="min-h-0 flex-1 space-y-6 overflow-auto">
             <div class="space-y-2">
               <div class="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                {{ t('flowSettings') }}
+              </div>
+              <div class="rounded-xl border border-border/70 bg-muted/25 p-3">
+                <div class="grid gap-3">
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-sm text-muted-foreground">{{
+                      t('implementationPlaceEngine')
+                    }}</span>
+                    <span class="text-sm font-medium">{{ selectedPlaceModeLabel }}</span>
+                  </div>
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-sm text-muted-foreground">{{
+                      t('implementationRouteEngine')
+                    }}</span>
+                    <span class="text-sm font-medium">{{ selectedRouteModeLabel }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="space-y-2">
+              <div class="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
                 {{ t('status') }}
               </div>
               <div class="space-y-2">
                 <div
                   v-for="stage in stageCards"
                   :key="stage.stage"
-                  class="flex items-center justify-between gap-3 rounded-md border border-border/60 px-3 py-2"
+                  class="flex items-center justify-between gap-3 rounded-xl border border-border/60 px-3 py-2"
                 >
                   <span class="text-sm">{{ stage.title }}</span>
                   <div class="flex items-center gap-3">
@@ -493,7 +696,7 @@ watch(
                 <div
                   v-for="artifact in artifactRows"
                   :key="artifact.label"
-                  class="rounded-md border border-border/60 px-3 py-2"
+                  class="rounded-xl border border-border/60 px-3 py-2"
                 >
                   <div class="text-xs text-muted-foreground">{{ artifact.label }}</div>
                   <div class="allow-text-select break-all font-mono text-xs">
@@ -508,7 +711,7 @@ watch(
                 {{ t('timingReport') }}
               </div>
               <div
-                class="allow-text-select rounded-md border border-border/60 bg-muted/30 p-3 font-mono text-xs"
+                class="allow-text-select rounded-xl border border-border/60 bg-muted/30 p-3 font-mono text-xs"
               >
                 <pre class="whitespace-pre-wrap">{{
                   implementationReport?.timing_report || t('noTimingReportAvailable')

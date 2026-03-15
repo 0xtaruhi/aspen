@@ -20,6 +20,14 @@ import {
   type ProjectConstraintSnapshot,
   type ProjectPinConstraint,
 } from '../lib/project-constraints'
+import {
+  cloneImplementationSettings,
+  defaultImplementationSettings,
+  normalizeImplementationSettings,
+  type ImplementationPlaceMode,
+  type ImplementationRouteMode,
+  type ImplementationSettingsSnapshot,
+} from '../lib/implementation-settings'
 import { parseVerilogPorts, type VerilogPort } from '../lib/verilog-parser'
 
 export type ProjectNode = {
@@ -41,6 +49,7 @@ export type ProjectSnapshot = {
   targetDeviceId: FpgaDeviceId
   targetBoardId: FpgaBoardId
   pinConstraints: ProjectConstraintSnapshot
+  implementationSettings: ImplementationSettingsSnapshot
   synthesisCache: ProjectSynthesisCacheSnapshot | null
 }
 
@@ -279,6 +288,7 @@ function normalizeSnapshot(value: unknown): ProjectSnapshot {
       getDefaultFpgaBoardIdForDevice(normalizedTargetDeviceId),
     ),
     pinConstraints: normalizeProjectConstraintSnapshot(value.pinConstraints, resolvedTopFileId),
+    implementationSettings: normalizeImplementationSettings(value.implementationSettings),
     synthesisCache: normalizeProjectSynthesisCacheSnapshot(value.synthesisCache),
   }
 }
@@ -293,6 +303,7 @@ export const projectStore = reactive({
   targetDeviceId: defaultFpgaDeviceId,
   targetBoardId: defaultFpgaBoardId,
   pinConstraints: emptyProjectConstraintSnapshot(),
+  implementationSettings: cloneImplementationSettings(defaultImplementationSettings),
   synthesisCache: null as ProjectSynthesisCacheSnapshot | null,
   projectPath: null as string | null,
   savedSnapshotJson: '' as string,
@@ -368,6 +379,7 @@ export const projectStore = reactive({
       targetDeviceId: this.targetDeviceId,
       targetBoardId: this.targetBoardId,
       pinConstraints: cloneProjectConstraintSnapshot(this.pinConstraints),
+      implementationSettings: cloneImplementationSettings(this.implementationSettings),
       synthesisCache: cloneProjectSynthesisCacheSnapshot(this.synthesisCache),
     }
   },
@@ -390,6 +402,7 @@ export const projectStore = reactive({
     this.targetDeviceId = parsed.targetDeviceId
     this.targetBoardId = parsed.targetBoardId
     this.pinConstraints = cloneProjectConstraintSnapshot(parsed.pinConstraints)
+    this.implementationSettings = cloneImplementationSettings(parsed.implementationSettings)
     this.synthesisCache = cloneProjectSynthesisCacheSnapshot(parsed.synthesisCache)
     this.markSaved(options.projectPath ?? null)
   },
@@ -435,6 +448,20 @@ export const projectStore = reactive({
 
   setTargetBoard(boardId: FpgaBoardId) {
     this.targetBoardId = boardId
+  },
+
+  setImplementationPlaceMode(mode: ImplementationPlaceMode) {
+    this.implementationSettings = {
+      ...this.implementationSettings,
+      placeMode: mode,
+    }
+  },
+
+  setImplementationRouteMode(mode: ImplementationRouteMode) {
+    this.implementationSettings = {
+      ...this.implementationSettings,
+      routeMode: mode,
+    }
   },
 
   setTopModuleName(name: string) {
@@ -709,6 +736,7 @@ endmodule`,
       topFileId: this.topFileId,
       assignments: [],
     }
+    this.implementationSettings = cloneImplementationSettings(defaultImplementationSettings)
     this.synthesisCache = null
     this.markSaved(null)
   },
@@ -722,6 +750,7 @@ endmodule`,
     this.targetDeviceId = defaultFpgaDeviceId
     this.targetBoardId = defaultFpgaBoardId
     this.pinConstraints = emptyProjectConstraintSnapshot()
+    this.implementationSettings = cloneImplementationSettings(defaultImplementationSettings)
     this.synthesisCache = null
     this.markSaved(null)
   },

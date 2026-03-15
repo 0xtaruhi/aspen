@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { defaultFpgaBoardId } from '../lib/fpga-board-catalog'
 import { defaultFpgaDeviceId } from '../lib/fpga-device-catalog'
+import { defaultImplementationSettings } from '../lib/implementation-settings'
 
 import { projectStore } from './project'
 
@@ -48,6 +49,7 @@ describe('project save-state regression', () => {
     expect(projectStore.toSnapshot().targetDeviceId).toBe(defaultFpgaDeviceId)
     expect(projectStore.toSnapshot().targetBoardId).toBe(defaultFpgaBoardId)
     expect(projectStore.toSnapshot().topModuleName).toBe('custom_top')
+    expect(projectStore.toSnapshot().implementationSettings).toEqual(defaultImplementationSettings)
 
     projectStore.loadFromSnapshot({
       version: 1,
@@ -58,6 +60,11 @@ describe('project save-state regression', () => {
       topModuleName: 'loaded_top',
       targetDeviceId: 'FDP3P7',
       targetBoardId: 'FDP3P7_REFERENCE',
+      implementationSettings: {
+        version: 1,
+        placeMode: 'bounding_box',
+        routeMode: 'direct_search',
+      },
       pinConstraints: {
         version: 1,
         topFileId: '1',
@@ -77,6 +84,11 @@ describe('project save-state regression', () => {
     expect(projectStore.toSnapshot().targetDeviceId).toBe('FDP3P7')
     expect(projectStore.toSnapshot().targetBoardId).toBe('FDP3P7_REFERENCE')
     expect(projectStore.toSnapshot().topModuleName).toBe('loaded_top')
+    expect(projectStore.toSnapshot().implementationSettings).toEqual({
+      version: 1,
+      placeMode: 'bounding_box',
+      routeMode: 'direct_search',
+    })
     expect(projectStore.pinConstraints.assignments).toEqual([
       {
         portName: 'clk',
@@ -104,6 +116,7 @@ describe('project save-state regression', () => {
 
     expect(projectStore.targetDeviceId).toBe(defaultFpgaDeviceId)
     expect(projectStore.topModuleName).toBe('')
+    expect(projectStore.implementationSettings).toEqual(defaultImplementationSettings)
   })
 
   it('persists synthesis cache snapshots with the project', () => {

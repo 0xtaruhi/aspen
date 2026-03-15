@@ -14,8 +14,9 @@ use std::{
 use tauri::{path::BaseDirectory, AppHandle, Emitter, Manager};
 
 use super::types::{
-    ImplementationArtifactsV1, ImplementationLogChunkV1, ImplementationReportV1,
-    ImplementationRequestV1, ImplementationStageKindV1, ImplementationStageResultV1,
+    ImplementationArtifactsV1, ImplementationLogChunkV1, ImplementationPlaceModeV1,
+    ImplementationReportV1, ImplementationRequestV1, ImplementationRouteModeV1,
+    ImplementationStageKindV1, ImplementationStageResultV1,
 };
 
 const BUNDLED_FDE_DIR: &str = "vendor/fde";
@@ -180,7 +181,7 @@ where
                 file_name_string(&artifacts.place_path)?,
                 "-c".to_string(),
                 file_name_string(&artifacts.constraint_path)?,
-                "-t".to_string(),
+                place_mode_flag(request.place_mode).to_string(),
                 "-e".to_string(),
             ],
         },
@@ -197,7 +198,7 @@ where
                 file_name_string(&artifacts.place_path)?,
                 "-o".to_string(),
                 file_name_string(&artifacts.route_path)?,
-                "-t".to_string(),
+                route_mode_flag(request.route_mode).to_string(),
                 "-c".to_string(),
                 file_name_string(&artifacts.constraint_path)?,
                 "-e".to_string(),
@@ -441,6 +442,21 @@ fn validate_request(request: &ImplementationRequestV1) -> Result<(), String> {
         );
     }
     Ok(())
+}
+
+fn place_mode_flag(mode: ImplementationPlaceModeV1) -> &'static str {
+    match mode {
+        ImplementationPlaceModeV1::TimingDriven => "-t",
+        ImplementationPlaceModeV1::BoundingBox => "-b",
+    }
+}
+
+fn route_mode_flag(mode: ImplementationRouteModeV1) -> &'static str {
+    match mode {
+        ImplementationRouteModeV1::TimingDriven => "-t",
+        ImplementationRouteModeV1::DirectSearch => "-d",
+        ImplementationRouteModeV1::BreadthFirst => "-b",
+    }
 }
 
 fn validate_target_device(request: &ImplementationRequestV1) -> Result<(), String> {
@@ -919,6 +935,34 @@ write_edif {}\n",
     }
 
     #[test]
+    fn place_mode_flag_matches_legacy_cli_modes() {
+        assert_eq!(
+            place_mode_flag(ImplementationPlaceModeV1::TimingDriven),
+            "-t"
+        );
+        assert_eq!(
+            place_mode_flag(ImplementationPlaceModeV1::BoundingBox),
+            "-b"
+        );
+    }
+
+    #[test]
+    fn route_mode_flag_matches_legacy_cli_modes() {
+        assert_eq!(
+            route_mode_flag(ImplementationRouteModeV1::TimingDriven),
+            "-t"
+        );
+        assert_eq!(
+            route_mode_flag(ImplementationRouteModeV1::DirectSearch),
+            "-d"
+        );
+        assert_eq!(
+            route_mode_flag(ImplementationRouteModeV1::BreadthFirst),
+            "-b"
+        );
+    }
+
+    #[test]
     fn implementation_smoke_test_runs_when_bundled_toolchains_are_available() {
         let fde_bin_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join(BUNDLED_FDE_DIR)
@@ -989,6 +1033,8 @@ write_edif {}\n",
                     "",
                 ]
                 .join("\n"),
+                place_mode: ImplementationPlaceModeV1::TimingDriven,
+                route_mode: ImplementationRouteModeV1::TimingDriven,
                 files: vec![SynthesisSourceFileV1 {
                     path: "top.v".to_string(),
                     content: [
@@ -1027,6 +1073,8 @@ write_edif {}\n",
                 "",
             ]
             .join("\n"),
+            place_mode: ImplementationPlaceModeV1::TimingDriven,
+            route_mode: ImplementationRouteModeV1::TimingDriven,
             files: vec![SynthesisSourceFileV1 {
                 path: "top.v".to_string(),
                 content: [

@@ -413,6 +413,8 @@ async function runImplementation(
     request.top_module,
     request.target_device_id,
     request.constraint_xml,
+    request.place_mode,
+    request.route_mode,
     request.files,
   )
 
