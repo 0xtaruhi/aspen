@@ -7,6 +7,7 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  readFileSync,
   readlinkSync,
   readdirSync,
   rmSync,
@@ -384,12 +385,13 @@ function pruneShareDirectory(shareDir) {
 function pruneLibraryDirectories(bundleRoot) {
   const runtimeTargets = getRuntimeTargetPaths(bundleRoot)
   const dependencyPaths = collectBundledDependencies(bundleRoot, runtimeTargets)
+  const wrapperDependencies = collectShellWrapperDependencies(bundleRoot)
   const keepLibEntries = new Set(
     ['tcl8.6', 'tk8.6'].filter((entry) => existsSync(join(bundleRoot, 'lib', entry))),
   )
   const keepFrameworkEntries = new Set()
 
-  for (const dependencyPath of dependencyPaths) {
+  for (const dependencyPath of [...dependencyPaths, ...wrapperDependencies]) {
     const relPath = relative(bundleRoot, dependencyPath)
     if (relPath.startsWith(`lib/`)) {
       const [, firstChild] = relPath.split(/[\\/]/, 2)
@@ -525,6 +527,30 @@ function collectBundledDependencies(bundleRoot, runtimeTargets) {
   }
 
   return seen
+}
+
+function collectShellWrapperDependencies(bundleRoot) {
+  const wrappers = [join(bundleRoot, 'bin', 'yosys'), join(bundleRoot, 'bin', 'yosys-abc')]
+  const discovered = new Set()
+
+  for (const wrapperPath of wrappers) {
+    if (!existsSync(wrapperPath) || !isShellScript(wrapperPath)) {
+      continue
+    }
+
+    const contents = readFileSync(wrapperPath, 'utf8')
+    for (const match of contents.matchAll(/\.\.\/(?:lib|libexec)\/[A-Za-z0-9._/+:-]+/g)) {
+      const rawDependency = match[0]
+      const normalizedDependency = rawDependency.split('/').filter(Boolean)
+      const resolvedDependency = resolve(dirname(wrapperPath), ...normalizedDependency)
+      if (!resolvedDependency.startsWith(bundleRoot)) {
+        continue
+      }
+      discovered.add(resolvedDependency)
+    }
+  }
+
+  return [...discovered]
 }
 
 function inspectDependencies(filePath, bundleRoot) {
