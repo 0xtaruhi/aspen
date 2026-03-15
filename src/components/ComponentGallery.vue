@@ -40,23 +40,25 @@ import {
 } from 'lucide-vue-next'
 
 import { beginPaletteDrag } from '@/stores/palette-drag'
+import { useI18n } from '@/lib/i18n'
 
 type GalleryItem = { type: string; title: string; icon: any }
 
 defineProps<{ open: boolean }>()
+const { t } = useI18n()
 
 const items = computed<GalleryItem[]>(() => [
-  { type: 'led', title: 'LED', icon: Lightbulb },
-  { type: 'switch', title: 'Switch', icon: ToggleLeft },
-  { type: 'button', title: 'Button', icon: CircleDot },
-  { type: 'keypad', title: 'KeyPad', icon: Grid3x3 },
-  { type: 'small_keypad', title: 'SmallKeyPad', icon: Grid2x2 },
-  { type: 'rotary_button', title: 'RotaryButton', icon: RotateCw },
-  { type: 'ps2_keyboard', title: 'PS2Keyboard', icon: Keyboard },
-  { type: 'text_lcd', title: 'TextLCD', icon: Type },
-  { type: 'graphic_lcd', title: 'GraphicLCD', icon: Monitor },
-  { type: 'segment_display', title: 'SegmentDisplay', icon: Square },
-  { type: 'led_matrix', title: 'Matrix', icon: Grid3X3 },
+  { type: 'led', title: t('led'), icon: Lightbulb },
+  { type: 'switch', title: t('switchDevice'), icon: ToggleLeft },
+  { type: 'button', title: t('button'), icon: CircleDot },
+  { type: 'keypad', title: t('keypad'), icon: Grid3x3 },
+  { type: 'small_keypad', title: t('smallKeypad'), icon: Grid2x2 },
+  { type: 'rotary_button', title: t('rotaryButton'), icon: RotateCw },
+  { type: 'ps2_keyboard', title: t('ps2Keyboard'), icon: Keyboard },
+  { type: 'text_lcd', title: t('textLcd'), icon: Type },
+  { type: 'graphic_lcd', title: t('graphicLcd'), icon: Monitor },
+  { type: 'segment_display', title: t('segmentDisplay'), icon: Square },
+  { type: 'led_matrix', title: t('matrix'), icon: Grid3X3 },
 ])
 </script>
 

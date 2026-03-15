@@ -3,6 +3,7 @@ import { computed } from 'vue'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useI18n } from '@/lib/i18n'
 import {
   Table,
   TableBody,
@@ -23,6 +24,7 @@ type TimingPath = {
 
 const outputSignals = designContextStore.outputSignals
 const sourceLines = designContextStore.codeLines
+const { t } = useI18n()
 
 const timingPaths = computed<TimingPath[]>(() => {
   if (outputSignals.value.length === 0) {
@@ -70,9 +72,9 @@ const totalPower = computed(() => {
   <div class="p-8 space-y-8 animate-in fade-in duration-500">
     <div class="flex items-center justify-between gap-4">
       <div>
-        <h2 class="text-3xl font-bold tracking-tight">Implementation</h2>
+        <h2 class="text-3xl font-bold tracking-tight">{{ t('implementation') }}</h2>
         <p class="text-muted-foreground">
-          Place & Route results and timing analysis for {{ designContextStore.sourceName.value }}.
+          {{ t('implementationDescription', { name: designContextStore.sourceName.value }) }}
         </p>
       </div>
       <div class="flex items-center gap-2">
@@ -85,7 +87,7 @@ const totalPower = computed(() => {
     <div class="grid gap-4 md:grid-cols-2">
       <Card>
         <CardHeader>
-          <CardTitle>Floorplan Preview</CardTitle>
+          <CardTitle>{{ t('floorplanPreview') }}</CardTitle>
         </CardHeader>
         <CardContent>
           <div
@@ -103,34 +105,34 @@ const totalPower = computed(() => {
 
       <Card>
         <CardHeader>
-          <CardTitle>Power Analysis</CardTitle>
+          <CardTitle>{{ t('powerAnalysis') }}</CardTitle>
         </CardHeader>
         <CardContent>
           <div class="space-y-4">
             <div class="flex items-center justify-between">
-              <span class="text-sm font-medium">Total Power</span>
+              <span class="text-sm font-medium">{{ t('totalPower') }}</span>
               <span class="font-bold">{{ totalPower }} W</span>
             </div>
             <div class="h-2 bg-muted rounded-full overflow-hidden flex">
               <div
                 class="h-full bg-chart-5"
                 :style="{ width: `${(Number(dynamicPower) / Number(totalPower)) * 100}%` }"
-                title="Dynamic"
+                :title="t('dynamic')"
               ></div>
               <div
                 class="h-full bg-chart-1"
                 :style="{ width: `${(Number(staticPower) / Number(totalPower)) * 100}%` }"
-                title="Static"
+                :title="t('static')"
               ></div>
             </div>
             <div class="grid grid-cols-2 gap-4 text-xs text-muted-foreground">
               <div class="flex items-center gap-2">
                 <div class="w-2 h-2 rounded-full bg-chart-5"></div>
-                <span>Dynamic: {{ dynamicPower }} W</span>
+                <span>{{ t('dynamic') }}: {{ dynamicPower }} W</span>
               </div>
               <div class="flex items-center gap-2">
                 <div class="w-2 h-2 rounded-full bg-chart-1"></div>
-                <span>Static: {{ staticPower }} W</span>
+                <span>{{ t('static') }}: {{ staticPower }} W</span>
               </div>
             </div>
           </div>
@@ -140,16 +142,16 @@ const totalPower = computed(() => {
 
     <Card>
       <CardHeader>
-        <CardTitle>Timing Summary (Top 3 Critical Paths)</CardTitle>
+        <CardTitle>{{ t('timingSummary') }}</CardTitle>
       </CardHeader>
       <CardContent>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Path Name</TableHead>
-              <TableHead>Slack (ns)</TableHead>
-              <TableHead>Logic Levels</TableHead>
-              <TableHead>Clock Skew</TableHead>
+              <TableHead>{{ t('pathName') }}</TableHead>
+              <TableHead>{{ t('slackNs') }}</TableHead>
+              <TableHead>{{ t('logicLevels') }}</TableHead>
+              <TableHead>{{ t('clockSkew') }}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -163,7 +165,7 @@ const totalPower = computed(() => {
               <TableCell>{{ path.skew }}</TableCell>
             </TableRow>
             <TableEmpty v-if="timingPaths.length === 0" :colspan="4" class="text-muted-foreground">
-              No output signals found in selected design source.
+              {{ t('noOutputSignalsSelectedSource') }}
             </TableEmpty>
           </TableBody>
         </Table>

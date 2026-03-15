@@ -30,6 +30,7 @@ import {
   isCanvasSegmentDisplayDevice,
 } from '@/lib/canvas-devices'
 import { confirmAction } from '@/lib/confirm-action'
+import { useI18n } from '@/lib/i18n'
 import { hardwareStore } from '@/stores/hardware'
 import { settingsStore } from '@/stores/settings'
 import { signalCatalogStore } from '@/stores/signal-catalog'
@@ -51,6 +52,7 @@ const SEGMENT_DIGITS_MAX = 16
 const matrixRowsInput = ref('')
 const matrixColumnsInput = ref('')
 const segmentDigitsInput = ref('')
+const { t } = useI18n()
 
 const capabilityLabel = computed(() => {
   if (!props.device) {
@@ -61,14 +63,14 @@ const capabilityLabel = computed(() => {
   const receives = deviceReceivesSignal(props.device.type)
 
   if (drives && !receives) {
-    return 'Drives FPGA input'
+    return t('drivesFpgaInput')
   }
 
   if (receives && !drives) {
-    return 'Observes FPGA output'
+    return t('observesFpgaOutput')
   }
 
-  return 'Bidirectional device'
+  return t('bidirectionalDevice')
 })
 
 const compatibleSignals = computed<readonly VerilogPort[]>(() => {
@@ -165,10 +167,10 @@ const liveLevel = computed(() => {
 
 const stateLabel = computed(() => {
   if (!props.device) {
-    return 'Idle'
+    return t('idle')
   }
 
-  return liveLevel.value ? 'High' : 'Low'
+  return liveLevel.value ? t('high') : t('low')
 })
 
 watch(
@@ -252,6 +254,19 @@ function clearBinding() {
   }
 
   void hardwareStore.bindCanvasSignal(props.device.id, null)
+}
+
+function formatSignalDirection(direction: VerilogPort['direction']) {
+  switch (direction) {
+    case 'input':
+      return t('inputDirection')
+    case 'output':
+      return t('outputDirection')
+    case 'inout':
+      return t('inoutDirection')
+    default:
+      return direction
+  }
 }
 
 function normalizeMatrixDimensionInput(rawValue: string, fallback: number) {
@@ -360,8 +375,8 @@ async function removeDevice() {
 
   if (
     settingsStore.state.confirmDelete &&
-    !(await confirmAction(`Are you sure you want to delete ${props.device.label}?`, {
-      title: 'Delete Device',
+    !(await confirmAction(t('deleteDeviceConfirm', { name: props.device.label }), {
+      title: t('deleteDeviceTitle'),
     }))
   ) {
     return
@@ -393,12 +408,12 @@ async function removeDevice() {
 
         <div class="mt-4 flex flex-wrap gap-2">
           <Badge variant="secondary">{{ capabilityLabel }}</Badge>
-          <Badge variant="outline">Level: {{ stateLabel }}</Badge>
+          <Badge variant="outline">{{ t('levelLabel', { state: stateLabel }) }}</Badge>
           <Badge v-if="getCanvasDeviceBoundSignal(device)" variant="outline">
             {{ getCanvasDeviceBoundSignal(device) }}
           </Badge>
           <Badge v-else-if="boundSignalCount > 0" variant="outline">
-            {{ boundSignalCount }} bindings
+            {{ t('bindingCount', { count: boundSignalCount }) }}
           </Badge>
         </div>
 
@@ -406,15 +421,15 @@ async function removeDevice() {
 
         <section v-if="isSegmentDisplayDevice && segmentDisplayConfig" class="space-y-3">
           <div>
-            <p class="text-sm font-medium">Digits</p>
+            <p class="text-sm font-medium">{{ t('digits') }}</p>
             <p class="mt-1 text-xs leading-5 text-muted-foreground">
-              Resize the display and keep any overlapping segment and digit-select bindings.
+              {{ t('digitsDescription') }}
             </p>
           </div>
 
           <div class="space-y-1">
             <label class="text-xs font-medium text-muted-foreground" for="segment-digits">
-              Digit count
+              {{ t('digitCount') }}
             </label>
             <Input
               id="segment-digits"
@@ -433,16 +448,16 @@ async function removeDevice() {
 
         <section v-if="isMatrixDevice && matrixDimensions" class="space-y-3">
           <div>
-            <p class="text-sm font-medium">Matrix Size</p>
+            <p class="text-sm font-medium">{{ t('matrixSize') }}</p>
             <p class="mt-1 text-xs leading-5 text-muted-foreground">
-              Resize the matrix and keep any overlapping row and column bindings.
+              {{ t('matrixSizeDescription') }}
             </p>
           </div>
 
           <div class="grid grid-cols-2 gap-3">
             <div class="space-y-1">
               <label class="text-xs font-medium text-muted-foreground" for="matrix-rows">
-                Rows
+                {{ t('rows') }}
               </label>
               <Input
                 id="matrix-rows"
@@ -457,7 +472,7 @@ async function removeDevice() {
             </div>
             <div class="space-y-1">
               <label class="text-xs font-medium text-muted-foreground" for="matrix-columns">
-                Columns
+                {{ t('columns') }}
               </label>
               <Input
                 id="matrix-columns"
@@ -477,9 +492,9 @@ async function removeDevice() {
 
         <section class="space-y-3">
           <div>
-            <p class="text-sm font-medium">Port Binding</p>
+            <p class="text-sm font-medium">{{ t('portBinding') }}</p>
             <p class="mt-1 text-xs leading-5 text-muted-foreground">
-              Bind this device against compatible ports from the current top module.
+              {{ t('portBindingDescription') }}
             </p>
           </div>
 
@@ -489,7 +504,7 @@ async function removeDevice() {
                 <span>{{ slot.label }}</span>
                 <span class="font-mono">{{
                   slotBindingValue(slotIndex) === UNBOUND_SIGNAL
-                    ? 'Unbound'
+                    ? t('unbound')
                     : slotBindingValue(slotIndex)
                 }}</span>
               </div>
@@ -498,10 +513,10 @@ async function removeDevice() {
                 @update:model-value="(value) => handleSlotBindingUpdate(slotIndex, value)"
               >
                 <SelectTrigger class="w-full">
-                  <SelectValue :placeholder="`Choose signal for ${slot.label}`" />
+                  <SelectValue :placeholder="t('chooseSignalFor', { label: slot.label })" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem :value="UNBOUND_SIGNAL">No binding</SelectItem>
+                  <SelectItem :value="UNBOUND_SIGNAL">{{ t('noBinding') }}</SelectItem>
                   <SelectItem
                     v-for="signal in compatibleSignals"
                     :key="`${slot.key}-${signal.name}`"
@@ -512,7 +527,7 @@ async function removeDevice() {
                       <span
                         class="ml-auto text-[11px] uppercase tracking-wide text-muted-foreground"
                       >
-                        {{ signal.direction }}
+                        {{ formatSignalDirection(signal.direction) }}
                       </span>
                     </div>
                   </SelectItem>
@@ -523,10 +538,10 @@ async function removeDevice() {
 
           <Select v-else :model-value="bindingValue" @update:model-value="handleBindingUpdate">
             <SelectTrigger class="w-full">
-              <SelectValue placeholder="Choose a top-level port" />
+              <SelectValue :placeholder="t('chooseTopLevelPort')" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem :value="UNBOUND_SIGNAL">No binding</SelectItem>
+              <SelectItem :value="UNBOUND_SIGNAL">{{ t('noBinding') }}</SelectItem>
               <SelectItem
                 v-for="signal in compatibleSignals"
                 :key="signal.name"
@@ -535,7 +550,7 @@ async function removeDevice() {
                 <div class="flex w-full items-center gap-2">
                   <span class="font-mono text-xs">{{ signal.name }}</span>
                   <span class="ml-auto text-[11px] uppercase tracking-wide text-muted-foreground">
-                    {{ signal.direction }}
+                    {{ formatSignalDirection(signal.direction) }}
                   </span>
                 </div>
               </SelectItem>
@@ -543,7 +558,7 @@ async function removeDevice() {
           </Select>
 
           <p v-if="compatibleSignals.length === 0" class="text-xs leading-5 text-amber-600">
-            No compatible ports were found on the current top module.
+            {{ t('noCompatiblePorts') }}
           </p>
         </section>
 
@@ -551,25 +566,33 @@ async function removeDevice() {
 
         <section class="space-y-3">
           <div>
-            <p class="text-sm font-medium">Quick Facts</p>
+            <p class="text-sm font-medium">{{ t('quickFacts') }}</p>
           </div>
 
           <div class="grid grid-cols-2 gap-3 text-sm">
             <div class="rounded-2xl border border-border bg-background p-3">
-              <p class="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Position</p>
+              <p class="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
+                {{ t('position') }}
+              </p>
               <p class="mt-2 font-medium">{{ Math.round(device.x) }}, {{ Math.round(device.y) }}</p>
             </div>
             <div class="rounded-2xl border border-border bg-background p-3">
-              <p class="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Signal</p>
+              <p class="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
+                {{ t('signal') }}
+              </p>
               <p class="mt-2 font-medium">
-                {{ boundSignalCount > 0 ? `${boundSignalCount} bound` : 'Unbound' }}
+                {{
+                  boundSignalCount > 0 ? t('boundCount', { count: boundSignalCount }) : t('unbound')
+                }}
               </p>
             </div>
             <div
               v-if="isSegmentDisplayDevice && segmentDisplayConfig"
               class="rounded-2xl border border-border bg-background p-3"
             >
-              <p class="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Digits</p>
+              <p class="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
+                {{ t('digits') }}
+              </p>
               <p class="mt-2 font-medium">
                 {{ segmentDisplayConfig.digits }}
               </p>
@@ -578,7 +601,9 @@ async function removeDevice() {
               v-if="isMatrixDevice && matrixDimensions"
               class="rounded-2xl border border-border bg-background p-3"
             >
-              <p class="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Matrix</p>
+              <p class="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
+                {{ t('matrixLabel') }}
+              </p>
               <p class="mt-2 font-medium">
                 {{ matrixDimensions.columns }} x {{ matrixDimensions.rows }}
               </p>
@@ -590,11 +615,10 @@ async function removeDevice() {
           <div class="rounded-2xl border border-border bg-muted/40 p-4">
             <p class="flex items-center gap-2 text-sm font-medium">
               <CheckCircle2 class="h-4 w-4 text-emerald-600" />
-              Workbench Actions
+              {{ t('workbenchActions') }}
             </p>
             <p class="mt-2 text-xs leading-5 text-muted-foreground">
-              Drag from the gallery to place devices. Drag the top handle strip to move. Use
-              <span class="font-mono">Alt + drag</span> or middle mouse to pan the canvas.
+              {{ t('workbenchActionsDescription') }}
             </p>
           </div>
 
@@ -606,11 +630,11 @@ async function removeDevice() {
               @click="clearBinding"
             >
               <Unplug class="h-4 w-4" />
-              Clear Binding
+              {{ t('clearBinding') }}
             </Button>
             <Button variant="destructive" class="gap-2" @click="removeDevice">
               <Trash2 class="h-4 w-4" />
-              Remove
+              {{ t('remove') }}
             </Button>
           </div>
         </div>
@@ -623,18 +647,20 @@ async function removeDevice() {
           >
             <Link2 class="h-5 w-5 text-muted-foreground" />
           </div>
-          <h3 class="mt-4 text-lg font-semibold">Device Inspector</h3>
+          <h3 class="mt-4 text-lg font-semibold">{{ t('deviceInspector') }}</h3>
           <p class="mt-2 text-sm leading-6 text-muted-foreground">
-            Select a device on the canvas to bind it to a top-level port and inspect its state.
+            {{ t('deviceInspectorDescription') }}
           </p>
         </div>
 
         <div class="rounded-2xl border border-border bg-muted/40 p-4">
-          <p class="text-xs uppercase tracking-[0.24em] text-muted-foreground">How it works</p>
+          <p class="text-xs uppercase tracking-[0.24em] text-muted-foreground">
+            {{ t('howItWorks') }}
+          </p>
           <div class="mt-3 space-y-2 text-sm text-foreground/90">
-            <p>1. Open the gallery and drop a device onto the canvas.</p>
-            <p>2. Click the device to focus it.</p>
-            <p>3. Bind it here against ports from the current top module.</p>
+            <p>{{ t('howItWorksStep1') }}</p>
+            <p>{{ t('howItWorksStep2') }}</p>
+            <p>{{ t('howItWorksStep3') }}</p>
           </div>
         </div>
       </div>

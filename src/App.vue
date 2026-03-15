@@ -16,13 +16,31 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/s
 import { useI18n } from '@/lib/i18n'
 import { saveProject } from '@/lib/project-io'
 import ThemeToggleButton from '@/components/ThemeToggleButton.vue'
-import { moduleLabelMap, routeLabelMap, type AppRouteName } from '@/router'
+import { routeLabelMap, type AppRouteName } from '@/router'
 import { projectStore } from '@/stores/project'
 import { uiStore } from '@/stores/ui'
 
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
+const moduleLabelKeyMap = {
+  'project-management': 'projectManagement',
+  'fpga-flow': 'fpgaFlow',
+  'hardware-manager': 'hardwareManager',
+  'virtual-device-platform': 'virtualDevicePlatform',
+  settings: 'settings',
+} as const
+const routeLabelKeyMap = {
+  'project-management': 'dashboard',
+  'project-management-editor': 'projectManagement',
+  'project-management-dashboard': 'dashboard',
+  'fpga-flow': 'synthesis',
+  'fpga-flow-synthesis': 'synthesis',
+  'fpga-flow-implementation': 'implementation',
+  'hardware-manager': 'hardwareManager',
+  'virtual-device-platform': 'workbench',
+  settings: 'settings',
+} as const
 
 const activeRouteName = computed(() => route.name as AppRouteName | undefined)
 
@@ -31,7 +49,8 @@ const activeModuleLabel = computed(() => {
     return t('application')
   }
 
-  return moduleLabelMap[uiStore.activeModule.value] ?? 'Workspace'
+  const key = moduleLabelKeyMap[uiStore.activeModule.value]
+  return key ? t(key) : t('workspace')
 })
 
 const activeSurfaceLabel = computed(() => {
@@ -40,7 +59,7 @@ const activeSurfaceLabel = computed(() => {
   }
 
   if (uiStore.activePage.value === 'project-editor') {
-    const fileName = projectStore.activeFile?.name || 'No file selected'
+    const fileName = projectStore.activeFile?.name || t('noFileSelected')
     return projectStore.activeFileId && projectStore.isFileDirty(projectStore.activeFileId)
       ? `${fileName} *`
       : fileName
@@ -48,10 +67,11 @@ const activeSurfaceLabel = computed(() => {
 
   const routeName = activeRouteName.value
   if (!routeName) {
-    return 'Workspace'
+    return t('workspace')
   }
 
-  return routeLabelMap[routeName]
+  const key = routeLabelKeyMap[routeName]
+  return key ? t(key) : routeLabelMap[routeName]
 })
 
 const shouldShowModuleBreadcrumb = computed(() => {
@@ -121,7 +141,7 @@ onUnmounted(() => {
               <button
                 class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground h-9 w-9"
                 :title="t('settings')"
-                aria-label="Open settings"
+                :aria-label="t('openSettings')"
                 @click="openSettings"
               >
                 <Settings2 class="h-4 w-4" />

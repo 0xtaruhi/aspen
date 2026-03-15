@@ -7,12 +7,14 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { useI18n } from '@/lib/i18n'
 import { resolveSynthesisLog } from '@/lib/synthesis-log'
 import { designContextStore } from '@/stores/design-context'
 import { hardwareStore } from '@/stores/hardware'
 
 const activeFileName = designContextStore.sourceName
 const topModule = designContextStore.primaryModule
+const { t } = useI18n()
 
 const isBusy = hardwareStore.synthesisRunning
 const synthesisMessage = hardwareStore.synthesisMessage
@@ -33,14 +35,14 @@ const canRunSynthesis = computed(() => {
 
 const synthesisStatus = computed(() => {
   if (isBusy.value) {
-    return 'Running'
+    return t('running')
   }
 
   if (synthesisReport.value) {
-    return synthesisReport.value.success ? 'Completed' : 'Failed'
+    return synthesisReport.value.success ? t('completed') : t('failed')
   }
 
-  return synthesisSources.value.length > 0 ? 'Ready' : 'No Source'
+  return synthesisSources.value.length > 0 ? t('ready') : t('noSource')
 })
 
 const synthesisErrorMessage = computed(() => {
@@ -53,7 +55,7 @@ const synthesisErrorMessage = computed(() => {
   }
 
   if (synthesisReport.value && !synthesisReport.value.success) {
-    return `Yosys reported ${synthesisReport.value.errors} error(s). Review the log below.`
+    return t('yosysReportedErrors', { count: synthesisReport.value.errors })
   }
 
   return ''
@@ -64,24 +66,24 @@ const summaryCards = computed(() => {
 
   return [
     {
-      title: 'Cells',
+      title: t('cells'),
       value: stats?.cell_count ?? 0,
-      hint: 'Flattened synthesized cells',
+      hint: t('flattenedSynthesizedCells'),
     },
     {
-      title: 'Sequential',
+      title: t('sequential'),
       value: stats?.sequential_cell_count ?? 0,
-      hint: 'Flip-flops and latches',
+      hint: t('sequentialHint'),
     },
     {
-      title: 'Memories',
+      title: t('memories'),
       value: stats?.memory_count ?? 0,
-      hint: `${stats?.memory_bits ?? 0} total memory bits`,
+      hint: t('totalMemoryBits', { count: stats?.memory_bits ?? 0 }),
     },
     {
-      title: 'Sources',
+      title: t('sources'),
       value: synthesisSources.value.length,
-      hint: `Top module: ${topModule.value}`,
+      hint: t('topModuleHint', { name: topModule.value }),
     },
   ]
 })
@@ -103,7 +105,7 @@ const zeroCellExplanation = computed(() => {
     return ''
   }
 
-  return `Top module ${topModule.value} synthesized to only ports and direct wiring. Modules that are not instantiated by the top module are removed from the result.`
+  return t('zeroCellExplanation', { name: topModule.value })
 })
 
 function formatDuration(elapsedMs: number) {
@@ -171,12 +173,15 @@ watch(
   <div class="p-8 space-y-8 h-full flex flex-col animate-in fade-in duration-500">
     <div class="flex items-center justify-between shrink-0 gap-4">
       <div>
-        <h2 class="text-3xl font-bold tracking-tight">Synthesis</h2>
+        <h2 class="text-3xl font-bold tracking-tight">{{ t('synthesis') }}</h2>
         <p class="text-muted-foreground">
-          Run Yosys on {{ synthesisSources.length }} project source{{
-            synthesisSources.length === 1 ? '' : 's'
+          {{
+            t('synthesisDescription', {
+              count: synthesisSources.length,
+              suffix: synthesisSources.length === 1 ? '' : 's',
+              top: topModule,
+            })
           }}
-          with top module {{ topModule }}.
         </p>
       </div>
       <div class="flex gap-2 items-center">
@@ -196,7 +201,7 @@ watch(
           {{ synthesisReport ? formatDuration(synthesisReport.elapsed_ms) : activeFileName }}
         </span>
         <Button type="button" size="sm" :disabled="!canRunSynthesis" @click="runSynthesis">
-          {{ isBusy ? 'Running...' : 'Run Synthesis' }}
+          {{ isBusy ? t('runningEllipsis') : t('runSynthesis') }}
         </Button>
       </div>
     </div>
@@ -230,13 +235,13 @@ watch(
     <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] flex-1 min-h-0">
       <Card class="min-h-0 flex flex-col">
         <CardHeader class="flex-row items-center justify-between space-y-0">
-          <CardTitle>Synthesis Log</CardTitle>
+          <CardTitle>{{ t('synthesisLog') }}</CardTitle>
           <div class="flex items-center gap-2 text-xs text-muted-foreground">
             <span v-if="synthesisReport">
-              {{ synthesisReport.warnings }} warning{{ synthesisReport.warnings === 1 ? '' : 's' }}
+              {{ t('warningCount', { count: synthesisReport.warnings }) }}
             </span>
             <span v-if="synthesisReport">
-              {{ synthesisReport.errors }} error{{ synthesisReport.errors === 1 ? '' : 's' }}
+              {{ t('errorCount', { count: synthesisReport.errors }) }}
             </span>
           </div>
         </CardHeader>
@@ -252,18 +257,18 @@ watch(
 
       <Card class="min-h-0 flex flex-col">
         <CardHeader>
-          <CardTitle>Cell Breakdown</CardTitle>
+          <CardTitle>{{ t('cellBreakdown') }}</CardTitle>
         </CardHeader>
         <CardContent class="flex-1 min-h-0 p-0">
           <ScrollArea class="h-full w-full px-4 pb-4">
             <div v-if="!synthesisReport" class="py-4 text-sm text-muted-foreground">
-              Run synthesis to inspect cell types.
+              {{ t('runSynthesisToInspect') }}
             </div>
             <div
               v-else-if="synthesisReport.stats.cell_type_counts.length === 0"
               class="py-4 text-sm text-muted-foreground"
             >
-              {{ zeroCellExplanation || 'No synthesized cells reported.' }}
+              {{ zeroCellExplanation || t('noSynthesizedCells') }}
             </div>
             <div v-else class="space-y-2">
               <div

@@ -3,11 +3,13 @@ import { computed } from 'vue'
 import { Activity, AlertCircle, Clock, Cpu } from 'lucide-vue-next'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useI18n } from '@/lib/i18n'
 import { designContextStore } from '@/stores/design-context'
 
 const codeLines = designContextStore.codeLines
 const signalSummary = designContextStore.signalSummary
 const activeFileName = designContextStore.sourceName
+const { t } = useI18n()
 
 const estimatedResources = computed(() => {
   const lut = Math.max(64, codeLines.value * 3 + signalSummary.value.outputs * 20)
@@ -38,28 +40,28 @@ const estimatedWns = computed(() => {
 
 const stats = computed(() => [
   {
-    title: 'Device Utilization',
+    title: t('deviceUtilization'),
     value: `${utilizationPercent.value}%`,
     icon: Cpu,
-    desc: `LUTs: ${estimatedResources.value.lut}/5000 (estimated)`,
+    desc: t('deviceUtilizationHint', { used: estimatedResources.value.lut }),
   },
   {
-    title: 'Power Estimate',
+    title: t('powerEstimate'),
     value: `${estimatedPower.value.total}W`,
     icon: Activity,
-    desc: `Dynamic: ${estimatedPower.value.dynamic}W`,
+    desc: t('powerEstimateHint', { value: estimatedPower.value.dynamic }),
   },
   {
-    title: 'Worst Negative Slack',
+    title: t('worstNegativeSlack'),
     value: `${estimatedWns.value}ns`,
     icon: Clock,
-    desc: Number(estimatedWns.value) >= 0 ? 'Timing estimated as met' : 'Timing risk detected',
+    desc: Number(estimatedWns.value) >= 0 ? t('timingEstimatedMet') : t('timingRiskDetected'),
   },
   {
-    title: 'Critical Warnings',
+    title: t('criticalWarnings'),
     value: signalSummary.value.outputs > 0 ? '0' : '1',
     icon: AlertCircle,
-    desc: signalSummary.value.outputs > 0 ? 'No obvious output issues' : 'No output signal found',
+    desc: signalSummary.value.outputs > 0 ? t('noObviousOutputIssues') : t('noOutputSignalFound'),
   },
 ])
 
@@ -103,8 +105,8 @@ const resourceBars = computed(() => {
   <div class="p-8 space-y-8 animate-in fade-in duration-500">
     <div class="flex items-center justify-between gap-4">
       <div>
-        <h2 class="text-3xl font-bold tracking-tight">Project Status</h2>
-        <p class="text-muted-foreground">Overview of your selected FPGA design metrics.</p>
+        <h2 class="text-3xl font-bold tracking-tight">{{ t('projectStatus') }}</h2>
+        <p class="text-muted-foreground">{{ t('projectStatusDescription') }}</p>
       </div>
     </div>
 
@@ -128,7 +130,7 @@ const resourceBars = computed(() => {
     <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
       <Card class="col-span-4">
         <CardHeader>
-          <CardTitle>Resource Utilization</CardTitle>
+          <CardTitle>{{ t('resourceUtilization') }}</CardTitle>
         </CardHeader>
         <CardContent class="pl-2">
           <div class="h-[200px] flex items-end justify-around p-4 gap-2">
@@ -151,8 +153,8 @@ const resourceBars = computed(() => {
       </Card>
       <Card class="col-span-3">
         <CardHeader>
-          <CardTitle>Recent Activity</CardTitle>
-          <CardDescription>Latest build and simulation runs.</CardDescription>
+          <CardTitle>{{ t('recentActivity') }}</CardTitle>
+          <CardDescription>{{ t('recentActivityDescription') }}</CardDescription>
         </CardHeader>
         <CardContent>
           <div class="space-y-4">
@@ -164,17 +166,17 @@ const resourceBars = computed(() => {
                 <span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
               </span>
               <div class="ml-2 space-y-1">
-                <p class="text-sm font-medium leading-none">Design source analyzed</p>
+                <p class="text-sm font-medium leading-none">{{ t('designSourceAnalyzed') }}</p>
                 <p class="text-xs text-muted-foreground">{{ activeFileName }}</p>
               </div>
             </div>
             <div class="flex items-center">
               <div class="w-2 h-2 rounded-full bg-primary mr-2"></div>
               <div class="ml-2 space-y-1">
-                <p class="text-sm font-medium leading-none">Signal summary ready</p>
+                <p class="text-sm font-medium leading-none">{{ t('signalSummaryReady') }}</p>
                 <p class="text-xs text-muted-foreground">
-                  Inputs: {{ signalSummary.inputs }} · Outputs: {{ signalSummary.outputs }} ·
-                  Inouts: {{ signalSummary.inouts }}
+                  {{ t('inputs') }}: {{ signalSummary.inputs }} · {{ t('outputs') }}:
+                  {{ signalSummary.outputs }} · {{ t('inouts') }}: {{ signalSummary.inouts }}
                 </p>
               </div>
             </div>

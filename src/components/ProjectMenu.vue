@@ -18,16 +18,18 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar'
+import { useI18n } from '@/lib/i18n'
 import { openProject, saveProject, saveProjectAs } from '@/lib/project-io'
 import NewProjectDialog from './project/NewProjectDialog.vue'
 import { projectStore } from '@/stores/project'
 
 const { isMobile } = useSidebar()
+const { t } = useI18n()
 const showNewProjectDialog = ref(false)
 const router = useRouter()
 const activeProject = computed(() => ({
   name: `${projectStore.files[0]?.name || 'Aspen FPGA'}${projectStore.hasUnsavedChanges ? ' *' : ''}`,
-  plan: 'Pro',
+  plan: t('projectManagement'),
 }))
 
 function openSettings() {
@@ -66,28 +68,28 @@ function openSettings() {
           :side-offset="4"
         >
           <DropdownMenuLabel class="text-xs text-muted-foreground">
-            Project Actions
+            {{ t('projectActions') }}
           </DropdownMenuLabel>
 
           <DropdownMenuItem class="gap-2 p-2" @click="showNewProjectDialog = true">
             <div class="flex size-6 items-center justify-center rounded-sm border">
               <Plus class="size-4" />
             </div>
-            New Project
+            {{ t('newProject') }}
           </DropdownMenuItem>
 
           <DropdownMenuItem class="gap-2 p-2" @click="openProject">
             <div class="flex size-6 items-center justify-center rounded-sm border">
               <FolderOpen class="size-4" />
             </div>
-            Open Project
+            {{ t('openProject') }}
           </DropdownMenuItem>
 
           <DropdownMenuItem class="gap-2 p-2" @click="saveProject">
             <div class="flex size-6 items-center justify-center rounded-sm border">
               <Save class="size-4" />
             </div>
-            Save Project
+            {{ t('saveProject') }}
             <DropdownMenuShortcut>Ctrl+S</DropdownMenuShortcut>
           </DropdownMenuItem>
 
@@ -95,7 +97,7 @@ function openSettings() {
             <div class="flex size-6 items-center justify-center rounded-sm border">
               <Save class="size-4" />
             </div>
-            Save Project As
+            {{ t('saveProjectAs') }}
           </DropdownMenuItem>
 
           <DropdownMenuSeparator />
@@ -104,7 +106,7 @@ function openSettings() {
             <div class="flex size-6 items-center justify-center rounded-sm border">
               <Settings2 class="size-4" />
             </div>
-            Settings
+            {{ t('settings') }}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useI18n } from '@/lib/i18n'
+
 defineProps<{
   isOn?: boolean
 }>()
@@ -6,6 +8,7 @@ defineProps<{
 const emit = defineEmits<{
   (e: 'toggle', value: boolean): void
 }>()
+const { t } = useI18n()
 
 function press() {
   emit('toggle', true)
@@ -26,6 +29,6 @@ function release() {
     @pointerleave="release"
     @pointercancel="release"
   >
-    <span class="sr-only">Toggle button</span>
+    <span class="sr-only">{{ t('toggleButton') }}</span>
   </button>
 </template>

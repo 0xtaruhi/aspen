@@ -460,6 +460,9 @@ fn parse_netlist_stats(netlist_path: &Path, top_module: &str) -> Result<Synthesi
             .and_then(Value::as_str)
             .unwrap_or("$unknown")
             .to_string();
+        if !is_public_cell_type(&cell_type) {
+            continue;
+        }
         *cell_type_counts.entry(cell_type.clone()).or_default() += 1;
         if is_sequential_cell_type(&cell_type) {
             sequential_cell_count = sequential_cell_count.saturating_add(1);
@@ -495,9 +498,14 @@ fn is_sequential_cell_type(cell_type: &str) -> bool {
     lowered.contains("dff") || lowered.contains("latch")
 }
 
+fn is_public_cell_type(cell_type: &str) -> bool {
+    !cell_type.starts_with('$')
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use std::time::Instant;
 
     #[test]
@@ -607,5 +615,37 @@ endmodule
             "{}",
             report.log
         );
+    }
+
+    #[test]
+    fn parse_netlist_stats_filters_internal_yosys_cells() {
+        let generated_at_ms = now_millis().unwrap();
+        let workdir = create_workdir(generated_at_ms).unwrap();
+        let netlist_path = workdir.join("netlist.json");
+        let netlist = json!({
+            "modules": {
+                "top": {
+                    "netnames": {},
+                    "memories": {},
+                    "cells": {
+                        "logic0": { "type": "LUT4" },
+                        "seq0": { "type": "DFFRHQ" },
+                        "meta0": { "type": "$scopeinfo" }
+                    }
+                }
+            }
+        });
+
+        fs::write(&netlist_path, serde_json::to_vec(&netlist).unwrap()).unwrap();
+        let stats = parse_netlist_stats(&netlist_path, "top").unwrap();
+        let _ = fs::remove_dir_all(&workdir);
+
+        assert_eq!(stats.cell_count, 2);
+        assert_eq!(stats.sequential_cell_count, 1);
+        assert_eq!(stats.cell_type_counts.len(), 2);
+        assert!(stats
+            .cell_type_counts
+            .iter()
+            .all(|entry| !entry.cell_type.starts_with('$')));
     }
 }

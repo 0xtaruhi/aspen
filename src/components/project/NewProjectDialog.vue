@@ -18,6 +18,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
+import { useI18n } from '@/lib/i18n'
 import { projectStore } from '@/stores/project'
 
 defineProps<{
@@ -28,7 +29,8 @@ const emit = defineEmits<{
   (e: 'update:open', value: boolean): void
 }>()
 
-const projectName = ref('MyFPGAProject')
+const { t } = useI18n()
+const projectName = ref(t('projectNameDefault'))
 const projectTemplate = ref<'empty' | 'blinky' | 'uart'>('empty')
 
 function handleCreate() {
@@ -41,33 +43,33 @@ function handleCreate() {
   <Dialog :open="open" @update:open="$emit('update:open', $event)">
     <DialogContent class="sm:max-w-[425px]">
       <DialogHeader>
-        <DialogTitle>Create New Project</DialogTitle>
+        <DialogTitle>{{ t('createNewProject') }}</DialogTitle>
         <DialogDescription>
-          Set up your new FPGA project. Click create when you're done.
+          {{ t('createNewProjectDescription') }}
         </DialogDescription>
       </DialogHeader>
       <div class="grid gap-4 py-4">
         <div class="grid grid-cols-4 items-center gap-4">
-          <Label for="name" class="text-right"> Name </Label>
+          <Label for="name" class="text-right"> {{ t('name') }} </Label>
           <Input id="name" v-model="projectName" class="col-span-3" />
         </div>
         <div class="grid grid-cols-4 items-center gap-4">
-          <Label for="template" class="text-right"> Template </Label>
+          <Label for="template" class="text-right"> {{ t('template') }} </Label>
           <Select v-model="projectTemplate">
             <SelectTrigger class="col-span-3">
-              <SelectValue placeholder="Select a template" />
+              <SelectValue :placeholder="t('selectTemplate')" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="empty">Empty Project</SelectItem>
-              <SelectItem value="blinky">LED Blinky</SelectItem>
-              <SelectItem value="uart">UART Echo</SelectItem>
+              <SelectItem value="empty">{{ t('emptyProject') }}</SelectItem>
+              <SelectItem value="blinky">{{ t('ledBlinky') }}</SelectItem>
+              <SelectItem value="uart">{{ t('uartEcho') }}</SelectItem>
             </SelectContent>
           </Select>
         </div>
       </div>
       <DialogFooter>
-        <Button variant="outline" @click="$emit('update:open', false)">Cancel</Button>
-        <Button type="submit" @click="handleCreate">Create Project</Button>
+        <Button variant="outline" @click="$emit('update:open', false)">{{ t('cancel') }}</Button>
+        <Button type="submit" @click="handleCreate">{{ t('createProject') }}</Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>

@@ -9,6 +9,7 @@ import DeviceInspector from '@/components/virtual-device/DeviceInspector.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { useI18n } from '@/lib/i18n'
 import { hardwareStore } from '@/stores/hardware'
 import { signalCatalogStore } from '@/stores/signal-catalog'
 
@@ -26,6 +27,7 @@ const rateInput = ref('1000')
 const displayedActualHz = ref(0)
 let streamStatusPollTimer: ReturnType<typeof setInterval> | null = null
 let displayedHzTimer: ReturnType<typeof setInterval> | null = null
+const { t } = useI18n()
 
 const availableSignalCount = computed(() => signalCatalogStore.signals.value.length)
 const streamSignalNames = computed(() => {
@@ -38,6 +40,9 @@ const streamStatus = computed(() => hardwareStore.dataStreamStatus.value)
 const streamRunning = computed(() => streamStatus.value.running)
 const canApplyRate = computed(() => streamRunning.value && !streamBusy.value)
 const actualHzLabel = computed(() => `${formatMetric(displayedActualHz.value)} Hz`)
+const galleryTitle = computed(() => {
+  return showGallery.value ? t('hideComponentGallery') : t('openComponentGallery')
+})
 const selectedDevice = computed(() => {
   if (!selectedDeviceId.value) {
     return null
@@ -72,7 +77,7 @@ function startStreamStatusPolling() {
   clearStreamStatusPollTimer()
   streamStatusPollTimer = setInterval(() => {
     void hardwareStore.refreshDataStreamStatus().catch((err) => {
-      streamMessage.value = `Failed to refresh stream status: ${getErrorMessage(err)}`
+      streamMessage.value = t('failedRefreshStreamStatus', { message: getErrorMessage(err) })
     })
   }, 250)
 }
@@ -124,7 +129,7 @@ function formatMetric(rateHz: number) {
 function parseRequestedRate() {
   const nextRate = Number(rateInput.value)
   if (!Number.isFinite(nextRate) || nextRate <= 0) {
-    throw new Error('Frequency must be a finite value greater than 0 Hz.')
+    throw new Error(t('frequencyInvalid'))
   }
 
   return nextRate
@@ -157,7 +162,7 @@ async function startStream() {
     await hardwareStore.setDataStreamRate(parseRequestedRate())
     await hardwareStore.startDataStream()
   } catch (err) {
-    streamMessage.value = `Failed to start stream: ${getErrorMessage(err)}`
+    streamMessage.value = t('failedToStartStream', { message: getErrorMessage(err) })
   } finally {
     streamBusy.value = false
   }
@@ -170,7 +175,7 @@ async function stopStream() {
   try {
     await hardwareStore.stopDataStream()
   } catch (err) {
-    streamMessage.value = `Failed to stop stream: ${getErrorMessage(err)}`
+    streamMessage.value = t('failedToStopStream', { message: getErrorMessage(err) })
   } finally {
     streamBusy.value = false
   }
@@ -214,7 +219,7 @@ watch(
     }
 
     void syncStreamConfig().catch((err) => {
-      streamMessage.value = `Failed to update signal map: ${getErrorMessage(err)}`
+      streamMessage.value = t('failedToUpdateSignalMap', { message: getErrorMessage(err) })
     })
   },
 )
@@ -227,7 +232,7 @@ onMounted(() => {
     .start()
     .then(() => syncStreamConfig())
     .catch((err) => {
-      streamMessage.value = `Hardware runtime unavailable: ${getErrorMessage(err)}`
+      streamMessage.value = t('hardwareRuntimeUnavailable', { message: getErrorMessage(err) })
     })
     .finally(() => {
       streamBusy.value = false
@@ -248,17 +253,19 @@ onBeforeUnmount(() => {
         type="button"
         size="icon"
         variant="outline"
-        :title="showGallery ? 'Hide component gallery' : 'Open component gallery'"
-        aria-label="Toggle component gallery"
+        :title="galleryTitle"
+        :aria-label="t('toggleComponentGallery')"
         @click="toggleGallery"
       >
         <LayoutGrid class="w-4 h-4" />
       </Button>
-      <Badge variant="outline">{{ streamRunning ? 'Running' : 'Stopped' }}</Badge>
+      <Badge variant="outline">
+        {{ streamRunning ? t('runningState') : t('stoppedState') }}
+      </Badge>
       <Badge variant="outline">
         {{ streamStatus.configured_signal_count || streamSignalNames.length }} /
         {{ availableSignalCount }}
-        ports
+        {{ t('portsUnit') }}
       </Badge>
       <Badge variant="outline">{{ actualHzLabel }}</Badge>
 
@@ -281,7 +288,7 @@ onBeforeUnmount(() => {
           :disabled="!canApplyRate"
           @click="applyRate"
         >
-          Apply
+          {{ t('apply') }}
         </Button>
         <Button
           type="button"
@@ -293,7 +300,7 @@ onBeforeUnmount(() => {
         >
           <Square v-if="streamRunning" class="h-4 w-4" />
           <Play v-else class="h-4 w-4" />
-          {{ streamRunning ? 'Stop' : 'Start' }}
+          {{ streamRunning ? t('stop') : t('start') }}
         </Button>
       </div>
     </div>
@@ -310,8 +317,7 @@ onBeforeUnmount(() => {
           {{ streamMessage }}
         </span>
         <span v-if="streamSignalOverflow > 0" class="text-amber-600">
-          {{ streamSignalOverflow }} ports exceed the 64-bit stream window and are not active in
-          live IO.
+          {{ t('streamOverflowWarning', { count: streamSignalOverflow }) }}
         </span>
       </div>
     </div>
@@ -327,7 +333,11 @@ onBeforeUnmount(() => {
 
     <RightDrawer
       v-model:modelValue="inspectorOpen"
-      :title="selectedDevice ? `${selectedDevice.label} Settings` : 'Device Settings'"
+      :title="
+        selectedDevice
+          ? t('selectedDeviceSettings', { name: selectedDevice.label })
+          : t('deviceSettingsTitle')
+      "
     >
       <DeviceInspector :device="selectedDevice" @close="inspectorOpen = false" />
     </RightDrawer>

@@ -30,6 +30,7 @@ import {
   SidebarHeader,
   SidebarRail,
 } from '@/components/ui/sidebar'
+import { useI18n } from '@/lib/i18n'
 import { type AppRouteName, modulePathMap } from '@/router'
 import { hardwareStore } from '@/stores/hardware'
 import { projectStore } from '@/stores/project'
@@ -42,6 +43,7 @@ const props = withDefaults(defineProps<SidebarProps>(), {
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 
 function navigate(path: string) {
   void router.push(path)
@@ -63,12 +65,14 @@ const data = computed(() => ({
   navMain: [
     {
       title: 'Project Management',
+      label: t('projectManagement'),
       url: modulePathMap['project-management'],
       icon: FolderCog,
       isActive: uiStore.activeModule.value === 'project-management',
       items: [
         {
           title: 'Dashboard',
+          label: t('dashboard'),
           url: '/project-management/dashboard',
           action: () => navigate('/project-management/dashboard'),
           isActive:
@@ -79,6 +83,7 @@ const data = computed(() => ({
     },
     {
       title: 'FPGA Flow',
+      label: t('fpgaFlow'),
       url: modulePathMap['fpga-flow'],
       icon: FileCode2,
       isActive: uiStore.activeModule.value === 'fpga-flow',
@@ -86,6 +91,7 @@ const data = computed(() => ({
       items: [
         {
           title: 'Synthesis',
+          label: t('synthesis'),
           url: '/fpga-flow/synthesis',
           action: () => navigate('/fpga-flow/synthesis'),
           isActive: activeRouteName.value === 'fpga-flow-synthesis',
@@ -93,6 +99,7 @@ const data = computed(() => ({
         },
         {
           title: 'Implementation',
+          label: t('implementation'),
           url: '/fpga-flow/implementation',
           action: () => navigate('/fpga-flow/implementation'),
           isActive: activeRouteName.value === 'fpga-flow-implementation',
@@ -101,6 +108,7 @@ const data = computed(() => ({
     },
     {
       title: 'Hardware Manager',
+      label: t('hardwareManager'),
       url: modulePathMap['hardware-manager'],
       icon: Plug,
       isActive: uiStore.activeModule.value === 'hardware-manager',
@@ -108,12 +116,14 @@ const data = computed(() => ({
     },
     {
       title: 'Virtual Device Platform',
+      label: t('virtualDevicePlatform'),
       url: modulePathMap['virtual-device-platform'],
       icon: Bug,
       isActive: uiStore.activeModule.value === 'virtual-device-platform',
       items: [
         {
           title: 'Workbench',
+          label: t('workbench'),
           url: modulePathMap['virtual-device-platform'],
           action: () => navigate(modulePathMap['virtual-device-platform']),
           isActive: activeRouteName.value === 'virtual-device-platform',
@@ -129,7 +139,7 @@ function handleNewFile() {
     return
   }
 
-  const name = prompt('Enter file name:', 'new_file.v')
+  const name = prompt(t('enterFileName'), 'new_file.v')
   if (name) {
     projectStore.createFile(parent.id, name)
     void router.push({ name: 'project-management-editor' })
@@ -142,7 +152,7 @@ function handleNewFolder() {
     return
   }
 
-  const name = prompt('Enter folder name:', 'New Folder')
+  const name = prompt(t('enterFolderName'), t('newFolder'))
   if (name) {
     projectStore.createFolder(parent.id, name)
   }
@@ -154,7 +164,7 @@ function handleRenameActiveSource() {
     return
   }
 
-  const newName = prompt('Enter new name:', node.name)
+  const newName = prompt(t('enterNewName'), node.name)
   if (newName) {
     projectStore.renameNode(node.id, newName)
   }
@@ -168,8 +178,8 @@ async function handleDeleteActiveSource() {
 
   if (
     !settingsStore.state.confirmDelete ||
-    (await confirmAction(`Are you sure you want to delete ${node.name}?`, {
-      title: 'Delete File',
+    (await confirmAction(t('deleteFileConfirm', { name: node.name }), {
+      title: t('deleteFileTitle'),
     }))
   ) {
     projectStore.deleteNode(node.id)
@@ -192,13 +202,13 @@ async function handleDeleteActiveSource() {
           <ResizablePanel :default-size="46" :min-size="18">
             <SidebarGroup class="h-full min-h-0 gap-2">
               <div class="flex items-center gap-1 px-2">
-                <SidebarGroupLabel class="h-8 px-0">Project Sources</SidebarGroupLabel>
+                <SidebarGroupLabel class="h-8 px-0">{{ t('projectSources') }}</SidebarGroupLabel>
                 <div class="ml-auto flex items-center gap-1">
                   <Button
                     variant="ghost"
                     size="icon"
                     class="h-7 w-7"
-                    title="New file"
+                    :title="t('newFile')"
                     @click="handleNewFile"
                   >
                     <Plus class="h-4 w-4" />
@@ -207,7 +217,7 @@ async function handleDeleteActiveSource() {
                     variant="ghost"
                     size="icon"
                     class="h-7 w-7"
-                    title="New folder"
+                    :title="t('newFolder')"
                     @click="handleNewFolder"
                   >
                     <FolderPlus class="h-4 w-4" />
@@ -216,7 +226,7 @@ async function handleDeleteActiveSource() {
                     variant="ghost"
                     size="icon"
                     class="h-7 w-7"
-                    title="Rename selected file"
+                    :title="t('renameSelectedFile')"
                     :disabled="!activeSourceNode"
                     @click="handleRenameActiveSource"
                   >
@@ -226,7 +236,7 @@ async function handleDeleteActiveSource() {
                     variant="ghost"
                     size="icon"
                     class="h-7 w-7"
-                    title="Delete selected file"
+                    :title="t('deleteSelectedFile')"
                     :disabled="!activeSourceNode"
                     @click="handleDeleteActiveSource"
                   >

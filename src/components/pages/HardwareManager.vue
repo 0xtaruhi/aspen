@@ -26,6 +26,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable'
+import { useI18n } from '@/lib/i18n'
 import { hardwareStore } from '@/stores/hardware'
 import { projectStore } from '@/stores/project'
 import type { HardwarePhase } from '@/lib/hardware-client'
@@ -60,7 +61,9 @@ const hotplugLog = hardwareStore.hotplugLog
 const selectedTargetId = ref<string | null>(null)
 const isProgramDialogOpen = ref(false)
 const programMessage = ref('')
+const programMessageTone = ref<'success' | 'error'>('success')
 const bitstreamFile = ref('')
+const { t } = useI18n()
 
 const hardwareStatus = computed<HardwareStatus | null>(() => {
   const device = hardwareState.value.device
@@ -150,23 +153,23 @@ const defaultBitstreamPath = computed(() => {
 const flowLabel = computed(() => {
   switch (flowPhase.value) {
     case 'probing':
-      return 'Probing'
+      return t('probing')
     case 'device_ready':
-      return 'Ready'
+      return t('ready')
     case 'generating':
-      return 'Generating'
+      return t('generating')
     case 'bitstream_ready':
-      return 'Bitstream Ready'
+      return t('bitstreamReady')
     case 'programming':
-      return 'Programming'
+      return t('programming')
     case 'programmed':
-      return 'Programmed'
+      return t('programmed')
     case 'error':
-      return 'Error'
+      return t('error')
     case 'device_disconnected':
-      return 'Disconnected'
+      return t('disconnected')
     default:
-      return 'Idle'
+      return t('idle')
   }
 })
 
@@ -221,7 +224,7 @@ function buildTargets(status: HardwareStatus): HardwareTarget[] {
   return [
     {
       id: 'vlfd-host',
-      name: 'Local VLFD',
+      name: t('localVlfd'),
       type: 'server',
       status: 'connected',
       children: [
@@ -235,16 +238,16 @@ function buildTargets(status: HardwareStatus): HardwareTarget[] {
               ? 'ready'
               : 'connected',
           details: {
-            Chip: status.board,
-            Description: status.description,
-            'SMIMS Version': status.config.smims_version,
-            'FIFO Words': status.config.fifo_words.toString(),
-            'Flash Blocks': status.config.flash_total_block.toString(),
-            'Flash Block Size': `${status.config.flash_block_size} bytes`,
-            'Flash Cluster Size': `${status.config.flash_cluster_size} bytes`,
-            VeriComm: status.config.vericomm_enabled ? 'Enabled' : 'Unavailable',
-            'FPGA Programmed': status.config.programmed ? 'Yes' : 'No',
-            'PCB Connected': status.config.pcb_connected ? 'Yes' : 'No',
+            [t('chip')]: status.board,
+            [t('descriptionLabel')]: status.description,
+            [t('smimsVersion')]: status.config.smims_version,
+            [t('fifoWords')]: status.config.fifo_words.toString(),
+            [t('flashBlocks')]: status.config.flash_total_block.toString(),
+            [t('flashBlockSize')]: t('bytesValue', { count: status.config.flash_block_size }),
+            [t('flashClusterSize')]: t('bytesValue', { count: status.config.flash_cluster_size }),
+            [t('veriComm')]: status.config.vericomm_enabled ? t('enabled') : t('unavailable'),
+            [t('fpgaProgrammed')]: status.config.programmed ? t('yes') : t('no'),
+            [t('pcbConnected')]: status.config.pcb_connected ? t('yes') : t('no'),
           },
         },
       ],
@@ -284,10 +287,12 @@ function getErrorMessage(err: unknown): string {
 async function autoConnect() {
   if (isBusy.value) return
   programMessage.value = ''
+  programMessageTone.value = 'success'
   try {
     await hardwareStore.probe()
   } catch (err) {
-    programMessage.value = `Probe failed: ${getErrorMessage(err)}`
+    programMessageTone.value = 'error'
+    programMessage.value = t('probeFailed', { message: getErrorMessage(err) })
   }
 }
 
@@ -301,21 +306,25 @@ async function disconnect() {
   isProgramDialogOpen.value = false
   bitstreamFile.value = ''
   programMessage.value = ''
+  programMessageTone.value = 'success'
 }
 
 async function programDevice() {
   if (!canProgram.value || isProgramming.value) return
   if (!bitstreamFile.value.trim()) {
-    programMessage.value = 'Please select or enter a bitstream file path.'
+    programMessageTone.value = 'error'
+    programMessage.value = t('selectBitstreamPath')
     return
   }
 
   try {
     await hardwareStore.programBitstream(bitstreamFile.value)
-    programMessage.value = 'Bitstream programmed successfully.'
+    programMessageTone.value = 'success'
+    programMessage.value = t('bitstreamProgrammedSuccessfully')
     isProgramDialogOpen.value = false
   } catch (err) {
-    programMessage.value = `Programming failed: ${getErrorMessage(err)}`
+    programMessageTone.value = 'error'
+    programMessage.value = t('programmingFailed', { message: getErrorMessage(err) })
   }
 }
 
@@ -336,8 +345,8 @@ async function pickBitstream() {
     multiple: false,
     defaultPath: bitstreamFile.value || defaultBitstreamPath.value || undefined,
     filters: [
-      { name: 'Bitstream', extensions: ['bit', 'txt', 'bin'] },
-      { name: 'All Files', extensions: ['*'] },
+      { name: t('bitstreamFilter'), extensions: ['bit', 'txt', 'bin'] },
+      { name: t('allFiles'), extensions: ['*'] },
     ],
   })
 
@@ -348,7 +357,8 @@ async function pickBitstream() {
 
 onMounted(() => {
   hardwareStore.start().catch((err) => {
-    programMessage.value = `Hardware watch failed: ${getErrorMessage(err)}`
+    programMessageTone.value = 'error'
+    programMessage.value = t('hardwareWatchFailed', { message: getErrorMessage(err) })
   })
 })
 
@@ -363,7 +373,7 @@ onBeforeUnmount(() => {
     <div class="h-12 border-b flex items-center px-4 gap-2 bg-muted/20">
       <Button variant="outline" size="sm" class="gap-2" :disabled="isBusy" @click="autoConnect">
         <Plug class="w-4 h-4" />
-        {{ isConnecting ? 'Connecting...' : 'Auto Connect' }}
+        {{ isConnecting ? t('connectingEllipsis') : t('autoConnect') }}
       </Button>
 
       <Button
@@ -374,7 +384,7 @@ onBeforeUnmount(() => {
         @click="disconnect"
       >
         <XCircle class="w-4 h-4" />
-        Disconnect
+        {{ t('disconnectHardware') }}
       </Button>
 
       <Separator orientation="vertical" class="h-6 mx-2" />
@@ -382,7 +392,7 @@ onBeforeUnmount(() => {
       <Button
         variant="ghost"
         size="icon"
-        title="Refresh Targets"
+        :title="t('refreshTargets')"
         :disabled="isBusy"
         @click="refreshStatus"
       >
@@ -391,11 +401,11 @@ onBeforeUnmount(() => {
 
       <Button size="sm" class="gap-2" :disabled="!canOpenProgramDialog" @click="openProgramDialog">
         <Play class="w-4 h-4" />
-        Program...
+        {{ t('programDeviceShort') }}
       </Button>
 
       <span v-if="lastRefresh" class="text-xs text-muted-foreground ml-2">
-        Last probe: {{ lastRefresh }}
+        {{ t('lastProbe', { time: lastRefresh }) }}
       </span>
 
       <span v-if="hotplugLog" class="text-xs text-muted-foreground ml-auto">
@@ -419,15 +429,15 @@ onBeforeUnmount(() => {
         <!-- Hardware Tree -->
         <ResizablePanel :default-size="25" :min-size="20" class="border-r bg-muted/10">
           <div class="p-2 font-medium text-xs text-muted-foreground uppercase tracking-wider mb-2">
-            Hardware Targets
+            {{ t('hardwareTargets') }}
           </div>
           <ScrollArea class="h-full">
             <div
               v-if="targets.length === 0"
               class="p-4 text-sm text-muted-foreground text-center italic"
             >
-              No hardware targets open. <br />
-              Click "Auto Connect" to start.
+              {{ t('noHardwareTargetsOpen') }} <br />
+              {{ t('clickAutoConnectToStart') }}
             </div>
             <div v-else class="px-2 space-y-1">
               <div v-for="server in targets" :key="server.id">
@@ -436,7 +446,9 @@ onBeforeUnmount(() => {
                 >
                   <Server class="w-4 h-4 text-blue-500" />
                   {{ server.name }}
-                  <Badge variant="outline" class="ml-auto text-[10px] h-5">Connected</Badge>
+                  <Badge variant="outline" class="ml-auto text-[10px] h-5">
+                    {{ t('connected') }}
+                  </Badge>
                 </div>
                 <div class="ml-4 border-l pl-2 mt-1 space-y-1">
                   <div
@@ -497,10 +509,10 @@ onBeforeUnmount(() => {
                   <CheckCircle2 class="w-3 h-3 mr-1" />
                   {{
                     !hardwareStatus?.config.pcb_connected
-                      ? 'Disconnected'
+                      ? t('disconnected')
                       : hardwareStatus?.config.programmed
-                        ? 'Programmed'
-                        : 'Detected'
+                        ? t('programmed')
+                        : t('detected')
                   }}
                 </Badge>
               </div>
@@ -524,11 +536,7 @@ onBeforeUnmount(() => {
               <p
                 v-if="programMessage"
                 class="text-sm"
-                :class="
-                  programMessage.toLowerCase().includes('failed')
-                    ? 'text-destructive'
-                    : 'text-green-600'
-                "
+                :class="programMessageTone === 'error' ? 'text-destructive' : 'text-green-600'"
               >
                 {{ programMessage }}
               </p>
@@ -540,7 +548,7 @@ onBeforeUnmount(() => {
               <div class="p-4 bg-muted/30 rounded-full">
                 <Cpu class="w-12 h-12 opacity-50" />
               </div>
-              <p>Select a hardware device to view details and program.</p>
+              <p>{{ t('selectHardwareDeviceToViewDetails') }}</p>
             </div>
           </ScrollArea>
         </ResizablePanel>
@@ -550,10 +558,9 @@ onBeforeUnmount(() => {
     <Dialog :open="isProgramDialogOpen" @update:open="isProgramDialogOpen = $event">
       <DialogContent class="sm:max-w-[560px]">
         <DialogHeader>
-          <DialogTitle>Program Device</DialogTitle>
+          <DialogTitle>{{ t('programDeviceTitle') }}</DialogTitle>
           <DialogDescription>
-            Choose a bitstream for the selected board. The current project bitstream is prefilled
-            when available.
+            {{ t('programDeviceDescription') }}
           </DialogDescription>
         </DialogHeader>
 
@@ -563,7 +570,7 @@ onBeforeUnmount(() => {
               for="bitstream"
               class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
             >
-              Bitstream File
+              {{ t('bitstreamFile') }}
             </label>
             <div class="flex w-full items-center gap-2">
               <div class="relative flex-1">
@@ -576,24 +583,26 @@ onBeforeUnmount(() => {
                 />
               </div>
               <Button variant="secondary" type="button" :disabled="isBusy" @click="pickBitstream">
-                Browse...
+                {{ t('browse') }}
               </Button>
             </div>
           </div>
 
           <div class="rounded-xl border border-border bg-muted/30 px-4 py-3">
-            <p class="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Default</p>
+            <p class="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
+              {{ t('defaultLabel') }}
+            </p>
             <p class="mt-2 break-all font-mono text-sm text-foreground/90">
-              {{ defaultBitstreamPath || 'No current project bitstream path inferred yet.' }}
+              {{ defaultBitstreamPath || t('noCurrentProjectBitstreamPath') }}
             </p>
           </div>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" @click="isProgramDialogOpen = false">Cancel</Button>
+          <Button variant="outline" @click="isProgramDialogOpen = false">{{ t('cancel') }}</Button>
           <Button :disabled="!canProgram" @click="programDevice">
             <Play v-if="!isProgramming" class="mr-2 h-4 w-4" />
-            {{ isProgramming ? 'Programming...' : 'Program' }}
+            {{ isProgramming ? t('programmingEllipsis') : t('program') }}
           </Button>
         </DialogFooter>
       </DialogContent>

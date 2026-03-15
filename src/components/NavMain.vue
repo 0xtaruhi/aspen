@@ -12,10 +12,12 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from '@/components/ui/sidebar'
+import { useI18n } from '@/lib/i18n'
 
 defineProps<{
   items: {
     title: string
+    label?: string
     url: string
     icon?: LucideIcon
     isActive?: boolean
@@ -23,6 +25,7 @@ defineProps<{
     action?: () => void
     items?: {
       title: string
+      label?: string
       url: string
       action?: () => void
       isActive?: boolean
@@ -30,11 +33,13 @@ defineProps<{
     }[]
   }[]
 }>()
+
+const { t } = useI18n()
 </script>
 
 <template>
   <SidebarGroup>
-    <SidebarGroupLabel>Platform</SidebarGroupLabel>
+    <SidebarGroupLabel>{{ t('platform') }}</SidebarGroupLabel>
     <SidebarMenu>
       <template v-for="item in items" :key="item.title">
         <SidebarMenuItem>
@@ -42,9 +47,9 @@ defineProps<{
             <Collapsible as-child :default-open="item.isActive" class="group/collapsible">
               <div>
                 <CollapsibleTrigger as-child>
-                  <SidebarMenuButton :tooltip="item.title" :is-active="item.isActive">
+                  <SidebarMenuButton :tooltip="item.label ?? item.title" :is-active="item.isActive">
                     <component :is="item.icon" v-if="item.icon" />
-                    <span>{{ item.title }}</span>
+                    <span>{{ item.label ?? item.title }}</span>
                     <LoaderCircle
                       v-if="item.isRunning"
                       class="ml-auto size-4 animate-spin text-sidebar-foreground/70"
@@ -65,7 +70,7 @@ defineProps<{
                         :is-active="subItem.isActive"
                         @click="subItem.action ? subItem.action() : null"
                       >
-                        <span>{{ subItem.title }}</span>
+                        <span>{{ subItem.label ?? subItem.title }}</span>
                         <LoaderCircle
                           v-if="subItem.isRunning"
                           class="ml-auto size-4 animate-spin text-sidebar-foreground/70"
@@ -80,12 +85,12 @@ defineProps<{
           <template v-else>
             <SidebarMenuButton
               type="button"
-              :tooltip="item.title"
+              :tooltip="item.label ?? item.title"
               :is-active="item.isActive"
               @click="item.action ? item.action() : null"
             >
               <component :is="item.icon" v-if="item.icon" />
-              <span>{{ item.title }}</span>
+              <span>{{ item.label ?? item.title }}</span>
               <LoaderCircle
                 v-if="item.isRunning"
                 class="ml-auto size-4 animate-spin text-sidebar-foreground/70"

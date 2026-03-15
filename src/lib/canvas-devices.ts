@@ -5,6 +5,7 @@ import type {
   CanvasDeviceStateSnapshot,
   CanvasDeviceType,
 } from '@/lib/hardware-client'
+import { translate } from '@/lib/i18n'
 
 type CanvasDeviceCapabilities = {
   drivesSignal: boolean
@@ -101,7 +102,7 @@ function segmentBindingSlots(digits: number): CanvasDeviceBindingSlot[] {
     ...segmentSlots(),
     ...Array.from({ length: digits }, (_, index) => ({
       key: `digit-${index}`,
-      label: `Digit ${index + 1}`,
+      label: translate('digitLabel', { index: index + 1 }),
     })),
   ]
 }
@@ -110,11 +111,11 @@ function matrixBindingSlots(rows: number, columns: number): CanvasDeviceBindingS
   return [
     ...Array.from({ length: rows }, (_, index) => ({
       key: `row-${index}`,
-      label: `Row ${index + 1}`,
+      label: translate('rowLabel', { index: index + 1 }),
     })),
     ...Array.from({ length: columns }, (_, index) => ({
       key: `col-${index}`,
-      label: `Col ${index + 1}`,
+      label: translate('columnLabel', { index: index + 1 }),
     })),
   ]
 }
@@ -136,7 +137,7 @@ function defaultSegmentDisplayConfig(): CanvasSegmentDisplayConfig {
 }
 
 function matrixTitle(rows: number, columns: number) {
-  return `LED ${columns}x${rows} Matrix`
+  return translate('matrixTitle', { columns, rows })
 }
 
 function normalizeSegmentDigitCount(value: number | null | undefined, fallback: number) {
@@ -263,7 +264,7 @@ function createSegmentDisplayDefinition(): CanvasDeviceDefinition {
   const defaults = defaultSegmentDisplayConfig()
 
   return {
-    title: 'Segment Display',
+    title: translate('segmentDisplay'),
     dropAliases: ['segment_display', 'segmentdisplay'],
     defaultState: () =>
       defaultState({
@@ -273,7 +274,10 @@ function createSegmentDisplayDefinition(): CanvasDeviceDefinition {
     toRendererProps: (device) => {
       const config = getCanvasSegmentDisplayConfig(device) ?? defaults
       return {
-        title: config.digits > 1 ? `${config.digits}-Digit Segment` : 'Segment Display',
+        title:
+          config.digits > 1
+            ? `${config.digits}-${translate('segmentDisplay')}`
+            : translate('segmentDisplay'),
         isOn: device.state.is_on,
         digits: config.digits,
       }
@@ -292,7 +296,7 @@ function createSegmentDisplayDefinition(): CanvasDeviceDefinition {
 
 const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> = {
   led: {
-    title: 'LED',
+    title: translate('led'),
     dropAliases: ['led', 'bulb'],
     defaultState: () => defaultState({ color: 'red', binding: createSingleBinding() }),
     toRendererProps: (device) => ({
@@ -306,7 +310,7 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
     },
   },
   switch: {
-    title: 'Switch',
+    title: translate('switchDevice'),
     dropAliases: ['switch'],
     defaultState: () => defaultState({ binding: createSingleBinding() }),
     toRendererProps: (device) => ({
@@ -319,7 +323,7 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
     },
   },
   button: {
-    title: 'Button',
+    title: translate('button'),
     dropAliases: ['button'],
     defaultState: () => defaultState({ binding: createSingleBinding() }),
     toRendererProps: (device) => ({
@@ -332,11 +336,11 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
     },
   },
   keypad: {
-    title: 'Keypad',
+    title: translate('keypad'),
     dropAliases: ['keypad'],
     defaultState: () => defaultState({ binding: createSingleBinding() }),
     toRendererProps: (device) => ({
-      title: 'Keypad',
+      title: translate('keypad'),
       isOn: device.state.is_on,
       interactive: true,
     }),
@@ -347,11 +351,11 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
     },
   },
   small_keypad: {
-    title: 'Small Keypad',
+    title: translate('smallKeypad'),
     dropAliases: ['small_keypad', 'smallkeypad'],
     defaultState: () => defaultState({ binding: createSingleBinding() }),
     toRendererProps: (device) => ({
-      title: 'Small Keypad',
+      title: translate('smallKeypad'),
       isOn: device.state.is_on,
       interactive: true,
     }),
@@ -362,11 +366,11 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
     },
   },
   rotary_button: {
-    title: 'Rotary Button',
+    title: translate('rotaryButton'),
     dropAliases: ['rotary_button', 'rotarybutton'],
     defaultState: () => defaultState({ binding: createSingleBinding() }),
     toRendererProps: (device) => ({
-      title: 'Rotary Button',
+      title: translate('rotaryButton'),
       isOn: device.state.is_on,
       interactive: true,
     }),
@@ -377,11 +381,11 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
     },
   },
   ps2_keyboard: {
-    title: 'PS/2 Keyboard',
+    title: translate('ps2Keyboard'),
     dropAliases: ['ps2_keyboard', 'ps2keyboard'],
     defaultState: () => defaultState({ binding: createSingleBinding() }),
     toRendererProps: (device) => ({
-      title: 'PS/2 Keyboard',
+      title: translate('ps2Keyboard'),
       isOn: device.state.is_on,
       interactive: true,
     }),
@@ -392,11 +396,11 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
     },
   },
   text_lcd: {
-    title: 'Text LCD',
+    title: translate('textLcd'),
     dropAliases: ['text_lcd', 'textlcd'],
     defaultState: () => defaultState({ binding: createSingleBinding() }),
     toRendererProps: (device) => ({
-      title: 'Text LCD',
+      title: translate('textLcd'),
       isOn: device.state.is_on,
     }),
     emitsToggle: false,
@@ -406,11 +410,11 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
     },
   },
   graphic_lcd: {
-    title: 'Graphic LCD',
+    title: translate('graphicLcd'),
     dropAliases: ['graphic_lcd', 'graphiclcd'],
     defaultState: () => defaultState({ binding: createSingleBinding() }),
     toRendererProps: (device) => ({
-      title: 'Graphic LCD',
+      title: translate('graphicLcd'),
       isOn: device.state.is_on,
     }),
     emitsToggle: false,
@@ -420,7 +424,11 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
     },
   },
   segment_display: createSegmentDisplayDefinition(),
-  led_matrix: createMatrixDeviceDefinition('LED Matrix', ['led_matrix', 'ledmatrix', 'matrix']),
+  led_matrix: createMatrixDeviceDefinition(translate('matrix'), [
+    'led_matrix',
+    'ledmatrix',
+    'matrix',
+  ]),
 }
 
 const dropAliasToType = new Map<string, CanvasDeviceType>(

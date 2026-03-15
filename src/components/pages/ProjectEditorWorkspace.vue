@@ -3,10 +3,12 @@ import { computed } from 'vue'
 
 import CodeEditor from '@/components/editor/CodeEditor.vue'
 import { Badge } from '@/components/ui/badge'
+import { useI18n } from '@/lib/i18n'
 import { projectStore } from '@/stores/project'
 import { signalCatalogStore } from '@/stores/signal-catalog'
 
-const activeFileName = computed(() => projectStore.activeFile?.name || 'No file selected')
+const { t } = useI18n()
+const activeFileName = computed(() => projectStore.activeFile?.name || t('noFileSelected'))
 const activeFileDirty = computed(() =>
   projectStore.activeFileId ? projectStore.isFileDirty(projectStore.activeFileId) : false,
 )
@@ -20,7 +22,9 @@ const activeFileDirty = computed(() =>
           {{ activeFileName }}<span v-if="activeFileDirty" class="text-amber-600"> *</span>
         </p>
       </div>
-      <Badge variant="outline">{{ signalCatalogStore.signals.value.length }} ports</Badge>
+      <Badge variant="outline"
+        >{{ signalCatalogStore.signals.value.length }} {{ t('portsUnit') }}</Badge
+      >
     </div>
 
     <div class="flex-1 min-h-0 overflow-hidden bg-card">

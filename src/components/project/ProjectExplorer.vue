@@ -8,10 +8,12 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
+import { useI18n } from '@/lib/i18n'
 import { projectStore } from '@/stores/project'
 import TreeNode from './TreeNode.vue'
 
 const router = useRouter()
+const { t } = useI18n()
 const rootNode = computed(() => projectStore.rootNode)
 const visibleNodes = computed(() => rootNode.value?.children ?? projectStore.files)
 
@@ -21,7 +23,7 @@ function handleNewFile() {
     return
   }
 
-  const name = prompt('Enter file name:', 'new_file.v')
+  const name = prompt(t('enterFileName'), 'new_file.v')
   if (name) {
     projectStore.createFile(parent.id, name)
     void router.push({ name: 'project-management-editor' })
@@ -34,7 +36,7 @@ function handleNewFolder() {
     return
   }
 
-  const name = prompt('Enter folder name:', 'New Folder')
+  const name = prompt(t('enterFolderName'), t('newFolder'))
   if (name) {
     projectStore.createFolder(parent.id, name)
   }
@@ -54,8 +56,8 @@ function handleNewFolder() {
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent v-if="rootNode" class="w-48">
-        <ContextMenuItem @select="handleNewFile">New File</ContextMenuItem>
-        <ContextMenuItem @select="handleNewFolder">New Folder</ContextMenuItem>
+        <ContextMenuItem @select="handleNewFile">{{ t('newFile') }}</ContextMenuItem>
+        <ContextMenuItem @select="handleNewFolder">{{ t('newFolder') }}</ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
   </div>

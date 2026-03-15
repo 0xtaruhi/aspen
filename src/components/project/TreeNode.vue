@@ -12,6 +12,7 @@ import {
 } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { Badge } from '@/components/ui/badge'
+import { useI18n } from '@/lib/i18n'
 import { projectStore, type ProjectNode } from '@/stores/project'
 import { settingsStore } from '@/stores/settings'
 import {
@@ -28,6 +29,7 @@ const props = defineProps<{
 }>()
 
 const router = useRouter()
+const { t } = useI18n()
 
 function isHardwareSourceFile(name: string) {
   return name.endsWith('.v') || name.endsWith('.sv')
@@ -40,14 +42,14 @@ function toggleFolder() {
 }
 
 function handleRename() {
-  const newName = prompt('Enter new name:', props.node.name)
+  const newName = prompt(t('enterNewName'), props.node.name)
   if (newName) {
     projectStore.renameNode(props.node.id, newName)
   }
 }
 
 function handleNewFile() {
-  const name = prompt('Enter file name:', 'new_file.v')
+  const name = prompt(t('enterFileName'), 'new_file.v')
   if (name) {
     projectStore.createFile(props.node.id, name)
     void router.push({ name: 'project-management-editor' })
@@ -55,7 +57,7 @@ function handleNewFile() {
 }
 
 function handleNewFolder() {
-  const name = prompt('Enter folder name:', 'New Folder')
+  const name = prompt(t('enterFolderName'), t('newFolder'))
   if (name) {
     projectStore.createFolder(props.node.id, name)
   }
@@ -64,8 +66,8 @@ function handleNewFolder() {
 async function handleDelete() {
   if (
     !settingsStore.state.confirmDelete ||
-    (await confirmAction(`Are you sure you want to delete ${props.node.name}?`, {
-      title: 'Delete File',
+    (await confirmAction(t('deleteFileConfirm', { name: props.node.name }), {
+      title: t('deleteFileTitle'),
     }))
   ) {
     projectStore.deleteNode(props.node.id)
@@ -107,7 +109,7 @@ function setAsTopFile() {
           <span
             v-if="node.type === 'file' && projectStore.isFileDirty(node.id)"
             class="text-amber-600"
-            aria-label="Unsaved changes"
+            :aria-label="t('unsavedChanges')"
           >
             *
           </span>
@@ -117,30 +119,30 @@ function setAsTopFile() {
             class="gap-1 px-1.5 py-0 text-[10px] uppercase tracking-[0.18em]"
           >
             <CircuitBoard class="h-3 w-3" />
-            Top
+            {{ t('topFile') }}
           </Badge>
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent class="w-48">
         <template v-if="node.type === 'file' && isHardwareSourceFile(node.name)">
           <ContextMenuItem @select="setAsTopFile">
-            <CircuitBoard class="w-4 h-4 mr-2" /> Set as Top File
+            <CircuitBoard class="w-4 h-4 mr-2" /> {{ t('setAsTopFile') }}
           </ContextMenuItem>
           <ContextMenuSeparator />
         </template>
         <ContextMenuItem @select="handleRename">
-          <Edit2 class="w-4 h-4 mr-2" /> Rename
+          <Edit2 class="w-4 h-4 mr-2" /> {{ t('rename') }}
         </ContextMenuItem>
         <ContextMenuItem @select="handleDelete" class="text-destructive">
-          <Trash2 class="w-4 h-4 mr-2" /> Delete
+          <Trash2 class="w-4 h-4 mr-2" /> {{ t('delete') }}
         </ContextMenuItem>
         <template v-if="node.type === 'folder'">
           <ContextMenuSeparator />
           <ContextMenuItem @select="handleNewFile">
-            <Plus class="w-4 h-4 mr-2" /> New File
+            <Plus class="w-4 h-4 mr-2" /> {{ t('newFile') }}
           </ContextMenuItem>
           <ContextMenuItem @select="handleNewFolder">
-            <FolderPlus class="w-4 h-4 mr-2" /> New Folder
+            <FolderPlus class="w-4 h-4 mr-2" /> {{ t('newFolder') }}
           </ContextMenuItem>
         </template>
       </ContextMenuContent>

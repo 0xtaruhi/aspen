@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog'
 
+import { translate } from '@/lib/i18n'
 import { projectStore } from '@/stores/project'
 
 function getErrorMessage(err: unknown): string {
@@ -36,7 +37,7 @@ async function openProjectInBrowserFallback() {
       const data = JSON.parse(text) as unknown
       projectStore.loadFromSnapshot(data)
     } catch (err) {
-      window.alert(`Failed to open project: ${getErrorMessage(err)}`)
+      window.alert(translate('openProjectFailed', { message: getErrorMessage(err) }))
     }
   }
 
@@ -73,7 +74,7 @@ export async function openProject() {
   try {
     const selected = await openDialog({
       multiple: false,
-      filters: [{ name: 'Aspen Project', extensions: ['json'] }],
+      filters: [{ name: translate('aspenProject'), extensions: ['json'] }],
     })
 
     if (typeof selected !== 'string') {
@@ -90,7 +91,7 @@ export async function openProject() {
       return true
     }
 
-    window.alert(`Failed to open project: ${getErrorMessage(err)}`)
+    window.alert(translate('openProjectFailed', { message: getErrorMessage(err) }))
     return false
   }
 }
@@ -102,7 +103,7 @@ export async function saveProjectAs() {
   try {
     const selected = await saveDialog({
       defaultPath,
-      filters: [{ name: 'Aspen Project', extensions: ['json'] }],
+      filters: [{ name: translate('aspenProject'), extensions: ['json'] }],
     })
 
     if (!selected || Array.isArray(selected)) {
@@ -119,7 +120,7 @@ export async function saveProjectAs() {
       return true
     }
 
-    window.alert(`Failed to save project: ${getErrorMessage(err)}`)
+    window.alert(translate('saveProjectFailed', { message: getErrorMessage(err) }))
     return false
   }
 }
@@ -146,7 +147,7 @@ export async function saveProject() {
       return true
     }
 
-    window.alert(`Failed to save project: ${getErrorMessage(err)}`)
+    window.alert(translate('saveProjectFailed', { message: getErrorMessage(err) }))
     return false
   }
 }

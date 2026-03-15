@@ -7,6 +7,7 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import { confirmAction } from '@/lib/confirm-action'
+import { useI18n } from '@/lib/i18n'
 import { settingsStore } from '@/stores/settings'
 
 const props = defineProps<{
@@ -31,6 +32,7 @@ const emit = defineEmits<{
   (e: 'delete', id: string): void
   (e: 'drag-end', id: string, x: number, y: number): void
 }>()
+const { t } = useI18n()
 
 const el = ref<HTMLElement | null>(null)
 const dragState = ref<{
@@ -72,8 +74,8 @@ function requestRemoveDevice() {
   deferContextAction(async () => {
     if (
       settingsStore.state.confirmDelete &&
-      !(await confirmAction(`Are you sure you want to delete ${props.label}?`, {
-        title: 'Delete Device',
+      !(await confirmAction(t('deleteDeviceConfirm', { name: props.label }), {
+        title: t('deleteDeviceTitle'),
       }))
     ) {
       return
@@ -179,7 +181,9 @@ onUnmounted(() => {
               class="h-1 w-8 bg-green-500 rounded-full opacity-80"
               :title="
                 props.boundSignal ||
-                (props.boundSignalsCount ? `${props.boundSignalsCount} bound ports` : undefined)
+                (props.boundSignalsCount
+                  ? t('bindingCount', { count: props.boundSignalsCount })
+                  : undefined)
               "
             ></div>
           </div>
@@ -189,9 +193,9 @@ onUnmounted(() => {
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent class="w-48">
-        <ContextMenuItem @select="requestOpenSettings">Settings</ContextMenuItem>
+        <ContextMenuItem @select="requestOpenSettings">{{ t('settingsAction') }}</ContextMenuItem>
         <ContextMenuItem class="text-destructive" @select="requestRemoveDevice">
-          Delete
+          {{ t('delete') }}
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>

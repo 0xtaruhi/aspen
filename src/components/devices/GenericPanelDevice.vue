@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useI18n } from '@/lib/i18n'
+
 const props = defineProps<{
   title: string
   isOn?: boolean
@@ -8,6 +10,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'toggle', value: boolean): void
 }>()
+const { t } = useI18n()
 
 function toggle() {
   if (!props.interactive) {
@@ -41,7 +44,7 @@ function toggle() {
         class="rounded-full px-1.5 py-0.5 text-[9px] uppercase tracking-[0.2em]"
         :class="isOn ? 'bg-emerald-500/15 text-emerald-300' : 'bg-zinc-800 text-zinc-400'"
       >
-        {{ isOn ? 'High' : 'Low' }}
+        {{ isOn ? t('high') : t('low') }}
       </div>
     </div>
 
@@ -64,7 +67,7 @@ function toggle() {
     </div>
 
     <div v-if="interactive" class="mt-2 text-[9px] uppercase tracking-[0.22em] text-zinc-400">
-      Click to drive {{ isOn ? 'low' : 'high' }}
+      {{ t('clickToDrive', { state: isOn ? t('low') : t('high') }) }}
     </div>
   </button>
 </template>
