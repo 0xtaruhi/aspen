@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { LucideIcon } from 'lucide-vue-next'
-import { ChevronRight } from 'lucide-vue-next'
+import { ChevronRight, LoaderCircle } from 'lucide-vue-next'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   SidebarGroup,
@@ -19,12 +19,14 @@ defineProps<{
     url: string
     icon?: LucideIcon
     isActive?: boolean
+    isRunning?: boolean
     action?: () => void
     items?: {
       title: string
       url: string
       action?: () => void
       isActive?: boolean
+      isRunning?: boolean
     }[]
   }[]
 }>()
@@ -43,8 +45,15 @@ defineProps<{
                   <SidebarMenuButton :tooltip="item.title" :is-active="item.isActive">
                     <component :is="item.icon" v-if="item.icon" />
                     <span>{{ item.title }}</span>
+                    <LoaderCircle
+                      v-if="item.isRunning"
+                      class="ml-auto size-4 animate-spin text-sidebar-foreground/70"
+                    />
                     <ChevronRight
-                      class="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90"
+                      :class="[
+                        'transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90',
+                        item.isRunning ? '' : 'ml-auto',
+                      ]"
                     />
                   </SidebarMenuButton>
                 </CollapsibleTrigger>
@@ -57,6 +66,10 @@ defineProps<{
                         @click="subItem.action ? subItem.action() : null"
                       >
                         <span>{{ subItem.title }}</span>
+                        <LoaderCircle
+                          v-if="subItem.isRunning"
+                          class="ml-auto size-4 animate-spin text-sidebar-foreground/70"
+                        />
                       </SidebarMenuSubButton>
                     </SidebarMenuSubItem>
                   </SidebarMenuSub>
@@ -73,6 +86,10 @@ defineProps<{
             >
               <component :is="item.icon" v-if="item.icon" />
               <span>{{ item.title }}</span>
+              <LoaderCircle
+                v-if="item.isRunning"
+                class="ml-auto size-4 animate-spin text-sidebar-foreground/70"
+              />
             </SidebarMenuButton>
           </template>
         </SidebarMenuItem>

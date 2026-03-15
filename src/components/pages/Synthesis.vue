@@ -1,21 +1,24 @@
 <script setup lang="ts">
-import type { SynthesisReportV1, SynthesisSourceFileV1 } from '@/lib/hardware-client'
+import type { SynthesisSourceFileV1 } from '@/lib/hardware-client'
 
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { resolveSynthesisLog } from '@/lib/synthesis-log'
 import { designContextStore } from '@/stores/design-context'
 import { hardwareStore } from '@/stores/hardware'
 
 const activeFileName = designContextStore.sourceName
 const topModule = designContextStore.primaryModule
 
-const isBusy = ref(false)
-const synthesisMessage = ref('')
-const synthesisReport = ref<SynthesisReportV1 | null>(null)
+const isBusy = hardwareStore.synthesisRunning
+const synthesisMessage = hardwareStore.synthesisMessage
+const synthesisReport = hardwareStore.synthesisReport
+const synthesisLiveLog = hardwareStore.synthesisLiveLog
+const synthesisLogViewportRef = ref<HTMLDivElement | null>(null)
 
 const synthesisSources = computed<SynthesisSourceFileV1[]>(() => {
   return designContextStore.hardwareSources.value.map((source) => ({
@@ -38,6 +41,22 @@ const synthesisStatus = computed(() => {
   }
 
   return synthesisSources.value.length > 0 ? 'Ready' : 'No Source'
+})
+
+const synthesisErrorMessage = computed(() => {
+  if (isBusy.value) {
+    return ''
+  }
+
+  if (synthesisMessage.value.trim().length > 0) {
+    return synthesisMessage.value
+  }
+
+  if (synthesisReport.value && !synthesisReport.value.success) {
+    return `Yosys reported ${synthesisReport.value.errors} error(s). Review the log below.`
+  }
+
+  return ''
 })
 
 const summaryCards = computed(() => {
@@ -68,15 +87,11 @@ const summaryCards = computed(() => {
 })
 
 const synthesisLog = computed(() => {
-  if (synthesisReport.value) {
-    return synthesisReport.value.log.trim() || 'Yosys finished without log output.'
-  }
-
-  if (synthesisMessage.value) {
-    return synthesisMessage.value
-  }
-
-  return 'Run synthesis to invoke Yosys on the current project sources.'
+  return resolveSynthesisLog(
+    synthesisReport.value?.log ?? null,
+    synthesisLiveLog.value,
+    synthesisMessage.value,
+  )
 })
 
 function formatDuration(elapsedMs: number) {
@@ -91,29 +106,31 @@ function formatDuration(elapsedMs: number) {
   return `${(elapsedMs / 1000).toFixed(2).replace(/\.?0+$/, '')} s`
 }
 
-function getErrorMessage(err: unknown) {
-  return err instanceof Error ? err.message : String(err)
-}
-
 async function runSynthesis() {
   if (!canRunSynthesis.value) {
     return
   }
 
-  isBusy.value = true
-  synthesisMessage.value = ''
+  const opId = crypto.randomUUID()
 
   try {
-    synthesisReport.value = await hardwareStore.runSynthesis({
+    await hardwareStore.runSynthesis({
+      op_id: opId,
       top_module: topModule.value,
       files: synthesisSources.value,
     })
-  } catch (err) {
-    synthesisReport.value = null
-    synthesisMessage.value = getErrorMessage(err)
-  } finally {
-    isBusy.value = false
+  } catch {
+    // The store publishes synthesisMessage for the page to render.
   }
+}
+
+async function scrollSynthesisLogToBottom() {
+  await nextTick()
+  const viewport = synthesisLogViewportRef.value
+  if (!viewport) {
+    return
+  }
+  viewport.scrollTop = viewport.scrollHeight
 }
 
 watch(
@@ -125,9 +142,16 @@ watch(
         .join('\u0001'),
   ],
   () => {
-    synthesisReport.value = null
-    synthesisMessage.value = ''
+    hardwareStore.resetSynthesisState()
   },
+)
+
+watch(
+  () => synthesisLog.value,
+  () => {
+    void scrollSynthesisLogToBottom()
+  },
+  { flush: 'post', immediate: true },
 )
 </script>
 
@@ -166,13 +190,10 @@ watch(
     </div>
 
     <div
-      v-if="synthesisMessage || (synthesisReport && !synthesisReport.success)"
+      v-if="synthesisErrorMessage"
       class="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive"
     >
-      {{
-        synthesisMessage ||
-        `Yosys reported ${synthesisReport?.errors ?? 0} error(s). Review the log below.`
-      }}
+      {{ synthesisErrorMessage }}
     </div>
 
     <div class="grid gap-4 md:grid-cols-4 shrink-0">
@@ -192,7 +213,6 @@ watch(
         <CardHeader class="flex-row items-center justify-between space-y-0">
           <CardTitle>Synthesis Log</CardTitle>
           <div class="flex items-center gap-2 text-xs text-muted-foreground">
-            <span v-if="synthesisReport">Tool: {{ synthesisReport.tool_path }}</span>
             <span v-if="synthesisReport">
               {{ synthesisReport.warnings }} warning{{ synthesisReport.warnings === 1 ? '' : 's' }}
             </span>
@@ -202,9 +222,12 @@ watch(
           </div>
         </CardHeader>
         <CardContent class="flex-1 min-h-0 p-0">
-          <ScrollArea class="h-full w-full p-4 font-mono text-xs bg-muted/40 text-foreground">
+          <div
+            ref="synthesisLogViewportRef"
+            class="h-full w-full overflow-auto bg-muted/40 p-4 font-mono text-xs text-foreground"
+          >
             <pre class="whitespace-pre-wrap">{{ synthesisLog }}</pre>
-          </ScrollArea>
+          </div>
         </CardContent>
       </Card>
 

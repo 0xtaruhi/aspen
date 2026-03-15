@@ -370,8 +370,17 @@ pub struct SynthesisSourceFileV1 {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SynthesisRequestV1 {
+    pub op_id: String,
     pub top_module: String,
     pub files: Vec<SynthesisSourceFileV1>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SynthesisLogChunkV1 {
+    pub version: u8,
+    pub op_id: String,
+    pub chunk: String,
+    pub generated_at_ms: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -396,6 +405,7 @@ pub struct SynthesisStatsV1 {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SynthesisReportV1 {
     pub version: u8,
+    pub op_id: String,
     pub success: bool,
     pub top_module: String,
     pub source_count: u16,

@@ -40,8 +40,16 @@ export interface SynthesisSourceFileV1 {
 }
 
 export interface SynthesisRequestV1 {
+  op_id: string
   top_module: string
   files: SynthesisSourceFileV1[]
+}
+
+export interface SynthesisLogChunkV1 {
+  version: 1
+  op_id: string
+  chunk: string
+  generated_at_ms: number
 }
 
 export interface SynthesisCellTypeCountV1 {
@@ -63,6 +71,7 @@ export interface SynthesisStatsV1 {
 
 export interface SynthesisReportV1 {
   version: 1
+  op_id: string
   success: boolean
   top_module: string
   source_count: number
@@ -279,6 +288,14 @@ export async function runHardwareSynthesis(
   request: SynthesisRequestV1,
 ): Promise<SynthesisReportV1> {
   return invoke<SynthesisReportV1>('run_yosys_synthesis', { request })
+}
+
+export async function listenHardwareSynthesisLog(
+  callback: (chunk: SynthesisLogChunkV1) => void,
+): Promise<UnlistenFn> {
+  return listen<SynthesisLogChunkV1>('hardware:synthesis_log', (event) => {
+    callback(event.payload)
+  })
 }
 
 export async function hardwareGetDataStreamStatus(): Promise<HardwareDataStreamStatusV1> {

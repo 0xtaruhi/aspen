@@ -2,11 +2,12 @@ import type {
   CanvasDeviceSnapshot,
   HardwareActionV1,
   HardwareStateV1,
+  SynthesisLogChunkV1,
   SynthesisReportV1,
   SynthesisRequestV1,
 } from '@/lib/hardware-client'
 
-import { computed } from 'vue'
+import { computed, readonly, ref } from 'vue'
 
 import {
   configureDataStream as configureRuntimeDataStream,
@@ -21,7 +22,8 @@ import {
   stop as stopRuntime,
   syncState as syncRuntimeState,
 } from './hardware-runtime'
-import { runHardwareSynthesis } from '@/lib/hardware-client'
+import { listenHardwareSynthesisLog, runHardwareSynthesis } from '@/lib/hardware-client'
+import { appendSynthesisLogChunk } from '../lib/synthesis-log'
 import { virtualDeviceStore } from './virtual-device'
 
 const state = computed<HardwareStateV1>(() => {
@@ -84,7 +86,22 @@ async function programBitstream(bitstreamPath?: string | null) {
 }
 
 async function runSynthesis(request: SynthesisRequestV1): Promise<SynthesisReportV1> {
-  return runHardwareSynthesis(request)
+  await ensureSynthesisLogListener()
+  synthesisRunning.value = true
+  synthesisMessage.value = ''
+  synthesisLiveLog.value = ''
+  synthesisOperationId.value = request.op_id
+  try {
+    const report = await runHardwareSynthesis(request)
+    synthesisReport.value = report
+    return report
+  } catch (err) {
+    synthesisMessage.value = getErrorMessage(err)
+    throw err
+  } finally {
+    synthesisRunning.value = false
+    synthesisOperationId.value = null
+  }
 }
 
 async function clearError() {
@@ -172,6 +189,59 @@ async function disconnectView() {
   virtualDeviceStore.resetState()
 }
 
+const synthesisRunning = ref(false)
+const synthesisReport = ref<SynthesisReportV1 | null>(null)
+const synthesisLiveLog = ref('')
+const synthesisMessage = ref('')
+const synthesisOperationId = ref<string | null>(null)
+let unlistenSynthesisLog: (() => void) | null = null
+let synthesisLogListenerPromise: Promise<void> | null = null
+
+function getErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+function onSynthesisLogChunk(chunk: SynthesisLogChunkV1) {
+  synthesisLiveLog.value = appendSynthesisLogChunk(
+    synthesisLiveLog.value,
+    synthesisOperationId.value,
+    chunk,
+  )
+}
+
+async function ensureSynthesisLogListener() {
+  if (unlistenSynthesisLog) {
+    return
+  }
+
+  if (synthesisLogListenerPromise) {
+    await synthesisLogListenerPromise
+    return
+  }
+
+  synthesisLogListenerPromise = listenHardwareSynthesisLog(onSynthesisLogChunk)
+    .then((unlisten) => {
+      unlistenSynthesisLog = unlisten
+    })
+    .catch((err) => {
+      if (!hardwareRuntimeStore.isTauriUnavailable(err)) {
+        throw err
+      }
+    })
+    .finally(() => {
+      synthesisLogListenerPromise = null
+    })
+
+  await synthesisLogListenerPromise
+}
+
+function resetSynthesisState() {
+  synthesisOperationId.value = null
+  synthesisLiveLog.value = ''
+  synthesisReport.value = null
+  synthesisMessage.value = ''
+}
+
 export const hardwareStore = {
   state,
   signalTelemetry: hardwareRuntimeStore.signalTelemetry,
@@ -179,6 +249,10 @@ export const hardwareStore = {
   dataStreamStatus: hardwareRuntimeStore.dataStreamStatus,
   hotplugLog: hardwareRuntimeStore.hotplugLog,
   isStarted: hardwareRuntimeStore.isStarted,
+  synthesisRunning: readonly(synthesisRunning),
+  synthesisReport: readonly(synthesisReport),
+  synthesisLiveLog: readonly(synthesisLiveLog),
+  synthesisMessage: readonly(synthesisMessage),
   start,
   stop,
   configureDataStream,
@@ -200,4 +274,5 @@ export const hardwareStore = {
   setCanvasSwitchState,
   clearError,
   disconnectView,
+  resetSynthesisState,
 }

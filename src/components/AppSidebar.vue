@@ -31,6 +31,7 @@ import {
   SidebarRail,
 } from '@/components/ui/sidebar'
 import { type AppRouteName, modulePathMap } from '@/router'
+import { hardwareStore } from '@/stores/hardware'
 import { projectStore } from '@/stores/project'
 import { settingsStore } from '@/stores/settings'
 import { uiStore } from '@/stores/ui'
@@ -49,6 +50,7 @@ function navigate(path: string) {
 const activeRouteName = computed(() => route.name as AppRouteName | undefined)
 const rootNode = computed(() => projectStore.rootNode)
 const activeSourceNode = computed(() => projectStore.activeFile)
+const isSynthesisRunning = hardwareStore.synthesisRunning
 
 const data = computed(() => ({
   teams: [
@@ -80,12 +82,14 @@ const data = computed(() => ({
       url: modulePathMap['fpga-flow'],
       icon: FileCode2,
       isActive: uiStore.activeModule.value === 'fpga-flow',
+      isRunning: isSynthesisRunning.value,
       items: [
         {
           title: 'Synthesis',
           url: '/fpga-flow/synthesis',
           action: () => navigate('/fpga-flow/synthesis'),
           isActive: activeRouteName.value === 'fpga-flow-synthesis',
+          isRunning: isSynthesisRunning.value,
         },
         {
           title: 'Implementation',

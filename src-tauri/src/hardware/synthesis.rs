@@ -1,17 +1,20 @@
 use std::{
     collections::BTreeMap,
     env, fs,
+    io::{BufRead, BufReader},
     path::{Component, Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
+    sync::mpsc,
+    thread,
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 use serde_json::Value;
-use tauri::{path::BaseDirectory, AppHandle, Manager};
+use tauri::{path::BaseDirectory, AppHandle, Emitter, Manager};
 
 use super::types::{
-    SynthesisCellTypeCountV1, SynthesisReportV1, SynthesisRequestV1, SynthesisSourceFileV1,
-    SynthesisStatsV1,
+    SynthesisCellTypeCountV1, SynthesisLogChunkV1, SynthesisReportV1, SynthesisRequestV1,
+    SynthesisSourceFileV1, SynthesisStatsV1,
 };
 
 const BUNDLED_YOSYS_DIR: &str = "vendor/yosys";
@@ -20,6 +23,10 @@ pub fn run_yosys_synthesis(
     app: &AppHandle,
     request: SynthesisRequestV1,
 ) -> Result<SynthesisReportV1, String> {
+    if request.op_id.trim().is_empty() {
+        return Err("Synthesis operation id is required".to_string());
+    }
+
     if request.top_module.trim().is_empty() {
         return Err("Top module is required for synthesis".to_string());
     }
@@ -32,18 +39,29 @@ pub fn run_yosys_synthesis(
     let started_at = Instant::now();
     let generated_at_ms = now_millis()?;
     let workdir = create_workdir(generated_at_ms)?;
-    let result = run_yosys_in_workdir(&yosys_bin, &workdir, &request, generated_at_ms, started_at);
+    let result = run_yosys_in_workdir(
+        &yosys_bin,
+        &workdir,
+        &request,
+        generated_at_ms,
+        started_at,
+        |chunk| emit_log_chunk(app, &request.op_id, chunk, generated_at_ms),
+    );
     let _ = fs::remove_dir_all(&workdir);
     result
 }
 
-fn run_yosys_in_workdir(
+fn run_yosys_in_workdir<F>(
     yosys_bin: &Path,
     workdir: &Path,
     request: &SynthesisRequestV1,
     generated_at_ms: u64,
     started_at: Instant,
-) -> Result<SynthesisReportV1, String> {
+    mut on_log_chunk: F,
+) -> Result<SynthesisReportV1, String>
+where
+    F: FnMut(String),
+{
     let sources_dir = workdir.join("sources");
     fs::create_dir_all(&sources_dir).map_err(|err| err.to_string())?;
 
@@ -62,7 +80,9 @@ fn run_yosys_in_workdir(
         .arg("-s")
         .arg(&script_path)
         .current_dir(workdir)
-        .output()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .map_err(|err| {
             format!(
                 "Failed to launch Yosys at '{}': {}",
@@ -71,19 +91,45 @@ fn run_yosys_in_workdir(
             )
         })?;
 
-    let log = format!(
-        "{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
+    let mut child = output;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "Failed to capture Yosys stdout".to_string())?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "Failed to capture Yosys stderr".to_string())?;
+
+    let (tx, rx) = mpsc::channel::<String>();
+    let stdout_tx = tx.clone();
+    thread::spawn(move || stream_output(stdout, stdout_tx));
+    let stderr_tx = tx.clone();
+    thread::spawn(move || stream_output(stderr, stderr_tx));
+    drop(tx);
+
+    let mut log = String::new();
+    for chunk in rx {
+        log.push_str(&chunk);
+        on_log_chunk(chunk);
+    }
+
+    let output_status = child.wait().map_err(|err| {
+        format!(
+            "Failed to wait for Yosys at '{}': {}",
+            yosys_bin.display(),
+            err
+        )
+    })?;
 
     let warnings = log.matches("Warning:").count() as u32;
     let logged_errors = log.matches("ERROR:").count() as u32;
     let elapsed_ms = started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
 
-    if !output.status.success() {
+    if !output_status.success() {
         return Ok(SynthesisReportV1 {
             version: 1,
+            op_id: request.op_id.clone(),
             success: false,
             top_module: request.top_module.clone(),
             source_count: request.files.len().min(usize::from(u16::MAX)) as u16,
@@ -100,6 +146,7 @@ fn run_yosys_in_workdir(
     let stats = parse_netlist_stats(&netlist_path, &request.top_module)?;
     Ok(SynthesisReportV1 {
         version: 1,
+        op_id: request.op_id.clone(),
         success: true,
         top_module: request.top_module.clone(),
         source_count: request.files.len().min(usize::from(u16::MAX)) as u16,
@@ -111,6 +158,35 @@ fn run_yosys_in_workdir(
         stats,
         generated_at_ms,
     })
+}
+
+fn stream_output<R: std::io::Read>(reader: R, tx: mpsc::Sender<String>) {
+    let mut reader = BufReader::new(reader);
+    let mut buffer = Vec::new();
+
+    loop {
+        buffer.clear();
+        let read = reader.read_until(b'\n', &mut buffer).unwrap_or(0);
+        if read == 0 {
+            break;
+        }
+
+        let chunk = String::from_utf8_lossy(&buffer).into_owned();
+        let _ = tx.send(chunk);
+    }
+}
+
+fn emit_log_chunk(app: &AppHandle, op_id: &str, chunk: String, fallback_timestamp_ms: u64) {
+    let generated_at_ms = now_millis().unwrap_or(fallback_timestamp_ms);
+    let _ = app.emit(
+        "hardware:synthesis_log",
+        SynthesisLogChunkV1 {
+            version: 1,
+            op_id: op_id.to_string(),
+            chunk,
+            generated_at_ms,
+        },
+    );
 }
 
 fn resolve_yosys_binary(app: &AppHandle) -> Result<PathBuf, String> {
@@ -359,6 +435,7 @@ mod tests {
         let generated_at_ms = now_millis().unwrap();
         let workdir = create_workdir(generated_at_ms).unwrap();
         let request = SynthesisRequestV1 {
+            op_id: "test-op".to_string(),
             top_module: "top".to_string(),
             files: vec![SynthesisSourceFileV1 {
                 path: "top.v".to_string(),
@@ -393,6 +470,7 @@ endmodule
             &request,
             generated_at_ms,
             Instant::now(),
+            |_| {},
         )
         .unwrap();
         let _ = fs::remove_dir_all(&workdir);
