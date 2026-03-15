@@ -13,6 +13,10 @@ function getFallbackName(path: string) {
   const normalized = path.replace(/\\/g, '/')
   const segments = normalized.split('/').filter(Boolean)
   const filename = segments[segments.length - 1] || path
+  if (/^aspen\.project\.json$/i.test(filename)) {
+    return segments[segments.length - 2] || 'project'
+  }
+
   return filename.replace(/\.aspen\.json$/i, '').replace(/\.json$/i, '')
 }
 

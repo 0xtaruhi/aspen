@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useI18n } from '@/lib/i18n'
+import { getProjectRootDirectory } from '@/lib/project-layout'
 import { resolveSynthesisLog } from '@/lib/synthesis-log'
 import { designContextStore } from '@/stores/design-context'
 import { hardwareStore } from '@/stores/hardware'
@@ -142,14 +143,7 @@ async function runSynthesis() {
 }
 
 function projectDirectory() {
-  const projectPath = projectStore.projectPath
-  if (!projectPath) {
-    return null
-  }
-
-  const normalized = projectPath.replace(/\\/g, '/')
-  const lastSlash = normalized.lastIndexOf('/')
-  return lastSlash >= 0 ? normalized.slice(0, lastSlash) : null
+  return getProjectRootDirectory(projectStore.projectPath)
 }
 
 async function scrollSynthesisLogToBottom() {

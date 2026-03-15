@@ -134,9 +134,9 @@ where
             args: vec![
                 "-y".to_string(),
                 "-i".to_string(),
-                file_name_string(&artifacts.edif_path)?,
+                path_argument(&artifacts.edif_path, workdir)?,
                 "-o".to_string(),
-                file_name_string(&artifacts.map_path)?,
+                path_argument(&artifacts.map_path, workdir)?,
                 "-c".to_string(),
                 toolchain.dc_cell.to_string_lossy().to_string(),
                 "-e".to_string(),
@@ -152,13 +152,13 @@ where
                 "-c".to_string(),
                 FDE_FAMILY_NAME.to_string(),
                 "-n".to_string(),
-                file_name_string(&artifacts.map_path)?,
+                path_argument(&artifacts.map_path, workdir)?,
                 "-l".to_string(),
                 toolchain.pack_cell.to_string_lossy().to_string(),
                 "-r".to_string(),
                 toolchain.pack_dcp_lib.to_string_lossy().to_string(),
                 "-o".to_string(),
-                file_name_string(&artifacts.pack_path)?,
+                path_argument(&artifacts.pack_path, workdir)?,
                 "-g".to_string(),
                 toolchain.pack_config.to_string_lossy().to_string(),
                 "-e".to_string(),
@@ -176,11 +176,11 @@ where
                 "-d".to_string(),
                 toolchain.delay.to_string_lossy().to_string(),
                 "-i".to_string(),
-                file_name_string(&artifacts.pack_path)?,
+                path_argument(&artifacts.pack_path, workdir)?,
                 "-o".to_string(),
-                file_name_string(&artifacts.place_path)?,
+                path_argument(&artifacts.place_path, workdir)?,
                 "-c".to_string(),
-                file_name_string(&artifacts.constraint_path)?,
+                path_argument(&artifacts.constraint_path, workdir)?,
                 place_mode_flag(request.place_mode).to_string(),
                 "-e".to_string(),
             ],
@@ -195,12 +195,12 @@ where
                 "-a".to_string(),
                 toolchain.arch.to_string_lossy().to_string(),
                 "-n".to_string(),
-                file_name_string(&artifacts.place_path)?,
+                path_argument(&artifacts.place_path, workdir)?,
                 "-o".to_string(),
-                file_name_string(&artifacts.route_path)?,
+                path_argument(&artifacts.route_path, workdir)?,
                 route_mode_flag(request.route_mode).to_string(),
                 "-c".to_string(),
-                file_name_string(&artifacts.constraint_path)?,
+                path_argument(&artifacts.constraint_path, workdir)?,
                 "-e".to_string(),
             ],
         },
@@ -214,13 +214,13 @@ where
                 "-a".to_string(),
                 toolchain.arch.to_string_lossy().to_string(),
                 "-i".to_string(),
-                file_name_string(&artifacts.route_path)?,
+                path_argument(&artifacts.route_path, workdir)?,
                 "-l".to_string(),
                 toolchain.sta_iclib.to_string_lossy().to_string(),
                 "-o".to_string(),
-                file_name_string(&artifacts.sta_output_path)?,
+                path_argument(&artifacts.sta_output_path, workdir)?,
                 "-r".to_string(),
-                file_name_string(&artifacts.sta_report_path)?,
+                path_argument(&artifacts.sta_report_path, workdir)?,
                 "-e".to_string(),
             ],
         },
@@ -236,9 +236,9 @@ where
                 "-c".to_string(),
                 toolchain.cil.to_string_lossy().to_string(),
                 "-n".to_string(),
-                file_name_string(&artifacts.route_path)?,
+                path_argument(&artifacts.route_path, workdir)?,
                 "-b".to_string(),
-                file_name_string(&artifacts.bitstream_path)?,
+                path_argument(&artifacts.bitstream_path, workdir)?,
                 "-e".to_string(),
             ],
         },
@@ -594,17 +594,27 @@ fn plan_artifacts(
     request: &ImplementationRequestV1,
 ) -> Result<PlannedArtifacts, String> {
     let base_name = sanitize_file_stem(&format!("{}_{}", request.project_name, request.top_module));
+    let output_dir = request
+        .project_dir
+        .as_deref()
+        .map(str::trim)
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from)
+        .map(|path| path.join("output"))
+        .unwrap_or_else(|| workdir.to_path_buf());
+    fs::create_dir_all(&output_dir).map_err(|err| err.to_string())?;
+
     Ok(PlannedArtifacts {
         work_dir: workdir.to_path_buf(),
-        constraint_path: workdir.join(format!("{}_cons.xml", base_name)),
+        constraint_path: output_dir.join(format!("{}_cons.xml", base_name)),
         edif_path: workdir.join(format!("{}_syn.edf", base_name)),
         map_path: workdir.join(format!("{}_map.xml", base_name)),
         pack_path: workdir.join(format!("{}_pack.xml", base_name)),
         place_path: workdir.join(format!("{}_place.xml", base_name)),
         route_path: workdir.join(format!("{}_route.xml", base_name)),
         sta_output_path: workdir.join(format!("{}_sta.xml", base_name)),
-        sta_report_path: workdir.join(format!("{}_sta.rpt", base_name)),
-        bitstream_path: workdir.join(format!("{}_bit.bit", base_name)),
+        sta_report_path: output_dir.join(format!("{}_sta.rpt", base_name)),
+        bitstream_path: output_dir.join(format!("{}_bit.bit", base_name)),
     })
 }
 
@@ -668,11 +678,20 @@ fn sanitize_file_stem(value: &str) -> String {
     }
 }
 
-fn file_name_string(path: &Path) -> Result<String, String> {
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .map(|name| name.to_string())
-        .ok_or_else(|| format!("Path '{}' is missing a file name", path.display()))
+fn path_argument(path: &Path, workdir: &Path) -> Result<String, String> {
+    if let Ok(relative) = path.strip_prefix(workdir) {
+        let rendered = relative.to_string_lossy().replace('\\', "/");
+        if !rendered.is_empty() {
+            return Ok(rendered);
+        }
+    }
+
+    if path.is_absolute() {
+        return Ok(path.to_string_lossy().to_string());
+    }
+
+    let absolute = workdir.join(path);
+    Ok(absolute.to_string_lossy().to_string())
 }
 
 fn spawn_fde_process(
@@ -959,6 +978,19 @@ write_edif {}\n",
         assert_eq!(
             route_mode_flag(ImplementationRouteModeV1::BreadthFirst),
             "-b"
+        );
+    }
+
+    #[test]
+    fn path_argument_keeps_absolute_paths_outside_workdir() {
+        let workdir = Path::new("/tmp/aspen-workdir");
+        let local = workdir.join("local.xml");
+        let external = Path::new("/tmp/aspen-output/result.bit");
+
+        assert_eq!(path_argument(&local, workdir).unwrap(), "local.xml");
+        assert_eq!(
+            path_argument(external, workdir).unwrap(),
+            "/tmp/aspen-output/result.bit"
         );
     }
 

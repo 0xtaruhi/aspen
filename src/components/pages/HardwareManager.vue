@@ -34,6 +34,7 @@ import {
 } from '@/lib/fpga-device-catalog'
 import { getImplementationBitstreamPath } from '@/lib/implementation-artifacts'
 import { useI18n } from '@/lib/i18n'
+import { getProjectOutputDirectory, joinPath } from '@/lib/project-layout'
 import { hardwareStore } from '@/stores/hardware'
 import { projectStore } from '@/stores/project'
 import type { HardwarePhase } from '@/lib/hardware-client'
@@ -171,7 +172,7 @@ const defaultBitstreamPath = computed(() => {
   }
 
   const topFileName = projectStore.topFile?.name || 'top'
-  const projectDirectory = getDirectoryName(projectPath)
+  const projectDirectory = getProjectOutputDirectory(projectPath)
   if (!projectDirectory) {
     return `${stripFileExtension(topFileName)}.bit`
   }
@@ -312,27 +313,6 @@ function buildTargets(status: HardwareStatus): HardwareTarget[] {
 
 function stripFileExtension(filename: string) {
   return filename.replace(/\.[^.]+$/, '') || filename
-}
-
-function getDirectoryName(path: string) {
-  const normalized = path.replace(/\\/g, '/')
-  const separatorIndex = normalized.lastIndexOf('/')
-  if (separatorIndex < 0) {
-    return ''
-  }
-  if (separatorIndex === 0) {
-    return '/'
-  }
-
-  return normalized.slice(0, separatorIndex)
-}
-
-function joinPath(directory: string, filename: string) {
-  if (!directory) {
-    return filename
-  }
-
-  return directory.endsWith('/') ? `${directory}${filename}` : `${directory}/${filename}`
 }
 
 function getErrorMessage(err: unknown): string {

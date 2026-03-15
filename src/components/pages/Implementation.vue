@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useI18n } from '@/lib/i18n'
+import { getProjectRootDirectory } from '@/lib/project-layout'
 import { buildConstraintXml, resolveCurrentProjectPinConstraints } from '@/lib/project-constraints'
 import { CURRENT_SYNTHESIS_ARTIFACT_FLOW_REVISION } from '@/lib/synthesis-artifact-flow'
 import { importProjectFiles, openProject } from '@/lib/project-io'
@@ -255,14 +256,7 @@ const artifactRows = computed(() => {
 })
 
 function projectDirectory() {
-  const projectPath = projectStore.projectPath
-  if (!projectPath) {
-    return null
-  }
-
-  const normalized = projectPath.replace(/\\/g, '/')
-  const lastSlash = normalized.lastIndexOf('/')
-  return lastSlash >= 0 ? normalized.slice(0, lastSlash) : null
+  return getProjectRootDirectory(projectStore.projectPath)
 }
 
 function formatDuration(elapsedMs: number) {

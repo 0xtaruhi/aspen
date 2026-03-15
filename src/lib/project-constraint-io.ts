@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { save as saveDialog } from '@tauri-apps/plugin-dialog'
 
+import { getProjectOutputDirectory } from '@/lib/project-layout'
 import { projectStore } from '@/stores/project'
 import { translate } from './i18n'
 
@@ -15,16 +16,6 @@ function isTauriUnavailable(err: unknown) {
     message.includes('window.__TAURI_INTERNALS__') ||
     message.includes('plugin')
   )
-}
-
-function getProjectDirectory(path: string | null) {
-  if (!path) {
-    return null
-  }
-
-  const normalized = path.replace(/\\/g, '/')
-  const lastSlash = normalized.lastIndexOf('/')
-  return lastSlash >= 0 ? normalized.slice(0, lastSlash) : null
 }
 
 function createBrowserDownload(content: string, filename: string) {
@@ -47,7 +38,7 @@ function createBrowserDownload(content: string, filename: string) {
 function defaultConstraintPath() {
   const projectName = projectStore.toSnapshot().name || 'project'
   const filename = `${projectName}_cons.xml`
-  const projectDirectory = getProjectDirectory(projectStore.projectPath)
+  const projectDirectory = getProjectOutputDirectory(projectStore.projectPath)
   return projectDirectory ? `${projectDirectory}/${filename}` : filename
 }
 

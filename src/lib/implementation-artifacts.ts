@@ -1,3 +1,5 @@
+import { getProjectOutputDirectory, joinPath } from '@/lib/project-layout'
+
 function sanitizeSegment(value: string) {
   const sanitized = value
     .trim()
@@ -5,25 +7,6 @@ function sanitizeSegment(value: string) {
     .replace(/^_+|_+$/g, '')
 
   return sanitized || 'design'
-}
-
-function getProjectDirectory(projectPath: string) {
-  const normalized = projectPath.replace(/\\/g, '/')
-  const lastSlash = normalized.lastIndexOf('/')
-  return lastSlash >= 0 ? normalized.slice(0, lastSlash) : ''
-}
-
-function joinPath(...parts: string[]) {
-  return parts
-    .filter(Boolean)
-    .map((part, index) => {
-      const normalized = part.replace(/\\/g, '/')
-      if (index === 0) {
-        return normalized.replace(/\/+$/g, '')
-      }
-      return normalized.replace(/^\/+/g, '').replace(/\/+$/g, '')
-    })
-    .join('/')
 }
 
 export function getImplementationArtifactBaseName(projectName: string, topModule: string) {
@@ -39,11 +22,11 @@ export function getImplementationBitstreamPath(
     return ''
   }
 
-  const projectDirectory = getProjectDirectory(projectPath)
+  const projectDirectory = getProjectOutputDirectory(projectPath)
   if (!projectDirectory) {
     return ''
   }
 
   const baseName = getImplementationArtifactBaseName(projectName, topModule)
-  return joinPath(projectDirectory, '.aspen', 'fde', baseName, `${baseName}_bit.bit`)
+  return joinPath(projectDirectory, `${baseName}_bit.bit`)
 }

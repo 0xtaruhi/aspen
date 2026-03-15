@@ -2,7 +2,7 @@ mod hardware;
 
 use std::{
     fs,
-    path::Path,
+    path::{Component, Path, PathBuf},
     sync::{Arc, Mutex},
 };
 
@@ -12,6 +12,8 @@ use hardware::{
     HardwareStatus, ImplementationReportV1, ImplementationRequestV1, SynthesisReportV1,
     SynthesisRequestV1,
 };
+use serde::Deserialize;
+use serde::Serialize;
 use tauri::Emitter;
 use vlfd_rs::{Device, HotplugEvent, HotplugEventKind, HotplugOptions, HotplugRegistration};
 
@@ -23,6 +25,19 @@ fn greet(name: &str) -> String {
 #[derive(Default)]
 struct HotplugState {
     registration: Mutex<Option<HotplugRegistration>>,
+}
+
+#[derive(Deserialize)]
+struct ProjectSourceFileWriteRequest {
+    relative_path: String,
+    content: String,
+}
+
+#[derive(Serialize)]
+struct ProjectDirectoryInspection {
+    exists: bool,
+    metadata_exists: bool,
+    visible_entry_count: usize,
 }
 
 #[tauri::command]
@@ -178,6 +193,103 @@ fn write_project_file(path: String, content: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn write_project_bundle(
+    metadata_path: String,
+    metadata_content: String,
+    source_files: Vec<ProjectSourceFileWriteRequest>,
+) -> Result<(), String> {
+    let metadata_target = Path::new(&metadata_path);
+    let project_root = metadata_target
+        .parent()
+        .ok_or_else(|| "Project metadata path must have a parent directory".to_string())?;
+    let sources_dir = project_root.join("src");
+    let output_dir = project_root.join("output");
+    let internal_dir = project_root.join(".aspen");
+
+    if sources_dir.exists() {
+        fs::remove_dir_all(&sources_dir).map_err(|err| err.to_string())?;
+    }
+
+    fs::create_dir_all(&sources_dir).map_err(|err| err.to_string())?;
+    fs::create_dir_all(&output_dir).map_err(|err| err.to_string())?;
+    fs::create_dir_all(&internal_dir).map_err(|err| err.to_string())?;
+
+    for file in source_files {
+        let relative = sanitize_relative_project_path(&file.relative_path)?;
+        let target = sources_dir.join(relative);
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent).map_err(|err| err.to_string())?;
+        }
+        fs::write(&target, file.content.as_bytes()).map_err(|err| err.to_string())?;
+    }
+
+    fs::write(metadata_target, metadata_content.as_bytes()).map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+fn inspect_project_directory(path: String) -> Result<ProjectDirectoryInspection, String> {
+    let target = Path::new(&path);
+    if !target.exists() {
+        return Ok(ProjectDirectoryInspection {
+            exists: false,
+            metadata_exists: false,
+            visible_entry_count: 0,
+        });
+    }
+
+    if !target.is_dir() {
+        return Err(format!("'{}' is not a directory", target.display()));
+    }
+
+    let metadata_exists = target.join("aspen.project.json").is_file();
+    let mut visible_entry_count = 0usize;
+
+    for entry in fs::read_dir(target).map_err(|err| err.to_string())? {
+        let entry = entry.map_err(|err| err.to_string())?;
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+
+        if name == ".DS_Store" || name == "Thumbs.db" {
+            continue;
+        }
+
+        visible_entry_count += 1;
+    }
+
+    Ok(ProjectDirectoryInspection {
+        exists: true,
+        metadata_exists,
+        visible_entry_count,
+    })
+}
+
+fn sanitize_relative_project_path(path: &str) -> Result<PathBuf, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("Project source path cannot be empty".to_string());
+    }
+
+    let candidate = Path::new(trimmed);
+    let mut relative = PathBuf::new();
+
+    for component in candidate.components() {
+        match component {
+            Component::Normal(segment) => relative.push(segment),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(format!("Invalid project source path '{}'", path));
+            }
+        }
+    }
+
+    if relative.as_os_str().is_empty() {
+        return Err(format!("Invalid project source path '{}'", path));
+    }
+
+    Ok(relative)
+}
+
+#[tauri::command]
 fn start_hotplug_watch(
     app: tauri::AppHandle,
     state: tauri::State<'_, Arc<HotplugState>>,
@@ -277,6 +389,8 @@ pub fn run() {
             run_fde_implementation,
             read_project_file,
             write_project_file,
+            write_project_bundle,
+            inspect_project_directory,
             start_hotplug_watch,
             stop_hotplug_watch
         ])
