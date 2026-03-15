@@ -4,7 +4,10 @@ use std::{
     io::{BufRead, BufReader},
     path::{Component, Path, PathBuf},
     process::{Command, Stdio},
-    sync::mpsc,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        mpsc,
+    },
     thread,
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
@@ -22,6 +25,7 @@ const FDE_RESOURCE_DIR: &str = "resource/yosys-fde";
 const FDE_SIMLIB_FILE: &str = "fdesimlib.v";
 const FDE_CELLS_MAP_FILE: &str = "cells_map.v";
 const FDE_LUT_WIDTH: u8 = 4;
+static WORKDIR_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 struct SynthesisToolchainPaths<'a> {
     yosys_bin: &'a Path,
@@ -361,10 +365,12 @@ fn sanitize_source_path(path: &str, index: usize) -> PathBuf {
 }
 
 fn create_workdir(timestamp_ms: u64) -> Result<PathBuf, String> {
+    let counter = WORKDIR_COUNTER.fetch_add(1, Ordering::Relaxed);
     let candidate = env::temp_dir().join(format!(
-        "aspen-yosys-{}-{}",
+        "aspen-yosys-{}-{}-{}",
         std::process::id(),
-        timestamp_ms
+        timestamp_ms,
+        counter
     ));
     fs::create_dir_all(&candidate).map_err(|err| err.to_string())?;
     Ok(candidate)
@@ -518,6 +524,20 @@ mod tests {
     fn sanitize_source_path_generates_fallback_filename() {
         let path = sanitize_source_path("", 3);
         assert_eq!(path, PathBuf::from("source_3.v"));
+    }
+
+    #[test]
+    fn create_workdir_generates_unique_paths_for_same_timestamp() {
+        let timestamp_ms = 12345;
+        let first = create_workdir(timestamp_ms).unwrap();
+        let second = create_workdir(timestamp_ms).unwrap();
+
+        assert_ne!(first, second);
+        assert!(first.is_dir());
+        assert!(second.is_dir());
+
+        let _ = fs::remove_dir_all(&first);
+        let _ = fs::remove_dir_all(&second);
     }
 
     #[test]
