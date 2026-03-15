@@ -29,6 +29,7 @@ static WORKDIR_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 struct SynthesisToolchainPaths<'a> {
     yosys_bin: &'a Path,
+    yosys_env: Option<PathBuf>,
     fde_simlib: &'a Path,
     fde_cells_map: &'a Path,
 }
@@ -54,6 +55,7 @@ pub fn run_yosys_synthesis(
     let fde_cells_map = resolve_fde_support_file(app, FDE_CELLS_MAP_FILE)?;
     let toolchain = SynthesisToolchainPaths {
         yosys_bin: &yosys_bin,
+        yosys_env: resolve_yosys_environment(&yosys_bin),
         fde_simlib: &fde_simlib,
         fde_cells_map: &fde_cells_map,
     };
@@ -103,20 +105,13 @@ where
     );
     fs::write(&script_path, script).map_err(|err| err.to_string())?;
 
-    let output = Command::new(toolchain.yosys_bin)
-        .arg("-s")
-        .arg(&script_path)
-        .current_dir(workdir)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|err| {
-            format!(
-                "Failed to launch Yosys at '{}': {}",
-                toolchain.yosys_bin.display(),
-                err
-            )
-        })?;
+    let output = spawn_yosys_process(toolchain, &script_path, workdir).map_err(|err| {
+        format!(
+            "Failed to launch Yosys at '{}': {}",
+            toolchain.yosys_bin.display(),
+            err
+        )
+    })?;
 
     let mut child = output;
     let stdout = child
@@ -242,6 +237,53 @@ fn resolve_yosys_binary(app: &AppHandle) -> Result<PathBuf, String> {
         "Unable to locate Aspen's bundled Yosys. Run `pnpm prepare:yosys-bundle` for local development or build with `src-tauri/tauri.yosys.conf.json` so the bundled toolchain is packaged into the app."
             .to_string(),
     )
+}
+
+fn resolve_yosys_environment(yosys_bin: &Path) -> Option<PathBuf> {
+    if !cfg!(target_os = "windows") {
+        return None;
+    }
+
+    yosys_bin
+        .parent()
+        .and_then(Path::parent)
+        .map(|root| root.join("environment.bat"))
+        .filter(|path| path.is_file())
+}
+
+fn spawn_yosys_process(
+    toolchain: &SynthesisToolchainPaths<'_>,
+    script_path: &Path,
+    workdir: &Path,
+) -> std::io::Result<std::process::Child> {
+    if cfg!(target_os = "windows") {
+        if let Some(environment_batch) = &toolchain.yosys_env {
+            let command = format!(
+                "call \"{}\" && \"{}\" -s \"{}\"",
+                environment_batch.display(),
+                toolchain.yosys_bin.display(),
+                script_path.display()
+            );
+
+            return Command::new("cmd")
+                .arg("/d")
+                .arg("/s")
+                .arg("/c")
+                .arg(command)
+                .current_dir(workdir)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn();
+        }
+    }
+
+    Command::new(toolchain.yosys_bin)
+        .arg("-s")
+        .arg(script_path)
+        .current_dir(workdir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
 }
 
 fn resolve_fde_support_file(app: &AppHandle, file_name: &str) -> Result<PathBuf, String> {
@@ -603,6 +645,7 @@ endmodule
         let report = run_yosys_in_workdir(
             &SynthesisToolchainPaths {
                 yosys_bin: &yosys_bin,
+                yosys_env: resolve_yosys_environment(&yosys_bin),
                 fde_simlib: &fde_simlib,
                 fde_cells_map: &fde_cells_map,
             },

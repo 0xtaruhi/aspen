@@ -334,6 +334,10 @@ function pruneBundledToolchain(bundleRoot) {
   if (process.platform === 'linux' && existsSync(join(bundleRoot, 'lib64'))) {
     keepRootEntries.add('lib64')
   }
+  if (process.platform === 'win32') {
+    keepRootEntries.add('environment.bat')
+    keepRootEntries.add('start.bat')
+  }
 
   pruneChildren(bundleRoot, keepRootEntries)
   pruneBinDirectory(join(bundleRoot, 'bin'))
@@ -666,10 +670,26 @@ function validateBundledYosys(bundleRoot) {
     ].join('\n'),
   )
 
-  const result = spawnSync(yosysExecutable, ['-s', scriptPath], {
-    cwd: validationDir,
-    encoding: 'utf8',
-  })
+  const environmentBatch = join(bundleRoot, 'environment.bat')
+  const result =
+    process.platform === 'win32' && existsSync(environmentBatch)
+      ? spawnSync(
+          'cmd.exe',
+          [
+            '/d',
+            '/s',
+            '/c',
+            `call "${environmentBatch}" && "${yosysExecutable}" -s "${scriptPath}"`,
+          ],
+          {
+            cwd: validationDir,
+            encoding: 'utf8',
+          },
+        )
+      : spawnSync(yosysExecutable, ['-s', scriptPath], {
+          cwd: validationDir,
+          encoding: 'utf8',
+        })
   rmSync(validationDir, { recursive: true, force: true })
 
   if (result.status !== 0) {
