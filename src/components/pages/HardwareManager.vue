@@ -26,10 +26,23 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable'
+import {
+  allFpgaDeviceDescriptors,
+  getFpgaDeviceDescriptor,
+  resolveFpgaDeviceId,
+  type FpgaDeviceId,
+} from '@/lib/fpga-device-catalog'
 import { useI18n } from '@/lib/i18n'
 import { hardwareStore } from '@/stores/hardware'
 import { projectStore } from '@/stores/project'
 import type { HardwarePhase } from '@/lib/hardware-client'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 interface HardwareStatus {
   board: string
@@ -190,6 +203,14 @@ const flowBadgeClass = computed(() => {
   return ''
 })
 
+function handleTargetDeviceChange(value: unknown) {
+  const nextValue = String(value)
+
+  if (allFpgaDeviceDescriptors.some((descriptor) => descriptor.id === nextValue)) {
+    projectStore.setTargetDevice(nextValue as FpgaDeviceId)
+  }
+}
+
 watch(
   () => hardwareState.value.artifact,
   (artifact) => {
@@ -221,6 +242,9 @@ watch(
 )
 
 function buildTargets(status: HardwareStatus): HardwareTarget[] {
+  const deviceId = resolveFpgaDeviceId(status.board) ?? projectStore.targetDeviceId
+  const deviceDescriptor = getFpgaDeviceDescriptor(deviceId)
+
   return [
     {
       id: 'vlfd-host',
@@ -239,6 +263,21 @@ function buildTargets(status: HardwareStatus): HardwareTarget[] {
               : 'connected',
           details: {
             [t('chip')]: status.board,
+            [t('deviceFamily')]: deviceDescriptor.family,
+            [t('architecture')]: deviceDescriptor.architectureName,
+            [t('sliceCount')]: deviceDescriptor.resources.slices.toLocaleString(),
+            [t('lut4Count')]: deviceDescriptor.resources.lut4.toLocaleString(),
+            [t('ffCount')]: deviceDescriptor.resources.ff.toLocaleString(),
+            [t('bramCount')]: t('bramCountValue', {
+              count: deviceDescriptor.resources.bramBlocks,
+              bits: deviceDescriptor.resources.bramBitsPerBlock.toLocaleString(),
+            }),
+            [t('availableIo')]: t('availableIoValue', {
+              inputs: deviceDescriptor.io.inputPins,
+              outputs: deviceDescriptor.io.outputPins,
+              clocks: deviceDescriptor.io.dedicatedClockPins,
+              pin: deviceDescriptor.io.defaultClockPin,
+            }),
             [t('descriptionLabel')]: status.description,
             [t('smimsVersion')]: status.config.smims_version,
             [t('fifoWords')]: status.config.fifo_words.toString(),
@@ -403,6 +442,29 @@ onBeforeUnmount(() => {
         <Play class="w-4 h-4" />
         {{ t('programDeviceShort') }}
       </Button>
+
+      <Separator orientation="vertical" class="h-6 mx-2" />
+
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-muted-foreground">{{ t('projectTargetDevice') }}</span>
+        <Select
+          :model-value="projectStore.targetDeviceId"
+          @update:model-value="handleTargetDeviceChange"
+        >
+          <SelectTrigger class="h-8 w-40">
+            <SelectValue :placeholder="t('projectTargetDevice')" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem
+              v-for="descriptor in allFpgaDeviceDescriptors"
+              :key="descriptor.id"
+              :value="descriptor.id"
+            >
+              {{ descriptor.displayName }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
 
       <span v-if="lastRefresh" class="text-xs text-muted-foreground ml-2">
         {{ t('lastProbe', { time: lastRefresh }) }}

@@ -1,5 +1,10 @@
 import { reactive } from 'vue'
 
+import {
+  defaultFpgaDeviceId,
+  normalizeFpgaDeviceId,
+  type FpgaDeviceId,
+} from '../lib/fpga-device-catalog'
 import { parseVerilogPorts, type VerilogPort } from '../lib/verilog-parser'
 
 export type ProjectNode = {
@@ -17,6 +22,7 @@ export type ProjectSnapshot = {
   files: ProjectNode[]
   activeFileId: string
   topFileId: string
+  targetDeviceId: FpgaDeviceId
 }
 
 type FileSignatureMap = Record<string, string>
@@ -176,6 +182,7 @@ function normalizeSnapshot(value: unknown): ProjectSnapshot {
       typeof value.topFileId === 'string' && value.topFileId.length > 0
         ? value.topFileId
         : resolveTopFileId(value.files),
+    targetDeviceId: normalizeFpgaDeviceId(value.targetDeviceId),
   }
 }
 
@@ -233,6 +240,7 @@ endmodule`,
 
   activeFileId: '1',
   topFileId: '1',
+  targetDeviceId: defaultFpgaDeviceId,
   projectPath: null as string | null,
   savedSnapshotJson: '' as string,
   savedFileSignatures: {} as FileSignatureMap,
@@ -295,6 +303,7 @@ endmodule`,
       files: cloneProjectNodes(this.files),
       activeFileId: this.activeFileId,
       topFileId: this.topFileId,
+      targetDeviceId: this.targetDeviceId,
     }
   },
 
@@ -311,6 +320,7 @@ endmodule`,
     this.files = nextFiles
     this.activeFileId = nextActiveFileId
     this.topFileId = nextTopFileId
+    this.targetDeviceId = parsed.targetDeviceId
     this.markSaved(options.projectPath ?? null)
   },
 
@@ -330,6 +340,10 @@ endmodule`,
     if (node?.type === 'file' && isHardwareSourceFile(node.name)) {
       this.topFileId = id
     }
+  },
+
+  setTargetDevice(deviceId: FpgaDeviceId) {
+    this.targetDeviceId = deviceId
   },
 
   markSaved(projectPath?: string | null) {
@@ -505,6 +519,7 @@ endmodule`,
       this.topFileId = '1'
     }
 
+    this.targetDeviceId = defaultFpgaDeviceId
     this.markSaved(null)
   },
 })

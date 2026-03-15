@@ -2,14 +2,17 @@
 import { computed } from 'vue'
 import { Activity, AlertCircle, Clock, Cpu } from 'lucide-vue-next'
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { getFpgaDeviceDescriptor } from '@/lib/fpga-device-catalog'
 import { useI18n } from '@/lib/i18n'
 import { designContextStore } from '@/stores/design-context'
+import { projectStore } from '@/stores/project'
 
 const codeLines = designContextStore.codeLines
 const signalSummary = designContextStore.signalSummary
 const activeFileName = designContextStore.sourceName
 const { t } = useI18n()
+const targetDevice = computed(() => getFpgaDeviceDescriptor(projectStore.targetDeviceId))
 
 const estimatedResources = computed(() => {
   const lut = Math.max(64, codeLines.value * 3 + signalSummary.value.outputs * 20)
@@ -20,8 +23,10 @@ const estimatedResources = computed(() => {
 })
 
 const utilizationPercent = computed(() => {
-  const cap = 5000
-  return Math.min(99, Math.round((estimatedResources.value.lut / cap) * 100))
+  return Math.min(
+    99,
+    Math.round((estimatedResources.value.lut / targetDevice.value.resources.lut4) * 100),
+  )
 })
 
 const estimatedPower = computed(() => {
@@ -43,7 +48,10 @@ const stats = computed(() => [
     title: t('deviceUtilization'),
     value: `${utilizationPercent.value}%`,
     icon: Cpu,
-    desc: t('deviceUtilizationHint', { used: estimatedResources.value.lut }),
+    desc: t('deviceUtilizationHint', {
+      used: estimatedResources.value.lut,
+      total: targetDevice.value.resources.lut4,
+    }),
   },
   {
     title: t('powerEstimate'),
@@ -66,35 +74,38 @@ const stats = computed(() => [
 ])
 
 const resourceBars = computed(() => {
-  const maxValue = Math.max(
-    estimatedResources.value.lut,
-    estimatedResources.value.ff,
-    estimatedResources.value.bram * 200,
-    Math.max(1, estimatedResources.value.dsp) * 150,
-  )
-
   return [
     {
       label: 'LUT',
-      height: Math.max(8, Math.round((estimatedResources.value.lut / maxValue) * 100)),
+      height: Math.max(
+        8,
+        Math.round((estimatedResources.value.lut / targetDevice.value.resources.lut4) * 100),
+      ),
+      description: `${estimatedResources.value.lut}/${targetDevice.value.resources.lut4}`,
       colorClass: 'bg-chart-1',
     },
     {
       label: 'FF',
-      height: Math.max(8, Math.round((estimatedResources.value.ff / maxValue) * 100)),
+      height: Math.max(
+        8,
+        Math.round((estimatedResources.value.ff / targetDevice.value.resources.ff) * 100),
+      ),
+      description: `${estimatedResources.value.ff}/${targetDevice.value.resources.ff}`,
       colorClass: 'bg-chart-2',
     },
     {
       label: 'BRAM',
-      height: Math.max(8, Math.round(((estimatedResources.value.bram * 200) / maxValue) * 100)),
+      height: Math.max(
+        8,
+        Math.round((estimatedResources.value.bram / targetDevice.value.resources.bramBlocks) * 100),
+      ),
+      description: `${estimatedResources.value.bram}/${targetDevice.value.resources.bramBlocks}`,
       colorClass: 'bg-chart-3',
     },
     {
       label: 'DSP',
-      height: Math.max(
-        8,
-        Math.round(((Math.max(1, estimatedResources.value.dsp) * 150) / maxValue) * 100),
-      ),
+      height: 8,
+      description: t('dspUnavailable'),
       colorClass: 'bg-chart-4',
     },
   ]
@@ -127,8 +138,8 @@ const resourceBars = computed(() => {
       </Card>
     </div>
 
-    <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-      <Card class="col-span-4">
+    <div class="grid gap-4 lg:grid-cols-7">
+      <Card class="lg:col-span-4">
         <CardHeader>
           <CardTitle>{{ t('resourceUtilization') }}</CardTitle>
         </CardHeader>
@@ -144,14 +155,19 @@ const resourceBars = computed(() => {
                 :class="resource.colorClass"
                 :style="{ height: `${resource.height}%` }"
               ></div>
-              <span class="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs">{{
-                resource.label
-              }}</span>
+              <span class="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs">
+                {{ resource.label }}
+              </span>
+              <span
+                class="absolute top-2 left-1/2 w-max -translate-x-1/2 rounded bg-background/90 px-2 py-1 text-[10px] text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100"
+              >
+                {{ resource.description }}
+              </span>
             </div>
           </div>
         </CardContent>
       </Card>
-      <Card class="col-span-3">
+      <Card class="lg:col-span-3">
         <CardHeader>
           <CardTitle>{{ t('recentActivity') }}</CardTitle>
           <CardDescription>{{ t('recentActivityDescription') }}</CardDescription>
