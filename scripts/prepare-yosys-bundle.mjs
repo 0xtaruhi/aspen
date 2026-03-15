@@ -322,10 +322,20 @@ function ensureBundlePlaceholder(bundleRoot) {
 }
 
 function pruneBundledToolchain(bundleRoot) {
-  pruneChildren(
-    bundleRoot,
-    new Set(['README', 'VERSION', 'bin', 'lib', 'libexec', 'license', 'share']),
-  )
+  const keepRootEntries = new Set([
+    'README',
+    'VERSION',
+    'bin',
+    'lib',
+    'libexec',
+    'license',
+    'share',
+  ])
+  if (process.platform === 'linux' && existsSync(join(bundleRoot, 'lib64'))) {
+    keepRootEntries.add('lib64')
+  }
+
+  pruneChildren(bundleRoot, keepRootEntries)
   pruneBinDirectory(join(bundleRoot, 'bin'))
   pruneLibexecDirectory(join(bundleRoot, 'libexec'))
   pruneShareDirectory(join(bundleRoot, 'share'))
@@ -383,6 +393,10 @@ function pruneShareDirectory(shareDir) {
 }
 
 function pruneLibraryDirectories(bundleRoot) {
+  if (process.platform === 'linux') {
+    return
+  }
+
   const runtimeTargets = getRuntimeTargetPaths(bundleRoot)
   const dependencyPaths = collectBundledDependencies(bundleRoot, runtimeTargets)
   const wrapperDependencies = collectShellWrapperDependencies(bundleRoot)
