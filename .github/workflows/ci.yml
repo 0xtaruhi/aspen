@@ -13,7 +13,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       GITHUB_TOKEN: ${{ github.token }}
-      MSYS2_ROOT: C:\msys64
       NODE_OPTIONS: --max-old-space-size=6144
     strategy:
       fail-fast: false
@@ -62,6 +61,7 @@ jobs:
 
       - name: Setup MSYS2 FDE build environment
         if: runner.os == 'Windows'
+        id: msys2
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
@@ -76,6 +76,11 @@ jobs:
             bison
             mingw-w64-x86_64-icu
             mingw-w64-x86_64-zlib
+
+      - name: Export MSYS2 root
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: echo "MSYS2_ROOT=${{ steps.msys2.outputs.msys2-location }}" >> $env:GITHUB_ENV
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -110,7 +115,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       GITHUB_TOKEN: ${{ github.token }}
-      MSYS2_ROOT: C:\msys64
       NODE_OPTIONS: --max-old-space-size=6144
     strategy:
       fail-fast: false
@@ -159,6 +163,7 @@ jobs:
 
       - name: Setup MSYS2 FDE build environment
         if: runner.os == 'Windows'
+        id: msys2
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
@@ -173,6 +178,11 @@ jobs:
             bison
             mingw-w64-x86_64-icu
             mingw-w64-x86_64-zlib
+
+      - name: Export MSYS2 root
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: echo "MSYS2_ROOT=${{ steps.msys2.outputs.msys2-location }}" >> $env:GITHUB_ENV
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
