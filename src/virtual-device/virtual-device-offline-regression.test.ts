@@ -47,34 +47,51 @@ vi.mock('@/lib/hardware-client', async () => {
   }
 })
 
-vi.mock('@/lib/canvas-devices', () => ({
-  createCanvasDeviceSnapshot: vi.fn(
-    (type: string, id: string, x: number, y: number, index: number) => ({
-      id,
-      type,
-      x,
-      y,
-      label: `${type}-${index}`,
-      state: {
-        color: type === 'led' ? 'red' : null,
-        is_on: false,
-        binding: {
-          kind: 'single',
-          signal: null,
+vi.mock('@/lib/canvas-devices', async () => {
+  const actual =
+    await vi.importActual<typeof import('@/lib/canvas-devices')>('@/lib/canvas-devices')
+
+  return {
+    ...actual,
+    createCanvasDeviceSnapshot: vi.fn(
+      (type: string, id: string, x: number, y: number, index: number) => ({
+        id,
+        type,
+        x,
+        y,
+        label: `${type}-${index}`,
+        state: {
+          color: type === 'led' ? 'red' : null,
+          is_on: false,
+          binding: {
+            kind: 'single',
+            signal: null,
+          },
+          config: {
+            kind: 'none',
+          },
         },
-        config: {
-          kind: 'none',
-        },
+      }),
+    ),
+    deviceDrivesSignal: vi.fn((type: string) => type === 'switch' || type === 'button'),
+    deviceReceivesSignal: vi.fn((type: string) => type === 'led'),
+    getCanvasDeviceBoundSignal: vi.fn(
+      (device: { state: { binding: { kind: string; signal?: string | null } } }) =>
+        device.state.binding.kind === 'single' ? (device.state.binding.signal ?? null) : null,
+    ),
+    getCanvasDeviceDrivenSignalLevel: vi.fn(
+      (device: {
+        type: string
+        state: { is_on: boolean; config?: { kind?: string; active_low?: boolean } }
+      }) => {
+        if (device.type === 'button' && device.state.config?.kind === 'button') {
+          return device.state.config.active_low ? !device.state.is_on : device.state.is_on
+        }
+        return device.state.is_on
       },
-    }),
-  ),
-  deviceDrivesSignal: vi.fn((type: string) => type === 'switch' || type === 'button'),
-  deviceReceivesSignal: vi.fn((type: string) => type === 'led'),
-  getCanvasDeviceBoundSignal: vi.fn(
-    (device: { state: { binding: { kind: string; signal?: string | null } } }) =>
-      device.state.binding.kind === 'single' ? (device.state.binding.signal ?? null) : null,
-  ),
-}))
+    ),
+  }
+})
 
 function createTestDevice(type: 'switch' | 'led', id: string, x: number, y: number, index: number) {
   return {
