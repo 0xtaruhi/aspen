@@ -49,6 +49,7 @@ async function main() {
 
   patchStaExitBug(join(workingRoot, 'source'))
   patchWindowsTargetVersion(join(workingRoot, 'source'))
+  patchWindowsBoostLinkage(join(workingRoot, 'source'))
 
   const buildEnv = resolveBuildEnvironment()
   configureBuild(join(workingRoot, 'source'), buildRoot, buildEnv)
@@ -136,6 +137,93 @@ function patchWindowsTargetVersion(sourceRoot) {
 
   source = source.replace(needle, replacement)
   writeFileSync(rootCmakePath, source)
+}
+
+function patchWindowsBoostLinkage(sourceRoot) {
+  if (process.platform !== 'win32') {
+    return
+  }
+
+  const commonCmakePath = join(sourceRoot, 'common', 'CMakeLists.txt')
+  let source = readFileSync(commonCmakePath, 'utf8').replace(/\r\n/g, '\n')
+
+  const findPackageNeedle = [
+    'find_package(Boost REQUIRED',
+    '\tCOMPONENTS',
+    '\t\tdate_time',
+    '\t\tlog',
+    '\t\tprogram_options',
+    '\t\tregex',
+    ')',
+  ].join('\n')
+  const findPackageReplacement = [
+    'find_package(Boost REQUIRED',
+    '\tCOMPONENTS',
+    '\t\tdate_time',
+    '\t\tfilesystem',
+    '\t\tlog',
+    '\t\tlog_setup',
+    '\t\tprogram_options',
+    '\t\tregex',
+    ')',
+  ].join('\n')
+
+  if (source.includes(findPackageNeedle)) {
+    source = source.replace(findPackageNeedle, findPackageReplacement)
+  } else if (!source.includes('\t\tlog_setup')) {
+    throw new Error(`Unable to patch Boost components in ${commonCmakePath}.`)
+  }
+
+  const linkNeedle = [
+    'target_link_libraries(${PROJECT_NAME}',
+    '\tPUBLIC',
+    '\t\trapidxml',
+    '\t\tBoost::boost',
+    ')',
+    '',
+    'if(MSVC)',
+    '\ttarget_link_directories(${PROJECT_NAME}',
+    '\t\tINTERFACE ${Boost_LIBRARY_DIRS}',
+    '\t)',
+    'else()\t# UNIX',
+    '\ttarget_link_libraries(${PROJECT_NAME}',
+    '\t\tINTERFACE',
+    '\t\t\tBoost::date_time',
+    '\t\t\tBoost::log',
+    '\t\t\tBoost::program_options',
+    '\t\t\tBoost::regex',
+    '\t\t\t${EXTRA_LIBS}',
+    '\t)',
+    '',
+    'endif()',
+  ].join('\n')
+  const linkReplacement = [
+    'target_link_libraries(${PROJECT_NAME}',
+    '\tPUBLIC',
+    '\t\trapidxml',
+    '\t\tBoost::boost',
+    '\t\tBoost::date_time',
+    '\t\tBoost::filesystem',
+    '\t\tBoost::log',
+    '\t\tBoost::log_setup',
+    '\t\tBoost::program_options',
+    '\t\tBoost::regex',
+    '\t\t${EXTRA_LIBS}',
+    ')',
+    '',
+    'target_compile_definitions(${PROJECT_NAME}',
+    '\tPUBLIC',
+    '\t\tBOOST_ALL_NO_LIB',
+    ')',
+  ].join('\n')
+
+  if (source.includes(linkNeedle)) {
+    source = source.replace(linkNeedle, linkReplacement)
+  } else if (!source.includes('Boost::log_setup')) {
+    throw new Error(`Unable to patch Boost linkage in ${commonCmakePath}.`)
+  }
+
+  writeFileSync(commonCmakePath, source)
 }
 
 function resolveBuildEnvironment() {
