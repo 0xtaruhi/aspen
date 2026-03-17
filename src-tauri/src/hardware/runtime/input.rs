@@ -24,6 +24,7 @@ impl HardwareRuntime {
             device.id.hash(&mut hasher);
             device.r#type.hash(&mut hasher);
             device.state.binding.hash(&mut hasher);
+            device.state.config.hash(&mut hasher);
         }
         hasher.finish()
     }
@@ -87,7 +88,7 @@ impl InputDeviceEncoder for SingleBitInputEncoder {
         let Some(device) = state.canvas_devices.get(self.device_index) else {
             return;
         };
-        if !device.state.is_on {
+        if !device.state.driven_signal_level() {
             return;
         }
 

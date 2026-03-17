@@ -1,9 +1,16 @@
 import { reactive } from 'vue'
 
+import {
+  applyThemeAccentColor,
+  DEFAULT_THEME_ACCENT,
+  normalizeThemeAccentColor,
+} from '@/lib/theme-accent'
+
 export type AppLanguage = 'en-US' | 'zh-CN'
 
 type SettingsState = {
   language: AppLanguage
+  themeAccent: string
   editorFontSize: number
   editorMinimap: boolean
   confirmDelete: boolean
@@ -13,6 +20,7 @@ const STORAGE_KEY = 'aspen-settings'
 
 const defaultSettings: SettingsState = {
   language: 'zh-CN',
+  themeAccent: DEFAULT_THEME_ACCENT,
   editorFontSize: 14,
   editorMinimap: true,
   confirmDelete: true,
@@ -38,7 +46,14 @@ function readStoredSettings(): Partial<SettingsState> {
     }
 
     const parsed = JSON.parse(raw) as Partial<SettingsState>
-    return parsed && typeof parsed === 'object' ? parsed : {}
+    if (!parsed || typeof parsed !== 'object') {
+      return {}
+    }
+
+    return {
+      ...parsed,
+      themeAccent: normalizeThemeAccentColor(parsed.themeAccent),
+    }
   } catch (_) {
     return {}
   }
@@ -62,18 +77,25 @@ const state = reactive<SettingsState>({
 })
 
 applyLanguage(state.language)
+applyThemeAccentColor(state.themeAccent)
 
 export const settingsStore = {
   state,
 
   update(patch: Partial<SettingsState>) {
     Object.assign(state, patch)
+    state.themeAccent = normalizeThemeAccentColor(state.themeAccent)
     applyLanguage(state.language)
+    applyThemeAccentColor(state.themeAccent)
     writeStoredSettings(state)
   },
 
   setLanguage(language: AppLanguage) {
     this.update({ language })
+  },
+
+  setThemeAccent(themeAccent: string) {
+    this.update({ themeAccent })
   },
 
   setEditorFontSize(editorFontSize: number) {

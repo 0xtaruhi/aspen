@@ -170,7 +170,13 @@ impl HardwareRuntime {
             status.words_per_cycle = config.words_per_cycle;
             status.min_batch_cycles = config.min_batch_cycles;
             status.max_wait_us = config.max_wait_us;
-            status.configured_signal_count = config.signal_order.len() as u16;
+            status.configured_signal_count = config
+                .input_signal_order
+                .iter()
+                .chain(config.output_signal_order.iter())
+                .filter(|signal| !signal.trim().is_empty())
+                .count()
+                .min(u16::MAX as usize) as u16;
             status.last_error = None;
         })?;
 
@@ -265,7 +271,13 @@ impl HardwareRuntime {
             status.words_per_cycle = config.words_per_cycle;
             status.min_batch_cycles = config.min_batch_cycles;
             status.max_wait_us = config.max_wait_us;
-            status.configured_signal_count = config.signal_order.len() as u16;
+            status.configured_signal_count = config
+                .input_signal_order
+                .iter()
+                .chain(config.output_signal_order.iter())
+                .filter(|signal| !signal.trim().is_empty())
+                .count()
+                .min(u16::MAX as usize) as u16;
             status.last_error = None;
         })
     }
@@ -402,7 +414,13 @@ impl HardwareRuntime {
                         return;
                     };
 
-                    Self::propagate_signal_to_subscribers(state, source_index, &signal, is_on);
+                    let driven_level = source.state.driven_signal_level();
+                    Self::propagate_signal_to_subscribers(
+                        state,
+                        source_index,
+                        &signal,
+                        driven_level,
+                    );
                 })
             }
             HardwareActionV1::ClearError => self.apply_state_update(app, reason, |state| {

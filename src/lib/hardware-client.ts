@@ -203,8 +203,13 @@ export type CanvasDeviceConfigSnapshot =
       kind: 'none'
     }
   | {
+      kind: 'button'
+      active_low?: boolean
+    }
+  | {
       kind: 'segment_display'
       digits: number
+      active_low?: boolean
     }
   | {
       kind: 'led_matrix'
@@ -299,7 +304,8 @@ export interface HardwareCanvasDeviceTelemetryV1 {
 
 export interface HardwareDataStreamConfigV1 {
   target_hz: number
-  signal_order: string[]
+  input_signal_order: string[]
+  output_signal_order: string[]
   words_per_cycle: number
   min_batch_cycles: number
   max_wait_us: number

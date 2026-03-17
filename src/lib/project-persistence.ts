@@ -13,6 +13,7 @@ import {
 } from '@/lib/project-layout'
 import { projectStore } from '@/stores/project'
 import { recentProjectsStore } from '@/stores/recent-projects'
+import { hardwareStore } from '@/stores/hardware'
 
 type ProjectMetadataNode = Omit<ProjectNode, 'content'> & {
   children?: ProjectMetadataNode[]
@@ -116,6 +117,7 @@ function createProjectMetadataSnapshot(options: { preserveArtifacts: boolean }) 
       snapshot.synthesisCache,
       options.preserveArtifacts,
     ),
+    canvasDevices: snapshot.canvasDevices,
   } satisfies ProjectMetadataSnapshot
 }
 
@@ -204,6 +206,7 @@ async function hydrateProjectSnapshot(
     pinConstraints: metadata.pinConstraints,
     implementationSettings: metadata.implementationSettings,
     synthesisCache: metadata.synthesisCache,
+    canvasDevices: Array.isArray(metadata.canvasDevices) ? metadata.canvasDevices : [],
   }
 }
 
@@ -270,6 +273,7 @@ export async function loadProjectFromPath(path: string) {
   }
 
   await hydratePersistedSynthesisManifest(path)
+  await hardwareStore.replaceCanvasDevices(projectStore.toSnapshot().canvasDevices)
 
   recentProjectsStore.rememberProject(path, projectStore.toSnapshot().name)
   return true

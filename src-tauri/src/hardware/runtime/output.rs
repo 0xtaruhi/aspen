@@ -24,6 +24,7 @@ struct LedOutputDecoder {
 struct SegmentDisplayOutputDecoder {
     device_id: String,
     digit_count: usize,
+    active_low: bool,
     segment_indices: [Option<usize>; 8],
     digit_indices: Vec<Option<usize>>,
     sample_counts: Vec<u32>,
@@ -181,6 +182,7 @@ pub(super) fn compile_segment_display_output(
     Some(Box::new(SegmentDisplayOutputDecoder {
         device_id: device.id.clone(),
         digit_count,
+        active_low: device.state.segment_active_low(),
         segment_indices,
         digit_indices,
         sample_counts: vec![0; digit_count],
@@ -265,7 +267,13 @@ impl OutputDeviceDecoder for SegmentDisplayOutputDecoder {
             let Some(signal_index) = signal_index else {
                 continue;
             };
-            if read_signal_value(cycle, *signal_index) {
+            let signal_value = read_signal_value(cycle, *signal_index);
+            let segment_is_on = if self.active_low {
+                !signal_value
+            } else {
+                signal_value
+            };
+            if segment_is_on {
                 segment_mask |= 1u16 << segment_index;
             }
         }
@@ -286,7 +294,12 @@ impl OutputDeviceDecoder for SegmentDisplayOutputDecoder {
             let Some(signal_index) = self.digit_indices.get(digit_index).copied().flatten() else {
                 continue;
             };
-            if !read_signal_value(cycle, signal_index) {
+            let digit_selected = if self.active_low {
+                !read_signal_value(cycle, signal_index)
+            } else {
+                read_signal_value(cycle, signal_index)
+            };
+            if !digit_selected {
                 continue;
             }
 

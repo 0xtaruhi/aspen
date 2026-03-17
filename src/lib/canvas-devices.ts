@@ -4,8 +4,9 @@ import type {
   CanvasDeviceSnapshot,
   CanvasDeviceStateSnapshot,
   CanvasDeviceType,
-} from '@/lib/hardware-client'
-import { translate } from '@/lib/i18n'
+} from './hardware-client'
+import { alignShellSize, measureMatrixShellSize } from './device-shell-metrics'
+import { translate } from './i18n'
 
 type CanvasDeviceCapabilities = {
   drivesSignal: boolean
@@ -24,6 +25,27 @@ export type CanvasMatrixDimensions = {
 
 export type CanvasSegmentDisplayConfig = {
   digits: number
+  activeLow: boolean
+}
+
+export type CanvasButtonConfig = {
+  activeLow: boolean
+}
+
+export type CanvasDeviceShellSize = {
+  width: number
+  height: number
+}
+
+export type CanvasDeviceColorOption = 'red' | 'green' | 'blue' | 'yellow' | 'orange' | 'white'
+
+export const CANVAS_DEVICE_PRESET_COLORS: Record<CanvasDeviceColorOption, string> = {
+  red: '#ef4444',
+  green: '#4ade80',
+  blue: '#3b82f6',
+  yellow: '#eab308',
+  orange: '#f97316',
+  white: '#f4f4f5',
 }
 
 type CanvasDeviceDefinition = {
@@ -31,6 +53,7 @@ type CanvasDeviceDefinition = {
   dropAliases: string[]
   defaultState: () => CanvasDeviceStateSnapshot
   toRendererProps: (device: CanvasDeviceSnapshot) => Record<string, unknown>
+  getShellSize: (device: CanvasDeviceSnapshot) => CanvasDeviceShellSize
   emitsToggle: boolean
   capabilities: CanvasDeviceCapabilities
   getBindingSlots?: (device: CanvasDeviceSnapshot) => readonly CanvasDeviceBindingSlot[]
@@ -59,10 +82,18 @@ function createNoConfig(): CanvasDeviceConfigSnapshot {
   }
 }
 
-function createSegmentDisplayConfig(digits: number): CanvasDeviceConfigSnapshot {
+function createButtonConfig(activeLow = false): CanvasDeviceConfigSnapshot {
+  return {
+    kind: 'button',
+    active_low: activeLow,
+  }
+}
+
+function createSegmentDisplayConfig(digits: number, activeLow = false): CanvasDeviceConfigSnapshot {
   return {
     kind: 'segment_display',
     digits,
+    active_low: activeLow,
   }
 }
 
@@ -133,11 +164,11 @@ function defaultMatrixDimensionsForType(): CanvasMatrixDimensions {
 }
 
 function defaultSegmentDisplayConfig(): CanvasSegmentDisplayConfig {
-  return { digits: 1 }
+  return { digits: 1, activeLow: false }
 }
 
-function matrixTitle(rows: number, columns: number) {
-  return translate('matrixTitle', { columns, rows })
+function defaultButtonConfig(): CanvasButtonConfig {
+  return { activeLow: false }
 }
 
 function normalizeSegmentDigitCount(value: number | null | undefined, fallback: number) {
@@ -190,6 +221,24 @@ export function getCanvasSegmentDisplayConfig(
 
   return {
     digits: normalizeSegmentDigitCount(device.state.config.digits, defaults.digits),
+    activeLow: device.state.config.active_low ?? defaults.activeLow,
+  }
+}
+
+export function getCanvasButtonConfig(
+  device: Pick<CanvasDeviceSnapshot, 'type' | 'state'>,
+): CanvasButtonConfig | null {
+  if (device.type !== 'button') {
+    return null
+  }
+
+  const defaults = defaultButtonConfig()
+  if (device.state.config.kind !== 'button') {
+    return defaults
+  }
+
+  return {
+    activeLow: device.state.config.active_low ?? defaults.activeLow,
   }
 }
 
@@ -223,6 +272,61 @@ export function getCanvasDeviceBoundSignalCount(
   return device.state.binding.signals.filter(Boolean).length
 }
 
+export function getCanvasDeviceDrivenSignalLevel(
+  device: Pick<CanvasDeviceSnapshot, 'type' | 'state'>,
+): boolean {
+  if (device.type === 'button') {
+    const config = getCanvasButtonConfig(device)
+    if (config?.activeLow) {
+      return !device.state.is_on
+    }
+  }
+
+  return device.state.is_on
+}
+
+export function resolveCanvasDeviceColor(device: Pick<CanvasDeviceSnapshot, 'type' | 'state'>) {
+  const color = normalizeCanvasDeviceColor(device.state.color)
+  if (color) {
+    return color
+  }
+
+  if (device.type === 'led_matrix') {
+    return CANVAS_DEVICE_PRESET_COLORS.green
+  }
+
+  if (device.type === 'led') {
+    return CANVAS_DEVICE_PRESET_COLORS.red
+  }
+
+  return null
+}
+
+export function normalizeCanvasDeviceColor(value: string | null | undefined) {
+  if (!value) {
+    return null
+  }
+
+  const trimmed = value.trim().toLowerCase()
+  if (trimmed in CANVAS_DEVICE_PRESET_COLORS) {
+    return CANVAS_DEVICE_PRESET_COLORS[trimmed as CanvasDeviceColorOption]
+  }
+
+  const hexMatch = trimmed.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/)
+  if (!hexMatch) {
+    return null
+  }
+
+  if (hexMatch[1].length === 3) {
+    return `#${hexMatch[1]
+      .split('')
+      .map((digit) => `${digit}${digit}`)
+      .join('')}`
+  }
+
+  return `#${hexMatch[1]}`
+}
+
 function createMatrixDeviceDefinition(
   title: string,
   dropAliases: string[],
@@ -234,6 +338,7 @@ function createMatrixDeviceDefinition(
     dropAliases,
     defaultState: () =>
       defaultState({
+        color: CANVAS_DEVICE_PRESET_COLORS.green,
         binding: createSlotBindings(
           Array.from({ length: defaults.rows + defaults.columns }, () => null),
         ),
@@ -242,11 +347,15 @@ function createMatrixDeviceDefinition(
     toRendererProps: (device) => {
       const dimensions = getCanvasMatrixDimensions(device) ?? defaults
       return {
-        title: matrixTitle(dimensions.rows, dimensions.columns),
         isOn: device.state.is_on,
+        color: resolveCanvasDeviceColor(device) ?? CANVAS_DEVICE_PRESET_COLORS.green,
         rows: dimensions.rows,
         columns: dimensions.columns,
       }
+    },
+    getShellSize: (device) => {
+      const dimensions = getCanvasMatrixDimensions(device) ?? defaults
+      return measureMatrixShellSize(dimensions.columns, dimensions.rows)
     },
     emitsToggle: false,
     capabilities: {
@@ -269,7 +378,7 @@ function createSegmentDisplayDefinition(): CanvasDeviceDefinition {
     defaultState: () =>
       defaultState({
         binding: createSlotBindings(Array.from({ length: 8 }, () => null)),
-        config: createSegmentDisplayConfig(defaults.digits),
+        config: createSegmentDisplayConfig(defaults.digits, defaults.activeLow),
       }),
     toRendererProps: (device) => {
       const config = getCanvasSegmentDisplayConfig(device) ?? defaults
@@ -280,6 +389,13 @@ function createSegmentDisplayDefinition(): CanvasDeviceDefinition {
             : translate('segmentDisplay'),
         isOn: device.state.is_on,
         digits: config.digits,
+      }
+    },
+    getShellSize: (device) => {
+      const config = getCanvasSegmentDisplayConfig(device) ?? defaults
+      return {
+        width: alignShellSize(52 + config.digits * 42),
+        height: 160,
       }
     },
     emitsToggle: false,
@@ -298,10 +414,18 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
   led: {
     title: translate('led'),
     dropAliases: ['led', 'bulb'],
-    defaultState: () => defaultState({ color: 'red', binding: createSingleBinding() }),
+    defaultState: () =>
+      defaultState({
+        color: CANVAS_DEVICE_PRESET_COLORS.red,
+        binding: createSingleBinding(),
+      }),
     toRendererProps: (device) => ({
       isOn: device.state.is_on,
-      color: device.state.color || undefined,
+      color: resolveCanvasDeviceColor(device) || undefined,
+    }),
+    getShellSize: () => ({
+      width: 80,
+      height: 100,
     }),
     emitsToggle: false,
     capabilities: {
@@ -316,6 +440,10 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
     toRendererProps: (device) => ({
       isOn: device.state.is_on,
     }),
+    getShellSize: () => ({
+      width: 100,
+      height: 160,
+    }),
     emitsToggle: true,
     capabilities: {
       drivesSignal: true,
@@ -325,9 +453,17 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
   button: {
     title: translate('button'),
     dropAliases: ['button'],
-    defaultState: () => defaultState({ binding: createSingleBinding() }),
+    defaultState: () =>
+      defaultState({
+        binding: createSingleBinding(),
+        config: createButtonConfig(false),
+      }),
     toRendererProps: (device) => ({
       isOn: device.state.is_on,
+    }),
+    getShellSize: () => ({
+      width: 100,
+      height: 100,
     }),
     emitsToggle: true,
     capabilities: {
@@ -345,6 +481,10 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
       interactive: true,
       variant: 'keypad',
     }),
+    getShellSize: () => ({
+      width: 220,
+      height: 320,
+    }),
     emitsToggle: true,
     capabilities: {
       drivesSignal: true,
@@ -360,6 +500,10 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
       isOn: device.state.is_on,
       interactive: true,
       variant: 'small_keypad',
+    }),
+    getShellSize: () => ({
+      width: 180,
+      height: 260,
     }),
     emitsToggle: true,
     capabilities: {
@@ -377,6 +521,10 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
       interactive: true,
       variant: 'rotary_button',
     }),
+    getShellSize: () => ({
+      width: 180,
+      height: 240,
+    }),
     emitsToggle: true,
     capabilities: {
       drivesSignal: true,
@@ -393,6 +541,10 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
       interactive: true,
       variant: 'ps2_keyboard',
     }),
+    getShellSize: () => ({
+      width: 280,
+      height: 260,
+    }),
     emitsToggle: true,
     capabilities: {
       drivesSignal: true,
@@ -408,6 +560,10 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
       isOn: device.state.is_on,
       variant: 'text_lcd',
     }),
+    getShellSize: () => ({
+      width: 340,
+      height: 240,
+    }),
     emitsToggle: false,
     capabilities: {
       drivesSignal: false,
@@ -422,6 +578,10 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
       title: translate('graphicLcd'),
       isOn: device.state.is_on,
       variant: 'graphic_lcd',
+    }),
+    getShellSize: () => ({
+      width: 360,
+      height: 280,
     }),
     emitsToggle: false,
     capabilities: {
@@ -477,6 +637,10 @@ export function getCanvasDeviceRendererProps(
   device: CanvasDeviceSnapshot,
 ): Record<string, unknown> {
   return getCanvasDeviceDefinition(device.type).toRendererProps(device)
+}
+
+export function getCanvasDeviceShellSize(device: CanvasDeviceSnapshot): CanvasDeviceShellSize {
+  return getCanvasDeviceDefinition(device.type).getShellSize(device)
 }
 
 export function canvasDeviceEmitsToggle(type: CanvasDeviceType): boolean {

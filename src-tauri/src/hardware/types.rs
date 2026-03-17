@@ -92,8 +92,19 @@ pub enum CanvasDeviceBindingSnapshot {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CanvasDeviceConfigSnapshot {
     None,
-    SegmentDisplay { digits: u16 },
-    LedMatrix { rows: u16, columns: u16 },
+    Button {
+        #[serde(default)]
+        active_low: bool,
+    },
+    SegmentDisplay {
+        digits: u16,
+        #[serde(default)]
+        active_low: bool,
+    },
+    LedMatrix {
+        rows: u16,
+        columns: u16,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -136,8 +147,33 @@ impl CanvasDeviceStateSnapshot {
 
     pub fn segment_digits(&self) -> Option<usize> {
         match self.config {
-            CanvasDeviceConfigSnapshot::SegmentDisplay { digits } => Some(usize::from(digits)),
+            CanvasDeviceConfigSnapshot::SegmentDisplay { digits, .. } => Some(usize::from(digits)),
             _ => None,
+        }
+    }
+
+    pub fn button_active_low(&self) -> bool {
+        matches!(
+            self.config,
+            CanvasDeviceConfigSnapshot::Button { active_low: true }
+        )
+    }
+
+    pub fn segment_active_low(&self) -> bool {
+        matches!(
+            self.config,
+            CanvasDeviceConfigSnapshot::SegmentDisplay {
+                active_low: true,
+                ..
+            }
+        )
+    }
+
+    pub fn driven_signal_level(&self) -> bool {
+        if self.button_active_low() {
+            !self.is_on
+        } else {
+            self.is_on
         }
     }
 
@@ -299,7 +335,8 @@ pub struct HardwareDataStreamStatusV1 {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct HardwareDataStreamConfigV1 {
     pub target_hz: f64,
-    pub signal_order: Vec<String>,
+    pub input_signal_order: Vec<String>,
+    pub output_signal_order: Vec<String>,
     pub words_per_cycle: u16,
     pub min_batch_cycles: u16,
     pub max_wait_us: u32,
@@ -309,7 +346,8 @@ impl Default for HardwareDataStreamConfigV1 {
     fn default() -> Self {
         Self {
             target_hz: 1.0,
-            signal_order: Vec::new(),
+            input_signal_order: Vec::new(),
+            output_signal_order: Vec::new(),
             words_per_cycle: 4,
             min_batch_cycles: 128,
             max_wait_us: 2_000,

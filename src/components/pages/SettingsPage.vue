@@ -15,11 +15,18 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { useI18n } from '@/lib/i18n'
+import {
+  APP_THEME_PRESET_COLORS,
+  normalizeThemeAccentColor,
+  type AppThemePresetColor,
+} from '@/lib/theme-accent'
 import { settingsStore, type AppLanguage } from '@/stores/settings'
 
 const { t } = useI18n()
 
 const fontSizeValue = computed(() => String(settingsStore.state.editorFontSize))
+const themeAccentInput = computed(() => normalizeThemeAccentColor(settingsStore.state.themeAccent))
+const themePresetOptions = Object.keys(APP_THEME_PRESET_COLORS) as AppThemePresetColor[]
 
 function handleLanguageChange(value: unknown) {
   if (value === 'en-US' || value === 'zh-CN') {
@@ -32,6 +39,14 @@ function handleFontSizeChange(value: unknown) {
   if (!Number.isNaN(nextValue)) {
     settingsStore.setEditorFontSize(nextValue)
   }
+}
+
+function applyThemeAccentPreset(color: AppThemePresetColor) {
+  settingsStore.setThemeAccent(APP_THEME_PRESET_COLORS[color])
+}
+
+function handleThemeAccentInput(value: string) {
+  settingsStore.setThemeAccent(value)
 }
 </script>
 
@@ -90,6 +105,63 @@ function handleFontSizeChange(value: unknown) {
                   <p class="text-sm text-muted-foreground">{{ t('appearanceDescription') }}</p>
                 </div>
                 <ThemeToggleButton />
+              </div>
+
+              <div class="space-y-3">
+                <div>
+                  <Label>{{ t('themeColor') }}</Label>
+                  <p class="mt-1 text-sm text-muted-foreground">
+                    {{ t('themeColorDescription') }}
+                  </p>
+                </div>
+
+                <div class="space-y-2">
+                  <label class="text-xs font-medium text-muted-foreground">
+                    {{ t('themeColorPresets') }}
+                  </label>
+                  <div class="grid grid-cols-2 gap-2 md:grid-cols-3">
+                    <button
+                      v-for="color in themePresetOptions"
+                      :key="color"
+                      type="button"
+                      class="group flex items-center gap-2 rounded-xl border px-3 py-2 text-left transition-colors hover:border-primary/40 hover:bg-muted/60"
+                      :class="
+                        themeAccentInput === APP_THEME_PRESET_COLORS[color]
+                          ? 'border-primary/50 bg-primary/5'
+                          : 'border-border/70 bg-background/70'
+                      "
+                      @click="applyThemeAccentPreset(color)"
+                    >
+                      <span
+                        class="h-4 w-4 shrink-0 rounded-full border border-black/10 shadow-sm"
+                        :style="{ backgroundColor: APP_THEME_PRESET_COLORS[color] }"
+                      />
+                      <span class="truncate text-xs font-medium">{{ t(color) }}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="space-y-2">
+                  <label class="text-xs font-medium text-muted-foreground">
+                    {{ t('customColor') }}
+                  </label>
+                  <div
+                    class="flex items-center gap-3 rounded-xl border border-border/70 bg-background/70 px-3 py-2"
+                  >
+                    <input
+                      :value="themeAccentInput"
+                      type="color"
+                      class="h-9 w-12 cursor-pointer rounded-md border border-border bg-transparent p-0"
+                      @input="handleThemeAccentInput(($event.target as HTMLInputElement).value)"
+                    />
+                    <div class="min-w-0 flex-1">
+                      <p class="text-xs font-medium text-foreground">{{ t('selectedColor') }}</p>
+                      <p class="truncate text-xs text-muted-foreground">
+                        {{ themeAccentInput }}
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>

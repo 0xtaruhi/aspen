@@ -101,6 +101,14 @@ async function clearCanvasDevices() {
   })
 }
 
+async function replaceCanvasDevices(devices: readonly CanvasDeviceSnapshot[]) {
+  await clearCanvasDevices()
+  for (const device of devices) {
+    await upsertCanvasDevice(device)
+  }
+  return state.value
+}
+
 async function setCanvasDevicePosition(id: string, x: number, y: number) {
   return dispatch({
     type: 'set_canvas_device_position',
@@ -143,8 +151,12 @@ async function stop() {
   return stopRuntime()
 }
 
-async function configureDataStream(signalNames: readonly string[], wordsPerCycle?: number) {
-  return configureRuntimeDataStream(signalNames, wordsPerCycle)
+async function configureDataStream(
+  inputSignalOrder: readonly string[],
+  outputSignalOrder: readonly string[],
+  wordsPerCycle?: number,
+) {
+  return configureRuntimeDataStream(inputSignalOrder, outputSignalOrder, wordsPerCycle)
 }
 
 async function setDataStreamRate(rateHz: number) {
@@ -202,6 +214,7 @@ export const hardwareStore = {
   upsertCanvasDevice,
   removeCanvasDevice,
   clearCanvasDevices,
+  replaceCanvasDevices,
   setCanvasDevicePosition,
   bindCanvasSignal,
   bindCanvasSignalSlot,

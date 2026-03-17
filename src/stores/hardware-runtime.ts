@@ -382,7 +382,7 @@ function applyDataStreamStatus(status: HardwareDataStreamStatusV1) {
 }
 
 function configuredSignalOrder(signalNames: readonly string[]) {
-  return Array.from(new Set(signalNames.map((signal) => signal.trim()).filter(Boolean)))
+  return signalNames.map((signal) => signal.trim())
 }
 
 export async function syncState(): Promise<HardwareStateV1 | null> {
@@ -537,12 +537,14 @@ export async function stop() {
 }
 
 export async function configureDataStream(
-  signalNames: readonly string[],
+  inputSignalOrder: readonly string[],
+  outputSignalOrder: readonly string[],
   wordsPerCycle = dataStreamStatus.value.words_per_cycle || 4,
 ) {
   const nextConfig: HardwareDataStreamConfigV1 = {
     target_hz: dataStreamStatus.value.target_hz || 1,
-    signal_order: configuredSignalOrder(signalNames),
+    input_signal_order: configuredSignalOrder(inputSignalOrder),
+    output_signal_order: configuredSignalOrder(outputSignalOrder),
     words_per_cycle: Math.max(1, Math.floor(wordsPerCycle)),
     min_batch_cycles: dataStreamStatus.value.min_batch_cycles || DATA_DEFAULT_MIN_BATCH_CYCLES,
     max_wait_us: dataStreamStatus.value.max_wait_us || DATA_DEFAULT_MAX_WAIT_US,
@@ -560,7 +562,9 @@ export async function configureDataStream(
         words_per_cycle: nextConfig.words_per_cycle,
         min_batch_cycles: nextConfig.min_batch_cycles,
         max_wait_us: nextConfig.max_wait_us,
-        configured_signal_count: nextConfig.signal_order.length,
+        configured_signal_count:
+          nextConfig.input_signal_order.filter(Boolean).length +
+          nextConfig.output_signal_order.filter(Boolean).length,
         last_error: null,
       })
       return dataStreamStatus.value

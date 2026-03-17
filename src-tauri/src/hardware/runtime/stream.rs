@@ -19,6 +19,8 @@ use crate::hardware::types::{
 
 use super::*;
 
+pub(super) const UNMAPPED_SIGNAL_ID: u16 = u16::MAX;
+
 #[derive(Clone, Copy)]
 struct StreamRateWindowSample {
     recorded_at: Instant,
@@ -114,11 +116,19 @@ impl HardwareRuntime {
                 Err(_) => break,
             };
 
-            let signal_order =
-                Self::active_signal_order(&config.signal_order, config.words_per_cycle);
-            let signal_ids = signal_order
+            let input_signal_order =
+                Self::active_signal_order(&config.input_signal_order, config.words_per_cycle);
+            let output_signal_order =
+                Self::active_signal_order(&config.output_signal_order, config.words_per_cycle);
+            let signal_ids = output_signal_order
                 .iter()
-                .map(|signal| signal_catalog.id_for_signal(signal, &mut pending_catalog_updates))
+                .map(|signal| {
+                    if signal.trim().is_empty() {
+                        UNMAPPED_SIGNAL_ID
+                    } else {
+                        signal_catalog.id_for_signal(signal, &mut pending_catalog_updates)
+                    }
+                })
                 .collect::<Vec<_>>();
             let target_hz = config.target_hz.max(DATA_DEFAULT_TARGET_HZ);
             let loop_now = Instant::now();
@@ -209,15 +219,16 @@ impl HardwareRuntime {
                 Err(_) => break,
             };
             let next_input_encoder_signature =
-                Self::input_encoder_signature(&state_snapshot, &signal_order);
+                Self::input_encoder_signature(&state_snapshot, &input_signal_order);
             if input_encoder_signature != next_input_encoder_signature {
-                input_encoders = Self::compile_input_encoders(&state_snapshot, &signal_order);
+                input_encoders = Self::compile_input_encoders(&state_snapshot, &input_signal_order);
                 input_encoder_signature = next_input_encoder_signature;
             }
             let next_output_decoder_signature =
-                Self::output_decoder_signature(&state_snapshot, &signal_order);
+                Self::output_decoder_signature(&state_snapshot, &output_signal_order);
             if output_decoder_signature != next_output_decoder_signature {
-                let output_decoders = Self::compile_output_decoders(&state_snapshot, &signal_order);
+                let output_decoders =
+                    Self::compile_output_decoders(&state_snapshot, &output_signal_order);
                 if decode_tx
                     .send(StreamDecodeMessage::OutputDecoders(output_decoders))
                     .is_err()
@@ -310,7 +321,12 @@ impl HardwareRuntime {
                 status.words_per_cycle = config.words_per_cycle;
                 status.min_batch_cycles = config.min_batch_cycles;
                 status.max_wait_us = config.max_wait_us;
-                status.configured_signal_count = signal_order.len() as u16;
+                status.configured_signal_count = input_signal_order
+                    .iter()
+                    .chain(output_signal_order.iter())
+                    .filter(|signal| !signal.trim().is_empty())
+                    .count()
+                    .min(u16::MAX as usize) as u16;
                 status.last_error = None;
             });
         }
@@ -444,10 +460,18 @@ impl HardwareRuntime {
         }
 
         let max_signal_count = usize::from(config.words_per_cycle) * 16;
-        if config.signal_order.len() > max_signal_count {
+        if config.input_signal_order.len() > max_signal_count {
             return Err(format!(
-                "Configured {} signals exceed packet capacity of {} bits",
-                config.signal_order.len(),
+                "Configured {} input signals exceed packet capacity of {} bits",
+                config.input_signal_order.len(),
+                max_signal_count
+            ));
+        }
+
+        if config.output_signal_order.len() > max_signal_count {
+            return Err(format!(
+                "Configured {} output signals exceed packet capacity of {} bits",
+                config.output_signal_order.len(),
                 max_signal_count
             ));
         }
@@ -525,21 +549,11 @@ impl HardwareRuntime {
 
     fn active_signal_order(signal_order: &[String], words_per_cycle: u16) -> Vec<String> {
         let max_signal_count = usize::from(words_per_cycle.max(1)) * 16;
-        let mut active = Vec::with_capacity(signal_order.len().min(max_signal_count));
-
-        for signal in signal_order {
-            if active.len() >= max_signal_count {
-                break;
-            }
-
-            if active.iter().any(|existing| existing == signal) {
-                continue;
-            }
-
-            active.push(signal.clone());
-        }
-
-        active
+        signal_order
+            .iter()
+            .take(max_signal_count)
+            .map(|signal| signal.trim().to_string())
+            .collect()
     }
 
     fn windowed_stream_rates(

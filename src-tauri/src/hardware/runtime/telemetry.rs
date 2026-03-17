@@ -97,7 +97,14 @@ impl HardwareRuntime {
         let mut updates = aggregates
             .into_iter()
             .enumerate()
-            .map(|(signal_index, aggregate)| aggregate.into_signal(signal_ids[signal_index]))
+            .filter_map(|(signal_index, aggregate)| {
+                let signal_id = signal_ids[signal_index];
+                if signal_id == super::stream::UNMAPPED_SIGNAL_ID {
+                    return None;
+                }
+
+                Some(aggregate.into_signal(signal_id))
+            })
             .collect::<Vec<_>>();
 
         if updates.len() > DATA_MAX_UPDATES_PER_BATCH {

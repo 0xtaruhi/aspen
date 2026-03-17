@@ -3,7 +3,10 @@ import type { ExpandedVerilogPortBit } from '@/lib/verilog-port-bits'
 import { computed, readonly } from 'vue'
 
 import { getFpgaBoardDescriptor } from '@/lib/fpga-board-catalog'
-import { resolveCurrentProjectPinConstraints } from '@/lib/project-constraints'
+import {
+  buildPhysicalSignalSlotOrder,
+  resolveCurrentProjectPinConstraints,
+} from '@/lib/project-constraints'
 import { buildSynthesisInputSignature } from '@/lib/synthesis-request-signature'
 import { expandVerilogPorts } from '@/lib/verilog-port-bits'
 import { designContextStore } from '@/stores/design-context'
@@ -38,14 +41,10 @@ const signals = computed<readonly SignalCatalogEntry[]>(() => {
     return []
   }
 
-  const expandedSignals = expandVerilogPorts(report.top_ports)
-  const assignments = resolveCurrentProjectPinConstraints(
-    projectStore.pinConstraints,
-    projectStore.topFileId,
-    expandedSignals,
-  )
+  const expandedSignals = expandedSignalBits.value
+  const assignments = currentConstraintAssignments.value
   const assignmentMap = new Map(assignments.map((entry) => [entry.portName, entry]))
-  const board = getFpgaBoardDescriptor(projectStore.targetBoardId)
+  const board = targetBoard.value
 
   return expandedSignals.map((signal) => {
     const assignment = assignmentMap.get(signal.bitName)
@@ -65,6 +64,21 @@ const signals = computed<readonly SignalCatalogEntry[]>(() => {
       }),
     }
   })
+})
+
+const targetBoard = computed(() => getFpgaBoardDescriptor(projectStore.targetBoardId))
+
+const expandedSignalBits = computed(() => {
+  const report = signalSourceReport.value
+  return report?.success ? expandVerilogPorts(report.top_ports) : []
+})
+
+const currentConstraintAssignments = computed(() => {
+  return resolveCurrentProjectPinConstraints(
+    projectStore.pinConstraints,
+    projectStore.topFileId,
+    expandedSignalBits.value,
+  )
 })
 
 const currentSynthesisSignature = computed(() => {
@@ -97,8 +111,26 @@ const signalSourceReport = computed(() => {
   return currentSynthesisReport.value ?? latestSynthesisReport.value
 })
 
+const streamInputSignalOrder = computed(() => {
+  return buildPhysicalSignalSlotOrder(
+    targetBoard.value,
+    currentConstraintAssignments.value,
+    'input',
+  )
+})
+
+const streamOutputSignalOrder = computed(() => {
+  return buildPhysicalSignalSlotOrder(
+    targetBoard.value,
+    currentConstraintAssignments.value,
+    'output',
+  )
+})
+
 export const signalCatalogStore = {
   currentSynthesisReport: readonly(currentSynthesisReport),
   latestSynthesisReport: readonly(latestSynthesisReport),
   signals: readonly(signals),
+  streamInputSignalOrder: readonly(streamInputSignalOrder),
+  streamOutputSignalOrder: readonly(streamOutputSignalOrder),
 }

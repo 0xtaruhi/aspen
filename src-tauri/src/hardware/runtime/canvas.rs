@@ -29,7 +29,10 @@ impl HardwareRuntime {
                 for route in &topology_cache.routes {
                     let index = route.source_index.or(route.fallback_index);
                     if let Some(index) = index {
-                        values.push((route.signal_id, state.canvas_devices[index].state.is_on));
+                        values.push((
+                            route.signal_id,
+                            state.canvas_devices[index].state.driven_signal_level(),
+                        ));
                     }
                 }
                 values
@@ -127,6 +130,7 @@ impl HardwareRuntime {
             device.id.hash(&mut hasher);
             device.r#type.hash(&mut hasher);
             device.state.binding.hash(&mut hasher);
+            device.state.config.hash(&mut hasher);
         }
         hasher.finish()
     }
@@ -151,7 +155,7 @@ impl HardwareRuntime {
                 Self::device_drives_signal(candidate.r#type)
                     && candidate.state.single_signal() == Some(signal)
             })
-            .map(|candidate| candidate.state.is_on)
+            .map(|candidate| candidate.state.driven_signal_level())
     }
 
     pub(super) fn propagate_signal_to_subscribers(
@@ -176,7 +180,7 @@ impl HardwareRuntime {
     pub(super) fn reconcile_bound_signal(state: &mut HardwareStateV1, target_index: usize) {
         let target = &state.canvas_devices[target_index];
         let target_type = target.r#type;
-        let target_value = target.state.is_on;
+        let target_value = target.state.driven_signal_level();
         let target_signal = target.state.single_signal().map(ToOwned::to_owned);
 
         let Some(signal) = target_signal else {

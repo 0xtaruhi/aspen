@@ -11,6 +11,7 @@ import {
   deviceDrivesSignal as deviceTypeDrivesSignal,
   deviceReceivesSignal as deviceTypeReceivesSignal,
   getCanvasDeviceBoundSignal,
+  getCanvasDeviceDrivenSignalLevel,
 } from '@/lib/canvas-devices'
 
 type VirtualDeviceAction = Extract<
@@ -66,14 +67,20 @@ function cloneDevice(device: CanvasDeviceSnapshot): CanvasDeviceSnapshot {
               rows: device.state.config.rows,
               columns: device.state.config.columns,
             }
-          : device.state.config.kind === 'segment_display'
+          : device.state.config.kind === 'button'
             ? {
-                kind: 'segment_display',
-                digits: device.state.config.digits,
+                kind: 'button',
+                active_low: device.state.config.active_low ?? false,
               }
-            : {
-                kind: 'none',
-              },
+            : device.state.config.kind === 'segment_display'
+              ? {
+                  kind: 'segment_display',
+                  digits: device.state.config.digits,
+                  active_low: device.state.config.active_low ?? false,
+                }
+              : {
+                  kind: 'none',
+                },
     },
   }
 }
@@ -104,7 +111,7 @@ function signalSourceValue(devices: CanvasDeviceSnapshot[], signal: string): boo
   const source = devices.find((candidate) => {
     return deviceDrivesSignal(candidate.type) && getCanvasDeviceBoundSignal(candidate) === signal
   })
-  return source ? source.state.is_on : null
+  return source ? getCanvasDeviceDrivenSignalLevel(source) : null
 }
 
 function propagateSignalToSubscribers(
@@ -133,7 +140,12 @@ function reconcileBoundSignal(devices: CanvasDeviceSnapshot[], targetId: string)
 
   const signal = targetSignal
   if (deviceDrivesSignal(target.type)) {
-    propagateSignalToSubscribers(devices, target.id, signal, target.state.is_on)
+    propagateSignalToSubscribers(
+      devices,
+      target.id,
+      signal,
+      getCanvasDeviceDrivenSignalLevel(target),
+    )
     return
   }
 
@@ -204,7 +216,12 @@ function applyLocalAction(action: HardwareActionV1): boolean {
 
         const signal = getCanvasDeviceBoundSignal(device)
         if (deviceDrivesSignal(device.type) && signal) {
-          propagateSignalToSubscribers(nextDevices, device.id, signal, virtualAction.is_on)
+          propagateSignalToSubscribers(
+            nextDevices,
+            device.id,
+            signal,
+            getCanvasDeviceDrivenSignalLevel(device),
+          )
         }
       }
       break

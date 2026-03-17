@@ -19,6 +19,7 @@ import {
 } from '../lib/implementation-settings'
 import {
   buildFileSignatureMap,
+  cloneProjectCanvasDevices,
   cloneProjectNodes,
   cloneProjectSynthesisCacheSnapshot,
   createFileSignature,
@@ -33,6 +34,7 @@ import {
   type ProjectSynthesisCacheSnapshot,
 } from './project-model'
 import { createProjectTemplateState, type ProjectTemplate } from './project-templates'
+import { virtualDeviceStore } from './virtual-device'
 
 export type { ProjectNode, ProjectSnapshot, ProjectSynthesisCacheSnapshot } from './project-model'
 
@@ -121,6 +123,7 @@ export const projectStore = reactive({
       pinConstraints: cloneProjectConstraintSnapshot(this.pinConstraints),
       implementationSettings: cloneImplementationSettings(this.implementationSettings),
       synthesisCache: cloneProjectSynthesisCacheSnapshot(this.synthesisCache),
+      canvasDevices: cloneProjectCanvasDevices(virtualDeviceStore.canvasDevices.value),
     }
   },
 
@@ -144,6 +147,7 @@ export const projectStore = reactive({
     this.pinConstraints = cloneProjectConstraintSnapshot(parsed.pinConstraints)
     this.implementationSettings = cloneImplementationSettings(parsed.implementationSettings)
     this.synthesisCache = cloneProjectSynthesisCacheSnapshot(parsed.synthesisCache)
+    virtualDeviceStore.setCanvasDevices(parsed.canvasDevices)
     this.markSaved(options.projectPath ?? null)
   },
 
@@ -394,6 +398,7 @@ export const projectStore = reactive({
     }
     this.implementationSettings = cloneImplementationSettings(defaultImplementationSettings)
     this.synthesisCache = null
+    virtualDeviceStore.resetState()
     this.markSaved(null)
   },
 
@@ -408,6 +413,7 @@ export const projectStore = reactive({
     this.pinConstraints = emptyProjectConstraintSnapshot()
     this.implementationSettings = cloneImplementationSettings(defaultImplementationSettings)
     this.synthesisCache = null
+    virtualDeviceStore.setCanvasDevices([])
     this.markSaved(null)
   },
 })

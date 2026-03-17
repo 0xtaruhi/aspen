@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { getFpgaBoardDescriptor } from './fpga-board-catalog'
 import {
   autoAssignProjectConstraints,
+  buildPhysicalSignalSlotOrder,
   buildConstraintXml,
   resolveCurrentProjectPinConstraints,
 } from './project-constraints'
@@ -85,5 +86,24 @@ describe('project constraints regression', () => {
         ports,
       ),
     ).toEqual([])
+  })
+
+  it('builds physical stream slot orders from board pin order', () => {
+    const assignments = [
+      { portName: 'jump', pinId: 'P151' },
+      { portName: 'pause', pinId: 'P148' },
+      { portName: 'resetn', pinId: 'P150' },
+      { portName: 'gameover', pinId: 'P110' },
+    ]
+
+    expect(buildPhysicalSignalSlotOrder(referenceBoard, assignments, 'input').slice(0, 4)).toEqual([
+      'jump',
+      'pause',
+      'resetn',
+      '',
+    ])
+    expect(
+      buildPhysicalSignalSlotOrder(referenceBoard, assignments, 'output').slice(30, 34),
+    ).toEqual(['', '', 'gameover', ''])
   })
 })

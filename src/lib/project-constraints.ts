@@ -137,6 +137,16 @@ export function resolveCurrentProjectPinConstraints(
   return filterAssignmentsForPorts(snapshot.assignments, ports)
 }
 
+export function buildPhysicalSignalSlotOrder(
+  board: FpgaBoardDescriptor,
+  assignments: readonly ProjectPinConstraint[],
+  role: FpgaBoardPinRole,
+): string[] {
+  const pinToPortName = new Map(assignments.map((entry) => [entry.pinId, entry.portName.trim()]))
+
+  return board.pins.filter((pin) => pin.role === role).map((pin) => pinToPortName.get(pin.id) ?? '')
+}
+
 function escapeXml(value: string) {
   return value
     .replace(/&/g, '&amp;')

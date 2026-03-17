@@ -35,6 +35,10 @@ fn no_config() -> CanvasDeviceConfigSnapshot {
     CanvasDeviceConfigSnapshot::None
 }
 
+fn button_config(active_low: bool) -> CanvasDeviceConfigSnapshot {
+    CanvasDeviceConfigSnapshot::Button { active_low }
+}
+
 #[test]
 fn aggregate_data_samples_tracks_latest_ratio_and_edges() {
     let mut queue = VecDeque::from([
@@ -188,6 +192,21 @@ fn filter_changed_updates_skips_steady_windows() {
 }
 
 #[test]
+fn aggregate_read_buffer_skips_unmapped_slots() {
+    let updates = HardwareRuntime::aggregate_read_buffer(
+        &[0b0000_0000_0000_0101],
+        &[1, super::stream::UNMAPPED_SIGNAL_ID, 2],
+        1,
+    );
+
+    assert_eq!(updates.len(), 2);
+    assert_eq!(updates[0].signal_id, 1);
+    assert!(updates[0].latest);
+    assert_eq!(updates[1].signal_id, 2);
+    assert!(updates[1].latest);
+}
+
+#[test]
 fn effective_batch_cycles_scales_with_target_rate() {
     let max_wait = Duration::from_micros(2_000);
 
@@ -270,6 +289,33 @@ fn input_encoders_follow_live_device_state_without_recompiling() {
 }
 
 #[test]
+fn button_input_encoder_honors_active_low_polarity() {
+    let state = HardwareStateV1 {
+        canvas_devices: vec![CanvasDeviceSnapshot {
+            id: "button0".to_string(),
+            r#type: CanvasDeviceType::Button,
+            x: 0.0,
+            y: 0.0,
+            label: "Button".to_string(),
+            state: CanvasDeviceStateSnapshot {
+                is_on: false,
+                color: None,
+                binding: single_binding(Some("sig_a")),
+                config: button_config(true),
+            },
+        }],
+        ..HardwareStateV1::default()
+    };
+
+    let signal_order = vec!["sig_a".to_string()];
+    let encoders = HardwareRuntime::compile_input_encoders(&state, &signal_order);
+    let mut frame_words = vec![0u16; 1];
+
+    HardwareRuntime::fill_write_frame(&state, &encoders, &mut frame_words);
+    assert_eq!(frame_words, vec![0b0000_0001u16]);
+}
+
+#[test]
 fn segment_display_decoder_uses_dynamic_digit_count() {
     let mut state = HardwareStateV1 {
         canvas_devices: vec![CanvasDeviceSnapshot {
@@ -292,7 +338,10 @@ fn segment_display_decoder_uses_dynamic_digit_count() {
                     None,
                     Some("digit_1"),
                 ]),
-                config: CanvasDeviceConfigSnapshot::SegmentDisplay { digits: 6 },
+                config: CanvasDeviceConfigSnapshot::SegmentDisplay {
+                    digits: 6,
+                    active_low: false,
+                },
             },
         }],
         ..HardwareStateV1::default()
@@ -311,6 +360,41 @@ fn segment_display_decoder_uses_dynamic_digit_count() {
     assert!(segment.latest);
     assert_eq!(segment.segment_mask, Some(1));
     assert_eq!(segment.digit_segment_masks, vec![1, 0, 0, 0, 0, 0]);
+}
+
+#[test]
+fn segment_display_decoder_honors_active_low_polarity() {
+    let mut state = HardwareStateV1 {
+        canvas_devices: vec![CanvasDeviceSnapshot {
+            id: "seg_low".to_string(),
+            r#type: CanvasDeviceType::SegmentDisplay,
+            x: 0.0,
+            y: 0.0,
+            label: "SEG".to_string(),
+            state: CanvasDeviceStateSnapshot {
+                is_on: false,
+                color: None,
+                binding: slot_bindings(&[Some("seg_a")]),
+                config: CanvasDeviceConfigSnapshot::SegmentDisplay {
+                    digits: 1,
+                    active_low: true,
+                },
+            },
+        }],
+        ..HardwareStateV1::default()
+    };
+    state.canvas_devices.truncate(1);
+
+    let signal_order = vec!["seg_a".to_string()];
+    let mut decoders = HardwareRuntime::compile_output_decoders(&state, &signal_order);
+    let read_buffer = vec![0u16];
+
+    HardwareRuntime::ingest_output_batch(&read_buffer, 1, &mut decoders);
+    let snapshot = HardwareRuntime::flush_output_decoders(&mut decoders, 1);
+
+    assert_eq!(snapshot.devices.len(), 1);
+    let segment = &snapshot.devices[0];
+    assert_eq!(segment.segment_mask, Some(1));
 }
 
 #[test]

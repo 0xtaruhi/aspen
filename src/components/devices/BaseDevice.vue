@@ -224,13 +224,13 @@ onUnmounted(() => {
 
         <!-- Content -->
         <div
-          class="relative bg-card border border-border rounded-md shadow-sm overflow-hidden"
+          class="relative flex h-full min-h-0 flex-col rounded-md border border-border bg-card shadow-sm overflow-hidden"
           :class="props.preview ? 'border-primary/60 ring-1 ring-primary/30' : ''"
         >
           <button
             v-if="!props.preview"
             type="button"
-            class="absolute top-2.5 right-2.5 z-10 inline-flex h-7 w-7 items-center justify-center rounded-md border border-border/70 bg-background/90 text-muted-foreground opacity-0 shadow-sm transition hover:bg-accent hover:text-accent-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 group-hover:opacity-100"
+            class="absolute right-2 top-2 z-20 inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/70 bg-background/95 text-muted-foreground opacity-0 shadow-md transition hover:bg-accent hover:text-accent-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 group-hover:opacity-100"
             :title="t('settingsAction')"
             :aria-label="t('settingsAction')"
             @mousedown.stop
@@ -241,7 +241,7 @@ onUnmounted(() => {
 
           <!-- Header / Drag Handle -->
           <div
-            class="flex min-h-10 w-full items-center gap-3 border-b border-border/70 bg-muted/45 px-3 py-2 pr-12"
+            class="flex min-h-10 w-full items-center gap-3 border-b border-border/70 bg-muted/45 px-3 py-2"
             :class="props.preview ? 'cursor-copy' : 'cursor-grab active:cursor-grabbing'"
             @pointerdown="startDrag"
           >
@@ -268,7 +268,7 @@ onUnmounted(() => {
               </button>
             </div>
           </div>
-          <div class="p-2">
+          <div class="min-h-0 flex-1 p-2">
             <slot />
           </div>
         </div>

@@ -145,7 +145,11 @@ function parseRequestedRate() {
 }
 
 async function syncStreamConfig() {
-  await hardwareStore.configureDataStream(streamSignalNames.value, STREAM_WORDS_PER_CYCLE)
+  await hardwareStore.configureDataStream(
+    signalCatalogStore.streamInputSignalOrder.value,
+    signalCatalogStore.streamOutputSignalOrder.value,
+    STREAM_WORDS_PER_CYCLE,
+  )
 }
 
 async function applyRate() {

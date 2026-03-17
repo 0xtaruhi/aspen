@@ -1,4 +1,11 @@
-import type { SynthesisReportV1 } from '../lib/hardware-client'
+import type {
+  CanvasDeviceBindingSnapshot,
+  CanvasDeviceConfigSnapshot,
+  CanvasDeviceSnapshot,
+  CanvasDeviceStateSnapshot,
+  CanvasDeviceType,
+  SynthesisReportV1,
+} from '../lib/hardware-client'
 
 import { normalizeFpgaDeviceId, type FpgaDeviceId } from '../lib/fpga-device-catalog'
 import {
@@ -43,6 +50,7 @@ export type ProjectSnapshot = {
   pinConstraints: ProjectConstraintSnapshot
   implementationSettings: ImplementationSettingsSnapshot
   synthesisCache: ProjectSynthesisCacheSnapshot | null
+  canvasDevices: CanvasDeviceSnapshot[]
 }
 
 export type FileSignatureMap = Record<string, string>
@@ -78,6 +86,175 @@ export function cloneProjectSynthesisCacheSnapshot(
     signature: snapshot.signature,
     report: JSON.parse(JSON.stringify(snapshot.report)) as SynthesisReportV1,
   }
+}
+
+function isCanvasDeviceType(value: unknown): value is CanvasDeviceType {
+  return (
+    value === 'led' ||
+    value === 'switch' ||
+    value === 'button' ||
+    value === 'keypad' ||
+    value === 'small_keypad' ||
+    value === 'rotary_button' ||
+    value === 'ps2_keyboard' ||
+    value === 'text_lcd' ||
+    value === 'graphic_lcd' ||
+    value === 'segment_display' ||
+    value === 'led_matrix'
+  )
+}
+
+function isCanvasDeviceBindingSnapshot(value: unknown): value is CanvasDeviceBindingSnapshot {
+  if (!isRecord(value) || typeof value.kind !== 'string') {
+    return false
+  }
+
+  if (value.kind === 'single') {
+    return value.signal === null || typeof value.signal === 'string'
+  }
+
+  if (value.kind === 'slots') {
+    return (
+      Array.isArray(value.signals) &&
+      value.signals.every((signal) => signal === null || typeof signal === 'string')
+    )
+  }
+
+  return false
+}
+
+function isCanvasDeviceConfigSnapshot(value: unknown): value is CanvasDeviceConfigSnapshot {
+  if (!isRecord(value) || typeof value.kind !== 'string') {
+    return false
+  }
+
+  if (value.kind === 'none') {
+    return true
+  }
+
+  if (value.kind === 'button') {
+    return value.active_low === undefined || typeof value.active_low === 'boolean'
+  }
+
+  if (value.kind === 'segment_display') {
+    return (
+      typeof value.digits === 'number' &&
+      Number.isFinite(value.digits) &&
+      (value.active_low === undefined || typeof value.active_low === 'boolean')
+    )
+  }
+
+  if (value.kind === 'led_matrix') {
+    return (
+      typeof value.rows === 'number' &&
+      Number.isFinite(value.rows) &&
+      typeof value.columns === 'number' &&
+      Number.isFinite(value.columns)
+    )
+  }
+
+  return false
+}
+
+function isCanvasDeviceStateSnapshot(value: unknown): value is CanvasDeviceStateSnapshot {
+  return (
+    isRecord(value) &&
+    typeof value.is_on === 'boolean' &&
+    (value.color === null || typeof value.color === 'string') &&
+    isCanvasDeviceBindingSnapshot(value.binding) &&
+    isCanvasDeviceConfigSnapshot(value.config)
+  )
+}
+
+function isCanvasDeviceSnapshot(value: unknown): value is CanvasDeviceSnapshot {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    isCanvasDeviceType(value.type) &&
+    typeof value.x === 'number' &&
+    Number.isFinite(value.x) &&
+    typeof value.y === 'number' &&
+    Number.isFinite(value.y) &&
+    typeof value.label === 'string' &&
+    isCanvasDeviceStateSnapshot(value.state)
+  )
+}
+
+function cloneCanvasDeviceBindingSnapshot(
+  binding: CanvasDeviceBindingSnapshot,
+): CanvasDeviceBindingSnapshot {
+  return binding.kind === 'single'
+    ? {
+        kind: 'single',
+        signal: binding.signal ?? null,
+      }
+    : {
+        kind: 'slots',
+        signals: [...binding.signals],
+      }
+}
+
+function cloneCanvasDeviceConfigSnapshot(
+  config: CanvasDeviceConfigSnapshot,
+): CanvasDeviceConfigSnapshot {
+  if (config.kind === 'button') {
+    return {
+      kind: 'button',
+      active_low: config.active_low ?? false,
+    }
+  }
+
+  if (config.kind === 'segment_display') {
+    return {
+      kind: 'segment_display',
+      digits: config.digits,
+      active_low: config.active_low ?? false,
+    }
+  }
+
+  if (config.kind === 'led_matrix') {
+    return {
+      kind: 'led_matrix',
+      rows: config.rows,
+      columns: config.columns,
+    }
+  }
+
+  return {
+    kind: 'none',
+  }
+}
+
+function cloneCanvasDeviceStateSnapshot(
+  state: CanvasDeviceStateSnapshot,
+): CanvasDeviceStateSnapshot {
+  return {
+    is_on: state.is_on,
+    color: state.color ?? null,
+    binding: cloneCanvasDeviceBindingSnapshot(state.binding),
+    config: cloneCanvasDeviceConfigSnapshot(state.config),
+  }
+}
+
+export function cloneProjectCanvasDevices(
+  devices: readonly CanvasDeviceSnapshot[] = [],
+): CanvasDeviceSnapshot[] {
+  return devices.map((device) => ({
+    id: device.id,
+    type: device.type,
+    x: device.x,
+    y: device.y,
+    label: device.label,
+    state: cloneCanvasDeviceStateSnapshot(device.state),
+  }))
+}
+
+export function normalizeProjectCanvasDevices(value: unknown): CanvasDeviceSnapshot[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return cloneProjectCanvasDevices(value.filter(isCanvasDeviceSnapshot))
 }
 
 export function createFileSignature(node: ProjectNode) {
@@ -284,5 +461,6 @@ export function normalizeProjectSnapshot(value: unknown): ProjectSnapshot {
     pinConstraints: normalizeProjectConstraintSnapshot(value.pinConstraints, resolvedTopFileId),
     implementationSettings: normalizeImplementationSettings(value.implementationSettings),
     synthesisCache: normalizeProjectSynthesisCacheSnapshot(value.synthesisCache),
+    canvasDevices: normalizeProjectCanvasDevices(value.canvasDevices),
   }
 }

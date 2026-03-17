@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
 import { defaultFpgaBoardId } from '../lib/fpga-board-catalog'
+import { createCanvasDeviceSnapshot } from '../lib/canvas-devices'
 import { defaultFpgaDeviceId } from '../lib/fpga-device-catalog'
 import { defaultImplementationSettings } from '../lib/implementation-settings'
 
 import { projectStore } from './project'
+import { virtualDeviceStore } from './virtual-device'
 
 describe('project save-state regression', () => {
   it('can return to an empty workspace without a default project', () => {
@@ -160,5 +162,52 @@ describe('project save-state regression', () => {
     expect(projectStore.synthesisCache?.signature).toBe('sig-123')
     expect(projectStore.synthesisCache?.report.top_module).toBe('blinky')
     expect(projectStore.synthesisCache?.report.stats.cell_count).toBe(1)
+  })
+
+  it('persists virtual device canvas snapshots with the project', () => {
+    projectStore.createNewProject('WorkbenchProject', 'empty')
+
+    const led = createCanvasDeviceSnapshot('led', 'led-1', 120, 80, 1)
+    led.label = 'Status LED'
+    led.state.color = '#22c55e'
+    led.state.binding = {
+      kind: 'single',
+      signal: 'io_gameover',
+    }
+
+    const matrix = createCanvasDeviceSnapshot('led_matrix', 'matrix-1', 240, 160, 1)
+    matrix.label = 'Matrix A'
+    matrix.state.color = '#eab308'
+    matrix.state.config = {
+      kind: 'led_matrix',
+      rows: 8,
+      columns: 8,
+    }
+    matrix.state.binding = {
+      kind: 'slots',
+      signals: ['row0', 'row1', 'col0', 'col1'],
+    }
+
+    virtualDeviceStore.setCanvasDevices([led, matrix])
+
+    const snapshot = projectStore.toSnapshot()
+    expect(snapshot.canvasDevices).toHaveLength(2)
+    expect(snapshot.canvasDevices[0]?.label).toBe('Status LED')
+    expect(snapshot.canvasDevices[1]?.state.config).toEqual({
+      kind: 'led_matrix',
+      rows: 8,
+      columns: 8,
+    })
+
+    virtualDeviceStore.setCanvasDevices([])
+    projectStore.loadFromSnapshot(snapshot)
+
+    expect(virtualDeviceStore.canvasDevices.value).toHaveLength(2)
+    expect(virtualDeviceStore.canvasDevices.value[0]?.label).toBe('Status LED')
+    expect(virtualDeviceStore.canvasDevices.value[0]?.state.binding).toEqual({
+      kind: 'single',
+      signal: 'io_gameover',
+    })
+    expect(virtualDeviceStore.canvasDevices.value[1]?.state.color).toBe('#eab308')
   })
 })

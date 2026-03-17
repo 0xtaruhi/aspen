@@ -20,6 +20,7 @@ import {
   getCanvasMatrixDimensions,
   getCanvasSegmentDisplayConfig,
   getCanvasDeviceRendererProps,
+  getCanvasDeviceShellSize,
   isCanvasMatrixDevice,
   isCanvasSegmentDisplayDevice,
 } from '@/lib/canvas-devices'
@@ -358,6 +359,10 @@ function boundSignalsCount(device: CanvasDeviceSnapshot) {
   return getCanvasDeviceBoundSignalCount(device)
 }
 
+function shellSize(device: CanvasDeviceSnapshot) {
+  return getCanvasDeviceShellSize(device)
+}
+
 const palettePreview = computed<CanvasDeviceSnapshot | null>(() => {
   if (!paletteDragStore.state.active || !paletteDragStore.state.type) {
     return null
@@ -437,6 +442,8 @@ onMounted(() => {
         :id="device.id"
         :x="devicePosition(device).x"
         :y="devicePosition(device).y"
+        :width="shellSize(device).width"
+        :height="shellSize(device).height"
         :label="device.label"
         :selected="selectedDeviceId === device.id"
         :bound-signal="getCanvasDeviceBoundSignal(device) || undefined"
@@ -462,6 +469,8 @@ onMounted(() => {
         id="__palette-preview__"
         :x="palettePreview.x"
         :y="palettePreview.y"
+        :width="shellSize(palettePreview).width"
+        :height="shellSize(palettePreview).height"
         :label="palettePreview.label"
         :scale="scale"
         :preview="true"
