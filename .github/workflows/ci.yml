@@ -345,6 +345,10 @@ jobs:
           name: bundled-fpga-toolchains-ubuntu-latest
           path: src-tauri/vendor
 
+      - name: Restore bundled toolchain execute permissions
+        run: |
+          chmod +x src-tauri/vendor/yosys/bin/* src-tauri/vendor/yosys/libexec/* src-tauri/vendor/fde/bin/*
+
       - name: Rust fmt check
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
 
@@ -396,6 +400,10 @@ jobs:
           name: bundled-fpga-toolchains-ubuntu-latest
           path: src-tauri/vendor
 
+      - name: Restore bundled toolchain execute permissions
+        run: |
+          chmod +x src-tauri/vendor/yosys/bin/* src-tauri/vendor/yosys/libexec/* src-tauri/vendor/fde/bin/*
+
       - name: Build Aspen installer packages
         run: pnpm tauri build --ci -c src-tauri/tauri.yosys.conf.json
 
@@ -440,6 +448,10 @@ jobs:
         with:
           name: bundled-fpga-toolchains-macos-latest
           path: src-tauri/vendor
+
+      - name: Restore bundled toolchain execute permissions
+        run: |
+          chmod +x src-tauri/vendor/yosys/bin/* src-tauri/vendor/yosys/libexec/* src-tauri/vendor/fde/bin/*
 
       - name: Build Aspen installer packages
         run: pnpm tauri build --ci -c src-tauri/tauri.yosys.conf.json
