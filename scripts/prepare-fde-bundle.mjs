@@ -311,6 +311,43 @@ function resolveWindowsLlvmBin(env) {
   ])
 }
 
+function resolveWindowsCmakePath(env) {
+  return findExistingPath([
+    env.CMAKE_PATH,
+    env.VSINSTALLDIR
+      ? join(
+          env.VSINSTALLDIR,
+          'Common7',
+          'IDE',
+          'CommonExtensions',
+          'Microsoft',
+          'CMake',
+          'CMake',
+          'bin',
+          'cmake.exe',
+        )
+      : null,
+  ])
+}
+
+function resolveWindowsNinjaPath(env) {
+  return findExistingPath([
+    env.NINJA_PATH,
+    env.VSINSTALLDIR
+      ? join(
+          env.VSINSTALLDIR,
+          'Common7',
+          'IDE',
+          'CommonExtensions',
+          'Microsoft',
+          'CMake',
+          'Ninja',
+          'ninja.exe',
+        )
+      : null,
+  ])
+}
+
 function resolveWindowsVcpkgRoot(env) {
   return findExistingPath([env.VCPKG_ROOT, env.VCPKG_INSTALLATION_ROOT, 'C:\\vcpkg'])
 }
@@ -423,7 +460,10 @@ function quoteWindowsBatchArgument(arg) {
 function configureBuild(sourceRoot, buildRoot, env) {
   mkdirSync(buildRoot, { recursive: true })
   const args = ['-S', sourceRoot, '-B', buildRoot, '-G', 'Ninja', '-DCMAKE_BUILD_TYPE=Release']
-  const cmakePath = resolveToolPath('cmake', env) || 'cmake'
+  const cmakePath =
+    process.platform === 'win32'
+      ? resolveWindowsCmakePath(env) || resolveToolPath('cmake', env) || 'cmake'
+      : resolveToolPath('cmake', env) || 'cmake'
 
   if (process.platform === 'win32') {
     const vcpkgRoot = resolveWindowsVcpkgRoot(env)
@@ -433,7 +473,9 @@ function configureBuild(sourceRoot, buildRoot, env) {
       env,
       'Install LLVM/Clang or the Visual Studio Clang toolset.',
     )
-    const ninjaPath = resolveRequiredToolPath(['ninja'], env, 'Install Ninja or add it to PATH.')
+    const ninjaPath =
+      resolveWindowsNinjaPath(env) ||
+      resolveRequiredToolPath(['ninja'], env, 'Install Ninja or add it to PATH.')
     const flexPath = resolveRequiredToolPath(
       ['win_flex', 'flex'],
       env,
