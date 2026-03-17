@@ -48,6 +48,7 @@ async function main() {
   mkdirSync(bundleLibDir, { recursive: true })
 
   patchStaExitBug(join(workingRoot, 'source'))
+  patchWindowsBoostLogCompatibility(join(workingRoot, 'source'))
 
   const buildEnv = resolveBuildEnvironment()
   configureBuild(join(workingRoot, 'source'), buildRoot, buildEnv)
@@ -105,6 +106,45 @@ function patchStaExitBug(sourceRoot) {
   }
   source = source.replace(needle, replacement)
   writeFileSync(staAppPath, source)
+}
+
+function patchWindowsBoostLogCompatibility(sourceRoot) {
+  if (process.platform !== 'win32') {
+    return
+  }
+
+  const marker = '#define _WIN32_WINNT 0x0602'
+  const macroBlock = [
+    '#ifdef _WIN32',
+    '#ifndef WINVER',
+    '#define WINVER 0x0602',
+    '#endif',
+    '#ifndef _WIN32_WINNT',
+    '#define _WIN32_WINNT 0x0602',
+    '#endif',
+    '#endif',
+    '',
+  ].join('\n')
+
+  const targets = [
+    [join(sourceRoot, 'common', 'utils', 'log.h'), '#include <boost/log/attributes.hpp>\n'],
+    [
+      join(sourceRoot, 'common', 'utils', 'log.cpp'),
+      '#include <boost/log/support/date_time.hpp>\n',
+    ],
+  ]
+
+  for (const [filePath, needle] of targets) {
+    let source = readFileSync(filePath, 'utf8').replace(/\r\n/g, '\n')
+    if (source.includes(marker)) {
+      continue
+    }
+    if (!source.includes(needle)) {
+      throw new Error(`Unable to patch Windows Boost.Log compatibility in ${filePath}.`)
+    }
+    source = source.replace(needle, `${macroBlock}\n${needle}`)
+    writeFileSync(filePath, source)
+  }
 }
 
 function resolveBuildEnvironment() {
