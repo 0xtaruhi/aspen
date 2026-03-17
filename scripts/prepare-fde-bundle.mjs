@@ -300,8 +300,12 @@ function resolveWindowsBuildEnvironment() {
   }
   const pathEntries = env.PATH ? env.PATH.split(delimiter) : []
   const llvmBin = resolveWindowsLlvmBin(env)
+  const powerShellPath = resolveWindowsPowerShellPath(baseEnv) || resolveWindowsPowerShellPath(env)
   if (llvmBin) {
     pathEntries.unshift(llvmBin)
+  }
+  if (powerShellPath) {
+    pathEntries.unshift(dirname(powerShellPath))
   }
 
   const vcpkgRoot = resolveWindowsVcpkgRoot(baseEnv) || resolveWindowsVcpkgRoot(env)
@@ -446,6 +450,22 @@ function resolveWindowsCmakePath(env) {
           'cmake.exe',
         )
       : null,
+  ])
+}
+
+function resolveWindowsPowerShellPath(env) {
+  return findExistingPath([
+    env.POWERSHELL_PATH,
+    env.PWSH_PATH,
+    resolveToolPath('pwsh', env),
+    resolveToolPath('powershell', env),
+    env.ProgramFiles ? join(env.ProgramFiles, 'PowerShell', '7', 'pwsh.exe') : null,
+    env['ProgramFiles(x86)'] ? join(env['ProgramFiles(x86)'], 'PowerShell', '7', 'pwsh.exe') : null,
+    env.SystemRoot
+      ? join(env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+      : null,
+    'C:\\Program Files\\PowerShell\\7\\pwsh.exe',
+    'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
   ])
 }
 
@@ -627,6 +647,7 @@ function configureBuild(sourceRoot, buildRoot, env) {
     const boostConfigDir = vcpkgInstalledRoot ? join(vcpkgInstalledRoot, 'share', 'boost') : null
     const boostIncludeDir = vcpkgInstalledRoot ? join(vcpkgInstalledRoot, 'include') : null
     const boostLibraryDir = vcpkgInstalledRoot ? join(vcpkgInstalledRoot, 'lib') : null
+    const powerShellPath = resolveWindowsPowerShellPath(env)
     const clangClPath = resolveRequiredToolPath(
       ['clang-cl'],
       env,
@@ -663,6 +684,11 @@ function configureBuild(sourceRoot, buildRoot, env) {
         ].join('\n'),
       )
     }
+    if (!powerShellPath) {
+      throw new Error(
+        'Unable to locate PowerShell on Windows. Ensure pwsh.exe or powershell.exe is installed and visible to the build environment.',
+      )
+    }
 
     console.log(
       [
@@ -670,6 +696,7 @@ function configureBuild(sourceRoot, buildRoot, env) {
         `ninja=${ninjaPath}`,
         `flex=${flexPath}`,
         `bison=${bisonPath}`,
+        `powershell=${powerShellPath}`,
         `vcpkg=${vcpkgRoot}`,
         `triplet=${vcpkgTriplet}`,
       ].join(', '),
@@ -686,6 +713,7 @@ function configureBuild(sourceRoot, buildRoot, env) {
       ['CMAKE_MAKE_PROGRAM', ninjaPath],
       ['FLEX_EXECUTABLE', flexPath],
       ['BISON_EXECUTABLE', bisonPath],
+      ['Z_VCPKG_POWERSHELL_PATH', powerShellPath],
       ['BOOST_ROOT', vcpkgInstalledRoot],
       ['BOOST_INCLUDEDIR', boostIncludeDir],
       ['BOOST_LIBRARYDIR', boostLibraryDir],
