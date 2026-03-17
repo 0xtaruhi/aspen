@@ -7,17 +7,20 @@ on:
       - master
   pull_request:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FDE_SOURCE_REPO: 'https://github.com/0xtaruhi/FDE-Source.git'
+  GITHUB_TOKEN: ${{ github.token }}
+  NODE_OPTIONS: --max-old-space-size=6144
+  OSS_CAD_SUITE_VERSION: '2026-03-17'
+
 jobs:
-  checks:
-    name: Checks (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    env:
-      GITHUB_TOKEN: ${{ github.token }}
-      NODE_OPTIONS: --max-old-space-size=6144
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+  frontend-checks:
+    name: Frontend Checks
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,34 +36,205 @@ jobs:
           node-version: 20
           cache: pnpm
 
-      - name: Install Linux desktop dependencies
-        if: runner.os == 'Linux'
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Frontend typecheck
+        run: pnpm typecheck
+
+      - name: Frontend build
+        run: pnpm build
+
+      - name: Frontend vitest regression
+        run: pnpm test:ci
+
+  toolchain-linux:
+    name: Toolchains (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Resolve FDE source revision
+        id: fde-source
+        shell: bash
+        run: |
+          sha=$(git ls-remote "$FDE_SOURCE_REPO" HEAD | cut -f1)
+          if [ -z "$sha" ]; then
+            echo "Failed to resolve FDE source revision." >&2
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Cache bundled Yosys toolchain
+        id: cache-yosys
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/vendor/yosys
+          key: bundled-yosys-${{ runner.os }}-${{ env.OSS_CAD_SUITE_VERSION }}-${{ hashFiles('scripts/prepare-yosys-bundle.mjs') }}
+
+      - name: Cache bundled FDE toolchain
+        id: cache-fde
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/vendor/fde
+          key: bundled-fde-${{ runner.os }}-${{ steps.fde-source.outputs.sha }}-${{ hashFiles('scripts/prepare-fde-bundle.mjs') }}
+
+      - name: Install Linux toolchain dependencies
+        if: steps.cache-fde.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            build-essential \
             bison \
+            build-essential \
             cmake \
             curl \
             file \
             flex \
             libboost-all-dev \
             libicu-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libssl-dev \
-            libwebkit2gtk-4.1-dev \
-            libxdo-dev \
             ninja-build \
             patchelf \
             wget
 
-      - name: Install macOS FDE build dependencies
-        if: runner.os == 'macOS'
+      - name: Download bundled Yosys toolchain
+        if: steps.cache-yosys.outputs.cache-hit != 'true'
+        run: pnpm prepare:yosys-bundle
+
+      - name: Build bundled FDE toolchain
+        if: steps.cache-fde.outputs.cache-hit != 'true'
+        run: pnpm prepare:fde-bundle
+
+      - name: Upload bundled FPGA toolchains
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundled-fpga-toolchains-ubuntu-latest
+          path: |
+            src-tauri/vendor/fde
+            src-tauri/vendor/yosys
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  toolchain-macos:
+    name: Toolchains (macos-latest)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Resolve FDE source revision
+        id: fde-source
+        shell: bash
+        run: |
+          sha=$(git ls-remote "$FDE_SOURCE_REPO" HEAD | cut -f1)
+          if [ -z "$sha" ]; then
+            echo "Failed to resolve FDE source revision." >&2
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Cache bundled Yosys toolchain
+        id: cache-yosys
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/vendor/yosys
+          key: bundled-yosys-${{ runner.os }}-${{ env.OSS_CAD_SUITE_VERSION }}-${{ hashFiles('scripts/prepare-yosys-bundle.mjs') }}
+
+      - name: Cache bundled FDE toolchain
+        id: cache-fde
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/vendor/fde
+          key: bundled-fde-${{ runner.os }}-${{ steps.fde-source.outputs.sha }}-${{ hashFiles('scripts/prepare-fde-bundle.mjs') }}
+
+      - name: Install macOS toolchain dependencies
+        if: steps.cache-fde.outputs.cache-hit != 'true'
         run: brew install boost bison flex icu4c ninja cmake
 
+      - name: Download bundled Yosys toolchain
+        if: steps.cache-yosys.outputs.cache-hit != 'true'
+        run: pnpm prepare:yosys-bundle
+
+      - name: Build bundled FDE toolchain
+        if: steps.cache-fde.outputs.cache-hit != 'true'
+        run: pnpm prepare:fde-bundle
+
+      - name: Upload bundled FPGA toolchains
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundled-fpga-toolchains-macos-latest
+          path: |
+            src-tauri/vendor/fde
+            src-tauri/vendor/yosys
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  toolchain-windows:
+    name: Toolchains (windows-latest)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Resolve FDE source revision
+        id: fde-source
+        shell: bash
+        run: |
+          sha=$(git ls-remote "$FDE_SOURCE_REPO" HEAD | cut -f1)
+          if [ -z "$sha" ]; then
+            echo "Failed to resolve FDE source revision." >&2
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Cache bundled Yosys toolchain
+        id: cache-yosys
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/vendor/yosys
+          key: bundled-yosys-${{ runner.os }}-${{ env.OSS_CAD_SUITE_VERSION }}-${{ hashFiles('scripts/prepare-yosys-bundle.mjs') }}
+
+      - name: Cache bundled FDE toolchain
+        id: cache-fde
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/vendor/fde
+          key: bundled-fde-${{ runner.os }}-${{ steps.fde-source.outputs.sha }}-${{ hashFiles('scripts/prepare-fde-bundle.mjs') }}
+
       - name: Configure Windows FDE build environment
-        if: runner.os == 'Windows'
+        if: steps.cache-fde.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           if (-not $env:VCPKG_INSTALLATION_ROOT) {
@@ -71,14 +245,14 @@ jobs:
           echo "VCPKG_DEFAULT_BINARY_CACHE=$env:RUNNER_TEMP\vcpkg-binary-cache" >> $env:GITHUB_ENV
 
       - name: Restore Windows vcpkg binary cache
-        if: runner.os == 'Windows'
-        uses: actions/cache/restore@v4
+        if: steps.cache-fde.outputs.cache-hit != 'true'
+        uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}\vcpkg-binary-cache
           key: windows-vcpkg-binary-cache-x64-windows-static-v2
 
       - name: Install Windows FDE build dependencies
-        if: runner.os == 'Windows'
+        if: steps.cache-fde.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
@@ -127,26 +301,18 @@ jobs:
           )
           & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet $env:FDE_VCPKG_TRIPLET @vcpkgPackages
 
-      - name: Save Windows vcpkg binary cache
-        if: runner.os == 'Windows'
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ runner.temp }}\vcpkg-binary-cache
-          key: windows-vcpkg-binary-cache-x64-windows-static-v2
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
       - name: Download bundled Yosys toolchain
+        if: steps.cache-yosys.outputs.cache-hit != 'true'
         run: pnpm prepare:yosys-bundle
 
       - name: Build bundled FDE toolchain
+        if: steps.cache-fde.outputs.cache-hit != 'true'
         run: pnpm prepare:fde-bundle
 
       - name: Upload bundled FPGA toolchains
         uses: actions/upload-artifact@v4
         with:
-          name: bundled-fpga-toolchains-${{ matrix.os }}
+          name: bundled-fpga-toolchains-windows-latest
           path: |
             src-tauri/vendor/fde
             src-tauri/vendor/yosys
@@ -154,14 +320,30 @@ jobs:
           retention-days: 1
           compression-level: 0
 
-      - name: Frontend typecheck
-        run: pnpm typecheck
+  rust-checks:
+    name: Rust Checks
+    runs-on: ubuntu-latest
+    needs:
+      - toolchain-linux
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Frontend build
-        run: pnpm build
+      - name: Install Linux desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev
 
-      - name: Frontend vitest regression
-        run: pnpm exec vitest run
+      - name: Download bundled FPGA toolchains
+        uses: actions/download-artifact@v4
+        with:
+          name: bundled-fpga-toolchains-ubuntu-latest
+          path: src-tauri/vendor
 
       - name: Rust fmt check
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
@@ -172,17 +354,12 @@ jobs:
       - name: Rust clippy
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets
 
-  desktop-build:
-    name: Desktop Build (${{ matrix.os }})
-    needs: checks
-    runs-on: ${{ matrix.os }}
-    env:
-      GITHUB_TOKEN: ${{ github.token }}
-      NODE_OPTIONS: --max-old-space-size=6144
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+  desktop-build-linux:
+    name: Desktop Build (ubuntu-latest)
+    runs-on: ubuntu-latest
+    needs:
+      - frontend-checks
+      - toolchain-linux
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -199,30 +376,14 @@ jobs:
           cache: pnpm
 
       - name: Install Linux desktop dependencies
-        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            build-essential \
-            bison \
-            cmake \
-            curl \
-            file \
-            flex \
-            libboost-all-dev \
-            libicu-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev \
             libssl-dev \
             libwebkit2gtk-4.1-dev \
-            libxdo-dev \
-            ninja-build \
-            patchelf \
-            wget
-
-      - name: Install macOS FDE build dependencies
-        if: runner.os == 'macOS'
-        run: brew install boost bison flex icu4c ninja cmake
+            libxdo-dev
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -230,7 +391,7 @@ jobs:
       - name: Download bundled FPGA toolchains
         uses: actions/download-artifact@v4
         with:
-          name: bundled-fpga-toolchains-${{ matrix.os }}
+          name: bundled-fpga-toolchains-ubuntu-latest
           path: src-tauri/vendor
 
       - name: Build Tauri desktop app
@@ -239,8 +400,92 @@ jobs:
       - name: Upload desktop build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: desktop-build-${{ matrix.os }}
-          path: ${{ runner.os == 'Windows' && 'src-tauri/target/debug/aspen.exe' || 'src-tauri/target/debug/aspen' }}
+          name: desktop-build-ubuntu-latest
+          path: src-tauri/target/debug/aspen
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  desktop-build-macos:
+    name: Desktop Build (macos-latest)
+    runs-on: macos-latest
+    needs:
+      - frontend-checks
+      - toolchain-macos
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download bundled FPGA toolchains
+        uses: actions/download-artifact@v4
+        with:
+          name: bundled-fpga-toolchains-macos-latest
+          path: src-tauri/vendor
+
+      - name: Build Tauri desktop app
+        run: pnpm tauri build --debug --no-bundle --ci -c src-tauri/tauri.yosys.conf.json
+
+      - name: Upload desktop build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-build-macos-latest
+          path: src-tauri/target/debug/aspen
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  desktop-build-windows:
+    name: Desktop Build (windows-latest)
+    runs-on: windows-latest
+    needs:
+      - frontend-checks
+      - toolchain-windows
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download bundled FPGA toolchains
+        uses: actions/download-artifact@v4
+        with:
+          name: bundled-fpga-toolchains-windows-latest
+          path: src-tauri/vendor
+
+      - name: Build Tauri desktop app
+        run: pnpm tauri build --debug --no-bundle --ci -c src-tauri/tauri.yosys.conf.json
+
+      - name: Upload desktop build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-build-windows-latest
+          path: src-tauri/target/debug/aspen.exe
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
