@@ -83,6 +83,20 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
           choco install winflexbison3 --no-progress -y
+          $chocoRoot = if ($env:ChocolateyInstall) { $env:ChocolateyInstall } else { 'C:\ProgramData\chocolatey' }
+          foreach ($candidateDir in @("$chocoRoot\bin", "$chocoRoot\lib\winflexbison3\tools")) {
+            if (Test-Path $candidateDir) {
+              $candidateDir >> $env:GITHUB_PATH
+            }
+          }
+          $winFlex = Join-Path $chocoRoot 'lib\winflexbison3\tools\win_flex.exe'
+          $winBison = Join-Path $chocoRoot 'lib\winflexbison3\tools\win_bison.exe'
+          if (Test-Path $winFlex) {
+            "WIN_FLEX_PATH=$winFlex" >> $env:GITHUB_ENV
+          }
+          if (Test-Path $winBison) {
+            "WIN_BISON_PATH=$winBison" >> $env:GITHUB_ENV
+          }
           & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet $env:FDE_VCPKG_TRIPLET `
             boost-date-time `
             boost-filesystem `
@@ -200,6 +214,20 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
           choco install winflexbison3 --no-progress -y
+          $chocoRoot = if ($env:ChocolateyInstall) { $env:ChocolateyInstall } else { 'C:\ProgramData\chocolatey' }
+          foreach ($candidateDir in @("$chocoRoot\bin", "$chocoRoot\lib\winflexbison3\tools")) {
+            if (Test-Path $candidateDir) {
+              $candidateDir >> $env:GITHUB_PATH
+            }
+          }
+          $winFlex = Join-Path $chocoRoot 'lib\winflexbison3\tools\win_flex.exe'
+          $winBison = Join-Path $chocoRoot 'lib\winflexbison3\tools\win_bison.exe'
+          if (Test-Path $winFlex) {
+            "WIN_FLEX_PATH=$winFlex" >> $env:GITHUB_ENV
+          }
+          if (Test-Path $winBison) {
+            "WIN_BISON_PATH=$winBison" >> $env:GITHUB_ENV
+          }
           & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet $env:FDE_VCPKG_TRIPLET `
             boost-date-time `
             boost-filesystem `

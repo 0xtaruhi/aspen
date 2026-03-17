@@ -330,6 +330,42 @@ function resolveWindowsCmakePath(env) {
   ])
 }
 
+function resolveWindowsChocolateyRoot(env) {
+  return findExistingPath([
+    env.ChocolateyInstall,
+    env.CHOCOLATEYINSTALL,
+    'C:\\ProgramData\\chocolatey',
+  ])
+}
+
+function resolveWindowsWinFlexPath(env) {
+  const chocolateyRoot = resolveWindowsChocolateyRoot(env)
+  return findExistingPath([
+    env.WIN_FLEX_PATH,
+    env.FLEX_EXECUTABLE,
+    chocolateyRoot ? join(chocolateyRoot, 'bin', 'win_flex.exe') : null,
+    chocolateyRoot ? join(chocolateyRoot, 'bin', 'flex.exe') : null,
+    chocolateyRoot ? join(chocolateyRoot, 'lib', 'winflexbison3', 'tools', 'win_flex.exe') : null,
+    chocolateyRoot ? join(chocolateyRoot, 'lib', 'winflexbison3', 'tools', 'flex.exe') : null,
+    resolveToolPath('win_flex', env),
+    resolveToolPath('flex', env),
+  ])
+}
+
+function resolveWindowsWinBisonPath(env) {
+  const chocolateyRoot = resolveWindowsChocolateyRoot(env)
+  return findExistingPath([
+    env.WIN_BISON_PATH,
+    env.BISON_EXECUTABLE,
+    chocolateyRoot ? join(chocolateyRoot, 'bin', 'win_bison.exe') : null,
+    chocolateyRoot ? join(chocolateyRoot, 'bin', 'bison.exe') : null,
+    chocolateyRoot ? join(chocolateyRoot, 'lib', 'winflexbison3', 'tools', 'win_bison.exe') : null,
+    chocolateyRoot ? join(chocolateyRoot, 'lib', 'winflexbison3', 'tools', 'bison.exe') : null,
+    resolveToolPath('win_bison', env),
+    resolveToolPath('bison', env),
+  ])
+}
+
 function resolveWindowsNinjaPath(env) {
   return findExistingPath([
     env.NINJA_PATH,
@@ -476,22 +512,32 @@ function configureBuild(sourceRoot, buildRoot, env) {
     const ninjaPath =
       resolveWindowsNinjaPath(env) ||
       resolveRequiredToolPath(['ninja'], env, 'Install Ninja or add it to PATH.')
-    const flexPath = resolveRequiredToolPath(
-      ['win_flex', 'flex'],
-      env,
-      'Install winflexbison3 and ensure win_flex.exe is on PATH.',
-    )
-    const bisonPath = resolveRequiredToolPath(
-      ['win_bison', 'bison'],
-      env,
-      'Install winflexbison3 and ensure win_bison.exe is on PATH.',
-    )
+    const flexPath = resolveWindowsWinFlexPath(env)
+    const bisonPath = resolveWindowsWinBisonPath(env)
     const vcpkgToolchain = vcpkgRoot
       ? join(vcpkgRoot, 'scripts', 'buildsystems', 'vcpkg.cmake')
       : null
     if (!vcpkgToolchain || !existsSync(vcpkgToolchain)) {
       throw new Error(
         `Unable to locate the vcpkg CMake toolchain file. Expected ${vcpkgToolchain ?? '<unknown>'}.`,
+      )
+    }
+    if (!flexPath) {
+      throw new Error(
+        [
+          'Unable to locate win_flex or flex on Windows.',
+          'Install winflexbison3 and ensure its bin/tools directory is visible to the build.',
+          `Chocolatey root: ${resolveWindowsChocolateyRoot(env) ?? '<not found>'}`,
+        ].join('\n'),
+      )
+    }
+    if (!bisonPath) {
+      throw new Error(
+        [
+          'Unable to locate win_bison or bison on Windows.',
+          'Install winflexbison3 and ensure its bin/tools directory is visible to the build.',
+          `Chocolatey root: ${resolveWindowsChocolateyRoot(env) ?? '<not found>'}`,
+        ].join('\n'),
       )
     }
 
@@ -548,7 +594,10 @@ function configureBuild(sourceRoot, buildRoot, env) {
 }
 
 function buildTargetsInTree(buildRoot, env) {
-  const cmakePath = resolveToolPath('cmake', env) || 'cmake'
+  const cmakePath =
+    process.platform === 'win32'
+      ? resolveWindowsCmakePath(env) || resolveToolPath('cmake', env) || 'cmake'
+      : resolveToolPath('cmake', env) || 'cmake'
   const result = spawnSync(cmakePath, ['--build', buildRoot, '--target', ...buildTargets, '-j4'], {
     encoding: 'utf8',
     env,
