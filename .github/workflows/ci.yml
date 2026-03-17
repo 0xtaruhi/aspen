@@ -403,14 +403,13 @@ jobs:
         run: bash scripts/restore-bundled-toolchain-perms.sh
 
       - name: Build Aspen installer packages
-        run: pnpm tauri build --ci -c src-tauri/tauri.yosys.conf.json
+        run: pnpm tauri build --ci -v -b deb,rpm -c src-tauri/tauri.yosys.conf.json
 
       - name: Upload Aspen package artifacts
         uses: actions/upload-artifact@v4
         with:
           name: aspen-packages-ubuntu-22.04
           path: |
-            src-tauri/target/release/bundle/**/*.AppImage
             src-tauri/target/release/bundle/**/*.deb
             src-tauri/target/release/bundle/**/*.rpm
           if-no-files-found: error
@@ -451,14 +450,13 @@ jobs:
         run: bash scripts/restore-bundled-toolchain-perms.sh
 
       - name: Build Aspen installer packages
-        run: pnpm tauri build --ci -c src-tauri/tauri.yosys.conf.json
+        run: pnpm tauri build --ci -v -b dmg -c src-tauri/tauri.yosys.conf.json
 
       - name: Upload Aspen package artifacts
         uses: actions/upload-artifact@v4
         with:
           name: aspen-packages-macos-latest
           path: |
-            src-tauri/target/release/bundle/**/*.app.tar.gz
             src-tauri/target/release/bundle/**/*.dmg
           if-no-files-found: error
           retention-days: 7
@@ -495,7 +493,7 @@ jobs:
           path: src-tauri/vendor
 
       - name: Build Aspen installer packages
-        run: pnpm tauri build --ci -c src-tauri/tauri.yosys.conf.json
+        run: pnpm tauri build --ci -v -c src-tauri/tauri.yosys.conf.json
 
       - name: Upload Aspen package artifacts
         uses: actions/upload-artifact@v4
