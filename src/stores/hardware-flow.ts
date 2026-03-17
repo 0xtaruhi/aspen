@@ -17,7 +17,11 @@ import { buildSynthesisInputSignature } from '@/lib/synthesis-request-signature'
 import { appendSynthesisLogChunk } from '@/lib/synthesis-log'
 import { listenHardwareImplementationLog, listenHardwareSynthesisLog } from '@/lib/hardware-client'
 import { hardwareRuntimeStore } from './hardware-runtime'
-import { projectStore, type ProjectSynthesisCacheSnapshot } from './project'
+import {
+  projectStore,
+  type ProjectImplementationCacheSnapshot,
+  type ProjectSynthesisCacheSnapshot,
+} from './project'
 
 const synthesisRunning = ref(false)
 const synthesisReport = ref<SynthesisReportV1 | null>(null)
@@ -138,6 +142,17 @@ function applyPersistedSynthesisState(snapshot: ProjectSynthesisCacheSnapshot | 
   synthesisReportSignature.value = snapshot?.signature ?? null
 }
 
+function applyPersistedImplementationState(snapshot: ProjectImplementationCacheSnapshot | null) {
+  flushImplementationLogBuffer()
+  implementationRunning.value = false
+  implementationOperationId.value = null
+  implementationMessage.value = ''
+  implementationLiveLog.value = ''
+  implementationLogBuffer = ''
+  implementationReport.value = snapshot?.report ?? null
+  implementationReportSignature.value = snapshot?.signature ?? null
+}
+
 async function ensureSynthesisLogListener() {
   if (unlistenSynthesisLog) {
     return
@@ -253,8 +268,22 @@ async function runImplementation(
 
   try {
     const report = await runHardwareImplementation(request)
-    flushImplementationLogBuffer()
-    implementationReport.value = report
+    const snapshot = {
+      version: 1 as const,
+      signature: implementationReportSignature.value ?? '',
+      report,
+    }
+    applyPersistedImplementationState(snapshot)
+    projectStore.setImplementationCache(snapshot)
+
+    try {
+      await saveProjectToCurrentPath({ silent: true })
+    } catch (err) {
+      implementationMessage.value = translate('autoSaveImplementationProjectFailed', {
+        message: getErrorMessage(err),
+      })
+    }
+
     return report
   } catch (err) {
     flushImplementationLogBuffer()
@@ -268,14 +297,8 @@ async function runImplementation(
 }
 
 function resetImplementationState() {
-  flushImplementationLogBuffer()
-  implementationRunning.value = false
-  implementationReport.value = null
-  implementationReportSignature.value = null
-  implementationLiveLog.value = ''
-  implementationMessage.value = ''
-  implementationOperationId.value = null
-  implementationLogBuffer = ''
+  applyPersistedImplementationState(null)
+  projectStore.setImplementationCache(null)
 }
 
 function resetSynthesisState() {
@@ -287,6 +310,14 @@ watch(
   () => projectStore.synthesisCache,
   (snapshot) => {
     applyPersistedSynthesisState(snapshot)
+  },
+  { immediate: true },
+)
+
+watch(
+  () => projectStore.implementationCache,
+  (snapshot) => {
+    applyPersistedImplementationState(snapshot)
   },
   { immediate: true },
 )

@@ -6,6 +6,7 @@ import {
   inspectProjectDirectory,
   loadProjectFromPath,
   readImportedSourceFiles,
+  syncInMemoryImplementationCacheAfterSave,
   syncInMemorySynthesisCacheAfterSave,
   writeProjectBundle,
 } from '@/lib/project-persistence'
@@ -244,6 +245,7 @@ export async function saveProjectAs() {
       preserveArtifacts,
     })
     syncInMemorySynthesisCacheAfterSave(preserveArtifacts)
+    syncInMemoryImplementationCacheAfterSave(preserveArtifacts)
     projectStore.markSaved(selected)
     recentProjectsStore.rememberProject(selected, projectStore.toSnapshot().name)
     return true
@@ -315,6 +317,7 @@ export async function createProjectAtDirectory(options: {
     const metadataPath = joinPath(projectDirectoryPath, ASPEN_PROJECT_FILENAME)
     await writeProjectBundle(metadataPath, { preserveArtifacts: false })
     syncInMemorySynthesisCacheAfterSave(false)
+    syncInMemoryImplementationCacheAfterSave(false)
     projectStore.markSaved(metadataPath)
     recentProjectsStore.rememberProject(metadataPath, projectStore.toSnapshot().name)
     return true

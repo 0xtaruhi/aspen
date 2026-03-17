@@ -79,6 +79,8 @@ const messages = {
     openProjectFailed: 'Failed to open project: {message}',
     saveProjectFailed: 'Failed to save project: {message}',
     autoSaveProjectFailed: 'Synthesis completed, but auto-save failed: {message}',
+    autoSaveImplementationProjectFailed:
+      'Implementation completed, but auto-save failed: {message}',
     projectStatus: 'Project Status',
     projectStatusDescription: 'Overview of your selected FPGA design metrics.',
     noProjectLoaded: 'No project loaded',
@@ -529,6 +531,7 @@ const messages = {
     openProjectFailed: '打开项目失败：{message}',
     saveProjectFailed: '保存项目失败：{message}',
     autoSaveProjectFailed: '综合已完成，但自动保存失败：{message}',
+    autoSaveImplementationProjectFailed: '实现已完成，但自动保存失败：{message}',
     projectStatus: '项目状态',
     projectStatusDescription: '当前选中 FPGA 设计的关键指标概览。',
     noProjectLoaded: '当前没有打开项目',

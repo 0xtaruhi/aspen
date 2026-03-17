@@ -164,11 +164,57 @@ describe('project save-state regression', () => {
     expect(projectStore.synthesisCache?.report.stats.cell_count).toBe(1)
   })
 
+  it('persists implementation cache snapshots with the project', () => {
+    projectStore.createNewProject('ImplProject', 'blinky')
+    projectStore.setImplementationCache({
+      version: 1,
+      signature: 'impl-sig-123',
+      report: {
+        version: 1,
+        op_id: 'impl-op-1',
+        success: true,
+        timing_success: true,
+        top_module: 'blinky',
+        source_count: 1,
+        elapsed_ms: 456,
+        log: 'implementation ok',
+        stages: [],
+        artifacts: {
+          work_dir: '/tmp/impl',
+          constraint_path: '/tmp/impl/top_cons.xml',
+          edif_path: '/tmp/impl/top.edf',
+          map_path: '/tmp/impl/top_map.xml',
+          pack_path: '/tmp/impl/top_pack.xml',
+          place_path: '/tmp/impl/top_place.xml',
+          route_path: '/tmp/impl/top_route.xml',
+          sta_output_path: '/tmp/impl/top.sta.out',
+          sta_report_path: '/tmp/impl/top.sta.rpt',
+          bitstream_path: '/tmp/impl/top.bit',
+        },
+        timing_report: 'timing met',
+        generated_at_ms: 456,
+      },
+    })
+
+    const snapshot = projectStore.toSnapshot()
+    expect(snapshot.implementationCache?.signature).toBe('impl-sig-123')
+    expect(snapshot.implementationCache?.report.top_module).toBe('blinky')
+
+    projectStore.loadFromSnapshot(snapshot)
+
+    expect(projectStore.implementationCache?.signature).toBe('impl-sig-123')
+    expect(projectStore.implementationCache?.report.top_module).toBe('blinky')
+    expect(projectStore.implementationCache?.report.artifacts.bitstream_path).toBe(
+      '/tmp/impl/top.bit',
+    )
+  })
+
   it('persists virtual device canvas snapshots with the project', () => {
     projectStore.createNewProject('WorkbenchProject', 'empty')
 
     const led = createCanvasDeviceSnapshot('led', 'led-1', 120, 80, 1)
     led.label = 'Status LED'
+    led.state.is_on = true
     led.state.color = '#22c55e'
     led.state.binding = {
       kind: 'single',
@@ -193,6 +239,7 @@ describe('project save-state regression', () => {
     const snapshot = projectStore.toSnapshot()
     expect(snapshot.canvasDevices).toHaveLength(2)
     expect(snapshot.canvasDevices[0]?.label).toBe('Status LED')
+    expect(snapshot.canvasDevices[0]?.state.is_on).toBe(false)
     expect(snapshot.canvasDevices[1]?.state.config).toEqual({
       kind: 'led_matrix',
       rows: 8,
@@ -208,6 +255,7 @@ describe('project save-state regression', () => {
       kind: 'single',
       signal: 'io_gameover',
     })
+    expect(virtualDeviceStore.canvasDevices.value[0]?.state.is_on).toBe(false)
     expect(virtualDeviceStore.canvasDevices.value[1]?.state.color).toBe('#eab308')
   })
 })

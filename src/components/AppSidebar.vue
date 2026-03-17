@@ -122,15 +122,7 @@ const data = computed(() => ({
       url: modulePathMap['virtual-device-platform'],
       icon: Bug,
       isActive: uiStore.activeModule.value === 'virtual-device-platform',
-      items: [
-        {
-          title: 'Workbench',
-          label: t('workbench'),
-          url: modulePathMap['virtual-device-platform'],
-          action: () => navigate(modulePathMap['virtual-device-platform']),
-          isActive: activeRouteName.value === 'virtual-device-platform',
-        },
-      ],
+      action: () => navigate(modulePathMap['virtual-device-platform']),
     },
   ],
 }))

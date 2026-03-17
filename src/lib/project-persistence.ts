@@ -1,12 +1,20 @@
-import type { ProjectNode, ProjectSnapshot, ProjectSynthesisCacheSnapshot } from '@/stores/project'
+import type {
+  ProjectImplementationCacheSnapshot,
+  ProjectNode,
+  ProjectSnapshot,
+  ProjectSynthesisCacheSnapshot,
+} from '@/stores/project'
 
 import { invoke } from '@tauri-apps/api/core'
 
 import {
+  createImplementationArtifactManifest,
   createSynthesisArtifactManifest,
+  parseImplementationArtifactManifest,
   parseSynthesisArtifactManifest,
 } from '@/lib/flow-artifact-manifest'
 import {
+  getProjectImplementationManifestPath,
   getProjectSourcesDirectory,
   getProjectSynthesisManifestPath,
   joinPath,
@@ -88,6 +96,21 @@ function clonePersistedSynthesisCache(
   return cloned
 }
 
+function clonePersistedImplementationCache(
+  snapshot: ProjectImplementationCacheSnapshot | null,
+  preserveArtifacts: boolean,
+) {
+  if (!snapshot) {
+    return null
+  }
+
+  if (!preserveArtifacts) {
+    return null
+  }
+
+  return JSON.parse(JSON.stringify(snapshot)) as ProjectImplementationCacheSnapshot
+}
+
 function stripNodeContents(node: ProjectNode): ProjectMetadataNode {
   return {
     id: node.id,
@@ -115,6 +138,10 @@ function createProjectMetadataSnapshot(options: { preserveArtifacts: boolean }) 
     implementationSettings: snapshot.implementationSettings,
     synthesisCache: clonePersistedSynthesisCache(
       snapshot.synthesisCache,
+      options.preserveArtifacts,
+    ),
+    implementationCache: clonePersistedImplementationCache(
+      snapshot.implementationCache,
       options.preserveArtifacts,
     ),
     canvasDevices: snapshot.canvasDevices,
@@ -206,6 +233,7 @@ async function hydrateProjectSnapshot(
     pinConstraints: metadata.pinConstraints,
     implementationSettings: metadata.implementationSettings,
     synthesisCache: metadata.synthesisCache,
+    implementationCache: metadata.implementationCache ?? null,
     canvasDevices: Array.isArray(metadata.canvasDevices) ? metadata.canvasDevices : [],
   }
 }
@@ -242,6 +270,38 @@ async function hydratePersistedSynthesisManifest(metadataPath: string) {
   }
 }
 
+async function hydratePersistedImplementationManifest(metadataPath: string) {
+  const manifestPath = getProjectImplementationManifestPath(metadataPath)
+  if (!manifestPath) {
+    return
+  }
+
+  try {
+    const raw = await invoke<string>('read_project_file', { path: manifestPath })
+    const manifest = parseImplementationArtifactManifest(JSON.parse(raw) as unknown)
+    if (!manifest) {
+      return
+    }
+
+    if (
+      projectStore.implementationCache &&
+      projectStore.implementationCache.signature !== manifest.signature
+    ) {
+      return
+    }
+
+    projectStore.setImplementationCache({
+      version: 1,
+      signature: manifest.signature,
+      report: manifest.report,
+    })
+  } catch (err) {
+    if (shouldIgnorePersistenceError(err)) {
+      return
+    }
+  }
+}
+
 async function writePersistedSynthesisManifest(
   metadataPath: string,
   options: { preserveArtifacts: boolean },
@@ -253,6 +313,25 @@ async function writePersistedSynthesisManifest(
 
   const manifest = options.preserveArtifacts
     ? createSynthesisArtifactManifest(projectStore.synthesisCache)
+    : null
+
+  await invoke('write_project_file', {
+    path: manifestPath,
+    content: JSON.stringify(manifest, null, 2),
+  })
+}
+
+async function writePersistedImplementationManifest(
+  metadataPath: string,
+  options: { preserveArtifacts: boolean },
+) {
+  const manifestPath = getProjectImplementationManifestPath(metadataPath)
+  if (!manifestPath) {
+    return
+  }
+
+  const manifest = options.preserveArtifacts
+    ? createImplementationArtifactManifest(projectStore.implementationCache)
     : null
 
   await invoke('write_project_file', {
@@ -273,6 +352,7 @@ export async function loadProjectFromPath(path: string) {
   }
 
   await hydratePersistedSynthesisManifest(path)
+  await hydratePersistedImplementationManifest(path)
   await hardwareStore.replaceCanvasDevices(projectStore.toSnapshot().canvasDevices)
 
   recentProjectsStore.rememberProject(path, projectStore.toSnapshot().name)
@@ -289,6 +369,7 @@ export async function writeProjectBundle(path: string, options: { preserveArtifa
     sourceFiles,
   })
   await writePersistedSynthesisManifest(path, options)
+  await writePersistedImplementationManifest(path, options)
 }
 
 export function syncInMemorySynthesisCacheAfterSave(preserveArtifacts: boolean) {
@@ -297,6 +378,16 @@ export function syncInMemorySynthesisCacheAfterSave(preserveArtifacts: boolean) 
   }
 
   projectStore.setSynthesisCache(clonePersistedSynthesisCache(projectStore.synthesisCache, false))
+}
+
+export function syncInMemoryImplementationCacheAfterSave(preserveArtifacts: boolean) {
+  if (preserveArtifacts) {
+    return
+  }
+
+  projectStore.setImplementationCache(
+    clonePersistedImplementationCache(projectStore.implementationCache, false),
+  )
 }
 
 export async function readImportedSourceFiles(paths: readonly string[]) {

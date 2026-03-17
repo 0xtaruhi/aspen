@@ -4,6 +4,7 @@ import type {
   CanvasDeviceSnapshot,
   CanvasDeviceStateSnapshot,
   CanvasDeviceType,
+  ImplementationReportV1,
   SynthesisReportV1,
 } from '../lib/hardware-client'
 
@@ -38,6 +39,12 @@ export type ProjectSynthesisCacheSnapshot = {
   report: SynthesisReportV1
 }
 
+export type ProjectImplementationCacheSnapshot = {
+  version: 1
+  signature: string
+  report: ImplementationReportV1
+}
+
 export type ProjectSnapshot = {
   version: 1
   name: string
@@ -50,6 +57,7 @@ export type ProjectSnapshot = {
   pinConstraints: ProjectConstraintSnapshot
   implementationSettings: ImplementationSettingsSnapshot
   synthesisCache: ProjectSynthesisCacheSnapshot | null
+  implementationCache: ProjectImplementationCacheSnapshot | null
   canvasDevices: CanvasDeviceSnapshot[]
 }
 
@@ -85,6 +93,20 @@ export function cloneProjectSynthesisCacheSnapshot(
     version: 1,
     signature: snapshot.signature,
     report: JSON.parse(JSON.stringify(snapshot.report)) as SynthesisReportV1,
+  }
+}
+
+export function cloneProjectImplementationCacheSnapshot(
+  snapshot: ProjectImplementationCacheSnapshot | null,
+): ProjectImplementationCacheSnapshot | null {
+  if (!snapshot) {
+    return null
+  }
+
+  return {
+    version: 1,
+    signature: snapshot.signature,
+    report: JSON.parse(JSON.stringify(snapshot.report)) as ImplementationReportV1,
   }
 }
 
@@ -229,7 +251,8 @@ function cloneCanvasDeviceStateSnapshot(
   state: CanvasDeviceStateSnapshot,
 ): CanvasDeviceStateSnapshot {
   return {
-    is_on: state.is_on,
+    // Device power levels are runtime telemetry, not persisted project configuration.
+    is_on: false,
     color: state.color ?? null,
     binding: cloneCanvasDeviceBindingSnapshot(state.binding),
     config: cloneCanvasDeviceConfigSnapshot(state.config),
@@ -397,6 +420,31 @@ function isSynthesisReport(value: unknown): value is SynthesisReportV1 {
   return true
 }
 
+function isImplementationReport(value: unknown): value is ImplementationReportV1 {
+  if (!isRecord(value)) {
+    return false
+  }
+
+  if (
+    value.version !== 1 ||
+    typeof value.op_id !== 'string' ||
+    typeof value.success !== 'boolean' ||
+    typeof value.timing_success !== 'boolean' ||
+    typeof value.top_module !== 'string' ||
+    typeof value.source_count !== 'number' ||
+    typeof value.elapsed_ms !== 'number' ||
+    typeof value.log !== 'string' ||
+    !Array.isArray(value.stages) ||
+    !isRecord(value.artifacts) ||
+    typeof value.timing_report !== 'string' ||
+    typeof value.generated_at_ms !== 'number'
+  ) {
+    return false
+  }
+
+  return true
+}
+
 export function normalizeProjectSynthesisCacheSnapshot(
   value: unknown,
 ): ProjectSynthesisCacheSnapshot | null {
@@ -413,6 +461,28 @@ export function normalizeProjectSynthesisCacheSnapshot(
   }
 
   return cloneProjectSynthesisCacheSnapshot({
+    version: 1,
+    signature: value.signature,
+    report: value.report,
+  })
+}
+
+export function normalizeProjectImplementationCacheSnapshot(
+  value: unknown,
+): ProjectImplementationCacheSnapshot | null {
+  if (!isRecord(value)) {
+    return null
+  }
+
+  if (
+    value.version !== 1 ||
+    typeof value.signature !== 'string' ||
+    !isImplementationReport(value.report)
+  ) {
+    return null
+  }
+
+  return cloneProjectImplementationCacheSnapshot({
     version: 1,
     signature: value.signature,
     report: value.report,
@@ -461,6 +531,7 @@ export function normalizeProjectSnapshot(value: unknown): ProjectSnapshot {
     pinConstraints: normalizeProjectConstraintSnapshot(value.pinConstraints, resolvedTopFileId),
     implementationSettings: normalizeImplementationSettings(value.implementationSettings),
     synthesisCache: normalizeProjectSynthesisCacheSnapshot(value.synthesisCache),
+    implementationCache: normalizeProjectImplementationCacheSnapshot(value.implementationCache),
     canvasDevices: normalizeProjectCanvasDevices(value.canvasDevices),
   }
 }

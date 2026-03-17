@@ -46,7 +46,7 @@ export const routeLabelMap: Record<AppRouteName, string> = {
   'fpga-flow-pin-planning': 'Pin Planning',
   'fpga-flow-implementation': 'Implementation',
   'hardware-manager': 'Hardware Manager',
-  'virtual-device-platform': 'Workbench',
+  'virtual-device-platform': 'Virtual Device Platform',
   settings: 'Settings',
 }
 

@@ -39,7 +39,7 @@ const routeLabelKeyMap = {
   'fpga-flow-pin-planning': 'pinPlanning',
   'fpga-flow-implementation': 'implementation',
   'hardware-manager': 'hardwareManager',
-  'virtual-device-platform': 'workbench',
+  'virtual-device-platform': 'virtualDevicePlatform',
   settings: 'settings',
 } as const
 
