@@ -54,7 +54,7 @@ async function main() {
   configureBuild(join(workingRoot, 'source'), buildRoot, buildEnv)
   buildTargetsInTree(buildRoot, buildEnv)
   copyExecutables(buildRoot, bundleBinDir)
-  copyRuntimeDependencies(bundleBinDir, bundleLibDir)
+  copyRuntimeDependencies(bundleBinDir, bundleLibDir, buildEnv)
   ensurePlaceholder(bundleTargetDir)
   validateBundledFde(bundleBinDir, bundleLibDir)
 
@@ -281,7 +281,7 @@ function copyExecutables(buildRoot, bundleBinDir) {
   }
 }
 
-function copyRuntimeDependencies(bundleBinDir, bundleLibDir) {
+function copyRuntimeDependencies(bundleBinDir, bundleLibDir, runtimeEnv = process.env) {
   const runtimeTargets = readdirSync(bundleBinDir)
     .map((entry) => join(bundleBinDir, entry))
     .filter((entry) => isExecutableTarget(entry))
@@ -297,7 +297,7 @@ function copyRuntimeDependencies(bundleBinDir, bundleLibDir) {
     }
     scanned.add(target)
 
-    for (const dependency of collectDependencies(target)) {
+    for (const dependency of collectDependencies(target, runtimeEnv)) {
       if (!existsSync(dependency)) {
         continue
       }
@@ -324,7 +324,7 @@ function isExecutableTarget(filePath) {
   return extname(filePath) === ''
 }
 
-function collectDependencies(filePath) {
+function collectDependencies(filePath, runtimeEnv = process.env) {
   if (process.platform === 'darwin') {
     const result = spawnSync('otool', ['-L', filePath], { encoding: 'utf8' })
     if (result.status !== 0) {
@@ -371,10 +371,10 @@ function collectDependencies(filePath) {
     .split(/\r?\n/)
     .map((line) => line.match(/DLL Name:\s+(.+)$/)?.[1]?.trim())
     .filter(Boolean)
-  return dllNames.map((name) => resolveWindowsDependency(name)).filter(Boolean)
+  return dllNames.map((name) => resolveWindowsDependency(name, runtimeEnv)).filter(Boolean)
 }
 
-function resolveWindowsDependency(name) {
+function resolveWindowsDependency(name, runtimeEnv = process.env) {
   const lowerName = String(name).toLowerCase()
   const systemPrefixes = [
     'kernel32.dll',
@@ -393,7 +393,7 @@ function resolveWindowsDependency(name) {
     return null
   }
 
-  const pathEntries = process.env.PATH?.split(delimiter) ?? []
+  const pathEntries = runtimeEnv.PATH?.split(delimiter) ?? []
   for (const entry of pathEntries) {
     const candidate = join(entry, name)
     if (existsSync(candidate)) {
