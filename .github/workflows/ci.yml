@@ -49,8 +49,8 @@ jobs:
         run: pnpm test:ci
 
   toolchain-linux:
-    name: Toolchains (ubuntu-latest)
-    runs-on: ubuntu-latest
+    name: Toolchains (ubuntu-22.04)
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -81,14 +81,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: src-tauri/vendor/yosys
-          key: bundled-yosys-${{ runner.os }}-${{ env.OSS_CAD_SUITE_VERSION }}-${{ hashFiles('scripts/prepare-yosys-bundle.mjs') }}
+          key: bundled-yosys-${{ runner.os }}-ubuntu-22.04-${{ env.OSS_CAD_SUITE_VERSION }}-${{ hashFiles('scripts/prepare-yosys-bundle.mjs') }}
 
       - name: Cache bundled FDE toolchain
         id: cache-fde
         uses: actions/cache@v4
         with:
           path: src-tauri/vendor/fde
-          key: bundled-fde-${{ runner.os }}-${{ steps.fde-source.outputs.sha }}-${{ hashFiles('scripts/prepare-fde-bundle.mjs') }}
+          key: bundled-fde-${{ runner.os }}-ubuntu-22.04-${{ steps.fde-source.outputs.sha }}-${{ hashFiles('scripts/prepare-fde-bundle.mjs') }}
 
       - name: Install Linux toolchain dependencies
         if: steps.cache-fde.outputs.cache-hit != 'true'
@@ -118,7 +118,7 @@ jobs:
       - name: Upload bundled FPGA toolchains
         uses: actions/upload-artifact@v4
         with:
-          name: bundled-fpga-toolchains-ubuntu-latest
+          name: bundled-fpga-toolchains-ubuntu-22.04
           path: |
             src-tauri/vendor/fde
             src-tauri/vendor/yosys
@@ -322,7 +322,7 @@ jobs:
 
   rust-checks:
     name: Rust Checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs:
       - toolchain-linux
     steps:
@@ -342,7 +342,7 @@ jobs:
       - name: Download bundled FPGA toolchains
         uses: actions/download-artifact@v4
         with:
-          name: bundled-fpga-toolchains-ubuntu-latest
+          name: bundled-fpga-toolchains-ubuntu-22.04
           path: src-tauri/vendor
 
       - name: Restore bundled toolchain execute permissions
@@ -358,8 +358,8 @@ jobs:
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets
 
   packages-linux:
-    name: Aspen Packages (ubuntu-latest)
-    runs-on: ubuntu-latest
+    name: Aspen Packages (ubuntu-22.04)
+    runs-on: ubuntu-22.04
     needs:
       - frontend-checks
       - toolchain-linux
@@ -396,7 +396,7 @@ jobs:
       - name: Download bundled FPGA toolchains
         uses: actions/download-artifact@v4
         with:
-          name: bundled-fpga-toolchains-ubuntu-latest
+          name: bundled-fpga-toolchains-ubuntu-22.04
           path: src-tauri/vendor
 
       - name: Restore bundled toolchain execute permissions
@@ -408,7 +408,7 @@ jobs:
       - name: Upload Aspen package artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: aspen-packages-ubuntu-latest
+          name: aspen-packages-ubuntu-22.04
           path: |
             src-tauri/target/release/bundle/**/*.AppImage
             src-tauri/target/release/bundle/**/*.deb
