@@ -116,8 +116,9 @@ function patchWindowsTargetVersion(sourceRoot) {
 
   const rootCmakePath = join(sourceRoot, 'CMakeLists.txt')
   let source = readFileSync(rootCmakePath, 'utf8').replace(/\r\n/g, '\n')
-  const marker = 'add_definitions(-D_WIN32_WINNT=0x0602 -DWINVER=0x0602)'
-  if (source.includes(marker)) {
+  const targetVersionMarker = 'add_definitions(-D_WIN32_WINNT=0x0602 -DWINVER=0x0602)'
+  const staticRuntimeMarker = 'string(REPLACE "/MD" "/MT" ${flag_var} "${${flag_var}}")'
+  if (source.includes(targetVersionMarker) && source.includes(staticRuntimeMarker)) {
     return
   }
 
@@ -131,6 +132,22 @@ function patchWindowsTargetVersion(sourceRoot) {
     '',
     'if(WIN32)',
     '\tadd_definitions(-D_WIN32_WINNT=0x0602 -DWINVER=0x0602)',
+    '\tforeach(flag_var',
+    '\t\tCMAKE_C_FLAGS',
+    '\t\tCMAKE_C_FLAGS_DEBUG',
+    '\t\tCMAKE_C_FLAGS_RELEASE',
+    '\t\tCMAKE_C_FLAGS_MINSIZEREL',
+    '\t\tCMAKE_C_FLAGS_RELWITHDEBINFO',
+    '\t\tCMAKE_CXX_FLAGS',
+    '\t\tCMAKE_CXX_FLAGS_DEBUG',
+    '\t\tCMAKE_CXX_FLAGS_RELEASE',
+    '\t\tCMAKE_CXX_FLAGS_MINSIZEREL',
+    '\t\tCMAKE_CXX_FLAGS_RELWITHDEBINFO',
+    '\t)',
+    '\t\tif(DEFINED ${flag_var})',
+    '\t\t\tstring(REPLACE "/MD" "/MT" ${flag_var} "${${flag_var}}")',
+    '\t\tendif()',
+    '\tendforeach()',
     'endif()',
     '',
   ].join('\n')
