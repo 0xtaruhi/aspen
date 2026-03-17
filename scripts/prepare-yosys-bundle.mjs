@@ -349,7 +349,14 @@ function pruneBundledToolchain(bundleRoot) {
   if (process.platform === 'linux' && existsSync(join(bundleRoot, 'lib64'))) {
     keepRootEntries.add('lib64')
   }
+  if (process.platform === 'win32') {
+    keepRootEntries.add('environment.bat')
+    keepRootEntries.add('start.bat')
+  }
   pruneChildren(bundleRoot, keepRootEntries)
+  if (process.platform === 'win32') {
+    return
+  }
   pruneBinDirectory(join(bundleRoot, 'bin'))
   pruneLibexecDirectory(join(bundleRoot, 'libexec'))
   pruneShareDirectory(join(bundleRoot, 'share'))
@@ -680,17 +687,24 @@ function validateBundledYosys(bundleRoot) {
     ].join('\n'),
   )
 
-  const result = spawnSync(yosysExecutable, ['-s', scriptPath], {
-    cwd: validationDir,
-    encoding: 'utf8',
-    env: buildYosysRuntimeEnv(bundleRoot),
-  })
+  const environmentBatch = join(bundleRoot, 'environment.bat')
+  const result =
+    process.platform === 'win32' && existsSync(environmentBatch)
+      ? runWindowsYosysWithEnvironmentBatch(
+          environmentBatch,
+          yosysExecutable,
+          scriptPath,
+          validationDir,
+        )
+      : spawnSync(yosysExecutable, ['-s', scriptPath], {
+          cwd: validationDir,
+          encoding: 'utf8',
+          env: buildYosysRuntimeEnv(bundleRoot),
+        })
   rmSync(validationDir, { recursive: true, force: true })
 
   if (result.status !== 0) {
-    throw new Error(
-      `Bundled Yosys validation failed.\n${result.stdout || ''}${result.stderr || ''}`.trim(),
-    )
+    throw new Error(formatSpawnFailure('Bundled Yosys validation failed.', result))
   }
 }
 
@@ -759,4 +773,48 @@ function buildYosysRuntimeEnv(bundleRoot) {
   )
   env.PATH = [...new Set([...runtimeEntries, ...pathEntries].filter(Boolean))].join(delimiter)
   return env
+}
+
+function runWindowsYosysWithEnvironmentBatch(environmentBatch, yosysExecutable, scriptPath, cwd) {
+  const wrapperPath = join(cwd, `aspen-yosys-${process.pid}-${Date.now()}.cmd`)
+  writeFileSync(
+    wrapperPath,
+    [
+      '@echo off',
+      `call "${environmentBatch}"`,
+      'if errorlevel 1 exit /b %errorlevel%',
+      `"${yosysExecutable}" -s "${scriptPath}"`,
+      '',
+    ].join('\r\n'),
+  )
+  try {
+    return spawnSync('cmd.exe', ['/d', '/c', wrapperPath], {
+      cwd,
+      encoding: 'utf8',
+    })
+  } finally {
+    rmSync(wrapperPath, { force: true })
+  }
+}
+
+function formatSpawnFailure(message, result) {
+  const details = []
+  if (result.error instanceof Error) {
+    details.push(result.error.message)
+  }
+  if (typeof result.status === 'number') {
+    details.push(`exit code ${result.status}`)
+  }
+  if (result.signal) {
+    details.push(`signal ${result.signal}`)
+  }
+
+  const output = `${result.stdout || ''}${result.stderr || ''}`.trim()
+  if (output) {
+    return `${message}\n${output}`
+  }
+  if (details.length > 0) {
+    return `${message}\n${details.join('\n')}`
+  }
+  return message
 }

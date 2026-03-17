@@ -48,6 +48,17 @@ pub(super) fn spawn_yosys_process(
     script_path: &Path,
     workdir: &Path,
 ) -> std::io::Result<std::process::Child> {
+    if cfg!(target_os = "windows") {
+        if let Some(environment_batch) = resolve_yosys_environment(toolchain.yosys_bin) {
+            return spawn_windows_yosys_process(
+                &environment_batch,
+                toolchain.yosys_bin,
+                script_path,
+                workdir,
+            );
+        }
+    }
+
     let mut command = Command::new(toolchain.yosys_bin);
     command
         .arg("-s")
@@ -57,6 +68,44 @@ pub(super) fn spawn_yosys_process(
         .stderr(Stdio::piped());
     configure_yosys_runtime_env(&mut command, toolchain.yosys_bin);
     command.spawn()
+}
+
+fn resolve_yosys_environment(yosys_bin: &Path) -> Option<PathBuf> {
+    yosys_bin
+        .parent()
+        .and_then(Path::parent)
+        .map(|root| root.join("environment.bat"))
+        .filter(|path| path.is_file())
+}
+
+fn spawn_windows_yosys_process(
+    environment_batch: &Path,
+    yosys_bin: &Path,
+    script_path: &Path,
+    workdir: &Path,
+) -> std::io::Result<std::process::Child> {
+    let wrapper_path = workdir.join("aspen-run-yosys.cmd");
+    std::fs::write(
+        &wrapper_path,
+        format!(
+            "@echo off\r\n\
+call \"{}\"\r\n\
+if errorlevel 1 exit /b %errorlevel%\r\n\
+\"{}\" -s \"{}\"\r\n",
+            environment_batch.display(),
+            yosys_bin.display(),
+            script_path.display()
+        ),
+    )?;
+
+    Command::new("cmd")
+        .arg("/d")
+        .arg("/c")
+        .arg(&wrapper_path)
+        .current_dir(workdir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
 }
 
 fn configure_yosys_runtime_env(command: &mut Command, yosys_bin: &Path) {

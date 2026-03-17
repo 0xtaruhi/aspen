@@ -336,6 +336,7 @@ function validateBundledFde(bundleBinDir, bundleLibDir) {
     process.platform === 'win32'
       ? join(bundledYosysDir, 'bin', 'yosys.exe')
       : join(bundledYosysDir, 'bin', 'yosys')
+  const yosysEnv = join(bundledYosysDir, 'environment.bat')
   const fdeSimlib = join(bundledYosysSupportDir, 'fdesimlib.v')
   const fdeCellsMap = join(bundledYosysSupportDir, 'cells_map.v')
   const sourcePath = join(validationDir, 'top.v')
@@ -408,7 +409,7 @@ function validateBundledFde(bundleBinDir, bundleLibDir) {
     ].join('\n'),
   )
 
-  runYosysValidation(yosysBin, scriptPath, validationDir)
+  runYosysValidation(yosysBin, yosysEnv, scriptPath, validationDir)
 
   runFdeValidationStage(
     bundleBinDir,
@@ -529,17 +530,18 @@ function validateBundledFde(bundleBinDir, bundleLibDir) {
   rmSync(validationDir, { recursive: true, force: true })
 }
 
-function runYosysValidation(yosysBin, scriptPath, cwd) {
-  const result = spawnSync(yosysBin, ['-s', scriptPath], {
-    cwd,
-    encoding: 'utf8',
-    env: buildYosysRuntimeEnv(bundledYosysDir),
-  })
+function runYosysValidation(yosysBin, yosysEnv, scriptPath, cwd) {
+  const result =
+    process.platform === 'win32' && existsSync(yosysEnv)
+      ? runWindowsYosysWithEnvironmentBatch(yosysEnv, yosysBin, scriptPath, cwd)
+      : spawnSync(yosysBin, ['-s', scriptPath], {
+          cwd,
+          encoding: 'utf8',
+          env: buildYosysRuntimeEnv(bundledYosysDir),
+        })
 
   if (result.status !== 0) {
-    throw new Error(
-      `Bundled FDE validation failed during Yosys.\n${result.stdout || ''}${result.stderr || ''}`.trim(),
-    )
+    throw new Error(formatSpawnFailure('Bundled FDE validation failed during Yosys.', result))
   }
 }
 
@@ -586,6 +588,50 @@ function buildYosysRuntimeEnv(bundleRoot) {
   )
   env.PATH = dedupeEntries([...runtimeEntries, ...pathEntries]).join(delimiter)
   return env
+}
+
+function runWindowsYosysWithEnvironmentBatch(environmentBatch, yosysExecutable, scriptPath, cwd) {
+  const wrapperPath = join(cwd, `aspen-yosys-${process.pid}-${Date.now()}.cmd`)
+  writeFileSync(
+    wrapperPath,
+    [
+      '@echo off',
+      `call "${environmentBatch}"`,
+      'if errorlevel 1 exit /b %errorlevel%',
+      `"${yosysExecutable}" -s "${scriptPath}"`,
+      '',
+    ].join('\r\n'),
+  )
+  try {
+    return spawnSync('cmd.exe', ['/d', '/c', wrapperPath], {
+      cwd,
+      encoding: 'utf8',
+    })
+  } finally {
+    rmSync(wrapperPath, { force: true })
+  }
+}
+
+function formatSpawnFailure(message, result) {
+  const details = []
+  if (result.error instanceof Error) {
+    details.push(result.error.message)
+  }
+  if (typeof result.status === 'number') {
+    details.push(`exit code ${result.status}`)
+  }
+  if (result.signal) {
+    details.push(`signal ${result.signal}`)
+  }
+
+  const output = `${result.stdout || ''}${result.stderr || ''}`.trim()
+  if (output) {
+    return `${message}\n${output}`
+  }
+  if (details.length > 0) {
+    return `${message}\n${details.join('\n')}`
+  }
+  return message
 }
 
 function normalizePath(path) {

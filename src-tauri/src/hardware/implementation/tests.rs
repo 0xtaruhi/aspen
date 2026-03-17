@@ -121,10 +121,35 @@ write_edif {}\n",
     .map_err(|err| err.to_string())?;
 
     let mut command = if cfg!(target_os = "windows") {
-        let mut command = Command::new(&yosys_bin);
-        command.arg("-s").arg(&script_path);
-        configure_test_yosys_runtime_env(&mut command, &yosys_bin);
-        command
+        if let Some(environment_batch) = yosys_bin
+            .parent()
+            .and_then(Path::parent)
+            .map(|root| root.join("environment.bat"))
+            .filter(|path| path.is_file())
+        {
+            let wrapper_path = workdir.join("aspen-test-yosys.cmd");
+            fs::write(
+                &wrapper_path,
+                format!(
+                    "@echo off\r\n\
+call \"{}\"\r\n\
+if errorlevel 1 exit /b %errorlevel%\r\n\
+\"{}\" -s \"{}\"\r\n",
+                    environment_batch.display(),
+                    yosys_bin.display(),
+                    script_path.display()
+                ),
+            )
+            .map_err(|err| err.to_string())?;
+            let mut command = Command::new("cmd");
+            command.arg("/d").arg("/c").arg(&wrapper_path);
+            command
+        } else {
+            let mut command = Command::new(&yosys_bin);
+            command.arg("-s").arg(&script_path);
+            configure_test_yosys_runtime_env(&mut command, &yosys_bin);
+            command
+        }
     } else {
         let mut command = Command::new(&yosys_bin);
         command.arg("-s").arg(&script_path);
