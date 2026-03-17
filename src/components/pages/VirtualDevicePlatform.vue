@@ -41,6 +41,12 @@ const hasAuthoritativeSignals = computed(() =>
 const streamSignalNames = computed(() => {
   return signalCatalogStore.signals.value.slice(0, STREAM_SIGNAL_LIMIT).map((signal) => signal.name)
 })
+const streamInputSignalOrderKey = computed(() => {
+  return signalCatalogStore.streamInputSignalOrder.value.join('\u0000')
+})
+const streamOutputSignalOrderKey = computed(() => {
+  return signalCatalogStore.streamOutputSignalOrder.value.join('\u0000')
+})
 const streamSignalOverflow = computed(() => {
   return Math.max(0, availableSignalCount.value - streamSignalNames.value.length)
 })
@@ -251,18 +257,15 @@ watch(
   { immediate: true },
 )
 
-watch(
-  () => streamSignalNames.value.join('\u0000'),
-  () => {
-    if (!hardwareStore.isStarted.value) {
-      return
-    }
+watch([streamInputSignalOrderKey, streamOutputSignalOrderKey], () => {
+  if (!hardwareStore.isStarted.value) {
+    return
+  }
 
-    void syncStreamConfig().catch((err) => {
-      streamMessage.value = t('failedToUpdateSignalMap', { message: getErrorMessage(err) })
-    })
-  },
-)
+  void syncStreamConfig().catch((err) => {
+    streamMessage.value = t('failedToUpdateSignalMap', { message: getErrorMessage(err) })
+  })
+})
 
 onMounted(() => {
   streamBusy.value = true
