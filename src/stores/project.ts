@@ -1,297 +1,40 @@
-import type { SynthesisReportV1 } from '@/lib/hardware-client'
-
 import { reactive } from 'vue'
 
-import {
-  defaultFpgaDeviceId,
-  normalizeFpgaDeviceId,
-  type FpgaDeviceId,
-} from '../lib/fpga-device-catalog'
+import { defaultFpgaDeviceId, type FpgaDeviceId } from '../lib/fpga-device-catalog'
 import {
   defaultFpgaBoardId,
   getDefaultFpgaBoardIdForDevice,
-  normalizeFpgaBoardId,
   type FpgaBoardId,
 } from '../lib/fpga-board-catalog'
 import {
   cloneProjectConstraintSnapshot,
   emptyProjectConstraintSnapshot,
-  normalizeProjectConstraintSnapshot,
-  type ProjectConstraintSnapshot,
   type ProjectPinConstraint,
 } from '../lib/project-constraints'
 import {
   cloneImplementationSettings,
   defaultImplementationSettings,
-  normalizeImplementationSettings,
   type ImplementationPlaceMode,
   type ImplementationRouteMode,
-  type ImplementationSettingsSnapshot,
 } from '../lib/implementation-settings'
-import { parseVerilogPorts, type VerilogPort } from '../lib/verilog-parser'
+import {
+  buildFileSignatureMap,
+  cloneProjectNodes,
+  cloneProjectSynthesisCacheSnapshot,
+  createFileSignature,
+  findFirstFileId,
+  isHardwareSourceFile,
+  normalizeProjectSnapshot,
+  parseTopSignals,
+  resolveTopFileId,
+  type FileSignatureMap,
+  type ProjectNode,
+  type ProjectSnapshot,
+  type ProjectSynthesisCacheSnapshot,
+} from './project-model'
+import { createProjectTemplateState, type ProjectTemplate } from './project-templates'
 
-export type ProjectNode = {
-  id: string
-  name: string
-  type: 'file' | 'folder'
-  content?: string // Only for files
-  children?: ProjectNode[] // Only for folders
-  isOpen?: boolean // For UI state
-}
-
-export type ProjectSnapshot = {
-  version: 1
-  name: string
-  files: ProjectNode[]
-  activeFileId: string
-  topFileId: string
-  topModuleName: string
-  targetDeviceId: FpgaDeviceId
-  targetBoardId: FpgaBoardId
-  pinConstraints: ProjectConstraintSnapshot
-  implementationSettings: ImplementationSettingsSnapshot
-  synthesisCache: ProjectSynthesisCacheSnapshot | null
-}
-
-export type ProjectSynthesisCacheSnapshot = {
-  version: 1
-  signature: string
-  report: SynthesisReportV1
-}
-
-type FileSignatureMap = Record<string, string>
-
-function cloneProjectNodes(nodes: ProjectNode[]): ProjectNode[] {
-  return nodes.map((node) => ({
-    id: node.id,
-    name: node.name,
-    type: node.type,
-    content: node.content,
-    isOpen: node.isOpen,
-    children: node.children ? cloneProjectNodes(node.children) : undefined,
-  }))
-}
-
-function cloneProjectSynthesisCacheSnapshot(
-  snapshot: ProjectSynthesisCacheSnapshot | null,
-): ProjectSynthesisCacheSnapshot | null {
-  if (!snapshot) {
-    return null
-  }
-
-  return {
-    version: 1,
-    signature: snapshot.signature,
-    report: JSON.parse(JSON.stringify(snapshot.report)) as SynthesisReportV1,
-  }
-}
-
-function createFileSignature(node: ProjectNode): string {
-  return `${node.name}\n${node.content ?? ''}`
-}
-
-function buildFileSignatureMap(
-  nodes: ProjectNode[],
-  signatureMap: FileSignatureMap = {},
-): FileSignatureMap {
-  for (const node of nodes) {
-    if (node.type === 'file') {
-      signatureMap[node.id] = createFileSignature(node)
-    }
-
-    if (node.children) {
-      buildFileSignatureMap(node.children, signatureMap)
-    }
-  }
-
-  return signatureMap
-}
-
-function findFirstFileId(nodes: ProjectNode[]): string {
-  for (const node of nodes) {
-    if (node.type === 'file') {
-      return node.id
-    }
-    if (node.children) {
-      const childFileId = findFirstFileId(node.children)
-      if (childFileId) {
-        return childFileId
-      }
-    }
-  }
-  return ''
-}
-
-function isHardwareSourceFile(name: string): boolean {
-  return name.endsWith('.v') || name.endsWith('.sv')
-}
-
-function findFirstMatchingFileId(
-  nodes: ProjectNode[],
-  predicate: (node: ProjectNode) => boolean,
-): string {
-  for (const node of nodes) {
-    if (node.type === 'file' && predicate(node)) {
-      return node.id
-    }
-    if (node.children) {
-      const childFileId = findFirstMatchingFileId(node.children, predicate)
-      if (childFileId) {
-        return childFileId
-      }
-    }
-  }
-
-  return ''
-}
-
-function resolveTopFileId(nodes: ProjectNode[]): string {
-  const topNamedHardwareFileId = findFirstMatchingFileId(nodes, (node) => {
-    return isHardwareSourceFile(node.name) && /^top([._-]|$)/i.test(node.name)
-  })
-  if (topNamedHardwareFileId) {
-    return topNamedHardwareFileId
-  }
-
-  const firstHardwareFileId = findFirstMatchingFileId(nodes, (node) => {
-    return isHardwareSourceFile(node.name)
-  })
-  if (firstHardwareFileId) {
-    return firstHardwareFileId
-  }
-
-  return findFirstFileId(nodes)
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-}
-
-function isProjectNode(value: unknown): value is ProjectNode {
-  if (!isRecord(value)) {
-    return false
-  }
-
-  if (typeof value.id !== 'string' || typeof value.name !== 'string') {
-    return false
-  }
-
-  if (value.type !== 'file' && value.type !== 'folder') {
-    return false
-  }
-
-  if (value.content !== undefined && typeof value.content !== 'string') {
-    return false
-  }
-
-  if (value.isOpen !== undefined && typeof value.isOpen !== 'boolean') {
-    return false
-  }
-
-  if (value.children !== undefined) {
-    if (!Array.isArray(value.children)) {
-      return false
-    }
-    if (!value.children.every(isProjectNode)) {
-      return false
-    }
-  }
-
-  return true
-}
-
-function isSynthesisReport(value: unknown): value is SynthesisReportV1 {
-  if (!isRecord(value)) {
-    return false
-  }
-
-  if (
-    value.version !== 1 ||
-    typeof value.op_id !== 'string' ||
-    typeof value.success !== 'boolean' ||
-    typeof value.top_module !== 'string' ||
-    typeof value.source_count !== 'number' ||
-    typeof value.tool_path !== 'string' ||
-    typeof value.elapsed_ms !== 'number' ||
-    typeof value.warnings !== 'number' ||
-    typeof value.errors !== 'number' ||
-    typeof value.log !== 'string' ||
-    !isRecord(value.stats) ||
-    !Array.isArray(value.top_ports) ||
-    typeof value.generated_at_ms !== 'number'
-  ) {
-    return false
-  }
-
-  return true
-}
-
-function normalizeProjectSynthesisCacheSnapshot(
-  value: unknown,
-): ProjectSynthesisCacheSnapshot | null {
-  if (!isRecord(value)) {
-    return null
-  }
-
-  if (
-    value.version !== 1 ||
-    typeof value.signature !== 'string' ||
-    !isSynthesisReport(value.report)
-  ) {
-    return null
-  }
-
-  return cloneProjectSynthesisCacheSnapshot({
-    version: 1,
-    signature: value.signature,
-    report: value.report,
-  })
-}
-
-function normalizeSnapshot(value: unknown): ProjectSnapshot {
-  if (!isRecord(value)) {
-    throw new Error('Invalid project file format')
-  }
-
-  if (value.version !== 1) {
-    throw new Error('Unsupported project file version')
-  }
-
-  if (typeof value.name !== 'string') {
-    throw new Error('Project name is missing')
-  }
-
-  if (typeof value.activeFileId !== 'string') {
-    throw new Error('Active file id is missing')
-  }
-
-  if (!Array.isArray(value.files) || !value.files.every(isProjectNode)) {
-    throw new Error('Project files are invalid')
-  }
-
-  const normalizedTargetDeviceId = normalizeFpgaDeviceId(value.targetDeviceId)
-  const resolvedTopFileId =
-    typeof value.topFileId === 'string' && value.topFileId.length > 0
-      ? value.topFileId
-      : resolveTopFileId(value.files)
-
-  return {
-    version: 1,
-    name: value.name,
-    files: cloneProjectNodes(value.files),
-    activeFileId: value.activeFileId,
-    topFileId: resolvedTopFileId,
-    topModuleName: typeof value.topModuleName === 'string' ? value.topModuleName : '',
-    targetDeviceId: normalizedTargetDeviceId,
-    targetBoardId: normalizeFpgaBoardId(
-      value.targetBoardId,
-      getDefaultFpgaBoardIdForDevice(normalizedTargetDeviceId),
-    ),
-    pinConstraints: normalizeProjectConstraintSnapshot(value.pinConstraints, resolvedTopFileId),
-    implementationSettings: normalizeImplementationSettings(value.implementationSettings),
-    synthesisCache: normalizeProjectSynthesisCacheSnapshot(value.synthesisCache),
-  }
-}
+export type { ProjectNode, ProjectSnapshot, ProjectSynthesisCacheSnapshot } from './project-model'
 
 export const projectStore = reactive({
   files: [] as ProjectNode[],
@@ -355,17 +98,14 @@ export const projectStore = reactive({
   },
 
   get topSignals() {
-    if (this.topFile?.type === 'file' && isHardwareSourceFile(this.topFile.name)) {
-      return parseVerilogPorts(this.topFile.content || '')
-    }
-    return [] as VerilogPort[]
+    return parseTopSignals(this.topFile)
   },
 
   get signals() {
-    if (this.activeFile?.name.endsWith('.v')) {
-      return parseVerilogPorts(this.activeFile.content || '')
+    if (this.activeFile?.type === 'file' && isHardwareSourceFile(this.activeFile.name)) {
+      return parseTopSignals(this.activeFile)
     }
-    return [] as VerilogPort[]
+    return []
   },
 
   toSnapshot(): ProjectSnapshot {
@@ -385,7 +125,7 @@ export const projectStore = reactive({
   },
 
   loadFromSnapshot(snapshot: unknown, options: { projectPath?: string | null } = {}) {
-    const parsed = normalizeSnapshot(snapshot)
+    const parsed = normalizeProjectSnapshot(snapshot)
     const nextFiles = cloneProjectNodes(parsed.files)
     const nextActiveFileId = this.findNode(parsed.activeFileId, nextFiles)
       ? parsed.activeFileId
@@ -637,97 +377,13 @@ export const projectStore = reactive({
     }
   },
 
-  createNewProject(name: string, template: 'empty' | 'blinky' | 'uart') {
-    // Reset files to a new structure based on template
-    this.files = [
-      {
-        id: 'root',
-        name: name || 'src',
-        type: 'folder',
-        isOpen: true,
-        children: [],
-      },
-    ]
-
-    if (template === 'blinky') {
-      this.files[0].children?.push({
-        id: '1',
-        name: 'blinky.v',
-        type: 'file',
-        content: `module blinky(
-    input clk,
-    output reg led
-);
-    reg [25:0] count;
-    always @(posedge clk) begin
-        count <= count + 1;
-        if (count == 0) led <= ~led;
-    end
-endmodule`,
-      })
-      this.activeFileId = '1'
-      this.selectedNodeId = '1'
-      this.topFileId = '1'
-      this.topModuleName = 'blinky'
-    } else if (template === 'uart') {
-      this.files[0].children?.push({
-        id: '1',
-        name: 'uart_tx.v',
-        type: 'file',
-        content: `module uart_tx #(
-    parameter CLK_FREQ = 50_000_000,
-    parameter BAUD_RATE = 115_200
-)(
-    input wire clk,
-    input wire rst,
-    input wire tx_start,
-    input wire [7:0] tx_data,
-    output reg tx,
-    output reg busy
-);
-    localparam integer CLKS_PER_BIT = CLK_FREQ / BAUD_RATE;
-    reg [15:0] clk_count;
-    reg [3:0] bit_index;
-    reg [9:0] shift_reg;
-
-    always @(posedge clk) begin
-        if (rst) begin
-            tx <= 1'b1;
-            busy <= 1'b0;
-            clk_count <= 0;
-            bit_index <= 0;
-            shift_reg <= 10'b1111111111;
-        end else if (!busy && tx_start) begin
-            busy <= 1'b1;
-            shift_reg <= {1'b1, tx_data, 1'b0};
-            clk_count <= 0;
-            bit_index <= 0;
-        end else if (busy) begin
-            if (clk_count == CLKS_PER_BIT - 1) begin
-                clk_count <= 0;
-                tx <= shift_reg[0];
-                shift_reg <= {1'b1, shift_reg[9:1]};
-                bit_index <= bit_index + 1;
-                if (bit_index == 9) begin
-                    busy <= 1'b0;
-                end
-            end else begin
-                clk_count <= clk_count + 1;
-            end
-        end
-    end
-endmodule`,
-      })
-      this.activeFileId = '1'
-      this.selectedNodeId = '1'
-      this.topFileId = '1'
-      this.topModuleName = 'uart_tx'
-    } else {
-      this.activeFileId = ''
-      this.selectedNodeId = ''
-      this.topFileId = ''
-      this.topModuleName = ''
-    }
+  createNewProject(name: string, template: ProjectTemplate) {
+    const nextProject = createProjectTemplateState(name, template)
+    this.files = nextProject.files
+    this.activeFileId = nextProject.activeFileId
+    this.selectedNodeId = nextProject.selectedNodeId
+    this.topFileId = nextProject.topFileId
+    this.topModuleName = nextProject.topModuleName
 
     this.targetDeviceId = defaultFpgaDeviceId
     this.targetBoardId = defaultFpgaBoardId

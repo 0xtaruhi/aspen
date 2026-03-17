@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import type { SynthesisSourceFileV1 } from '@/lib/hardware-client'
 
+import { Check, Copy } from 'lucide-vue-next'
 import { computed, nextTick, ref, watch } from 'vue'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { copyTextToClipboard } from '@/lib/clipboard'
 import { useI18n } from '@/lib/i18n'
 import { getProjectRootDirectory } from '@/lib/project-layout'
 import { resolveSynthesisLog } from '@/lib/synthesis-log'
@@ -23,6 +25,8 @@ const synthesisMessage = hardwareStore.synthesisMessage
 const synthesisReport = hardwareStore.synthesisReport
 const synthesisLiveLog = hardwareStore.synthesisLiveLog
 const synthesisLogViewportRef = ref<HTMLDivElement | null>(null)
+const synthesisLogCopied = ref(false)
+let synthesisLogCopiedTimer: ReturnType<typeof setTimeout> | null = null
 
 const synthesisSources = computed<SynthesisSourceFileV1[]>(() => {
   return designContextStore.hardwareSources.value.map((source) => ({
@@ -155,6 +159,26 @@ async function scrollSynthesisLogToBottom() {
   viewport.scrollTop = viewport.scrollHeight
 }
 
+async function copySynthesisLog() {
+  if (synthesisLog.value.trim().length === 0) {
+    return
+  }
+
+  try {
+    await copyTextToClipboard(synthesisLog.value)
+    synthesisLogCopied.value = true
+    if (synthesisLogCopiedTimer) {
+      clearTimeout(synthesisLogCopiedTimer)
+    }
+    synthesisLogCopiedTimer = setTimeout(() => {
+      synthesisLogCopied.value = false
+      synthesisLogCopiedTimer = null
+    }, 1500)
+  } catch {
+    // Clipboard failures should not interrupt the flow page.
+  }
+}
+
 watch(
   [
     topModule,
@@ -245,13 +269,27 @@ watch(
       <Card class="min-h-0 flex flex-col">
         <CardHeader class="flex-row items-center justify-between space-y-0">
           <CardTitle>{{ t('synthesisLog') }}</CardTitle>
-          <div class="flex items-center gap-2 text-xs text-muted-foreground">
-            <span v-if="synthesisReport">
-              {{ t('warningCount', { count: synthesisReport.warnings }) }}
-            </span>
-            <span v-if="synthesisReport">
-              {{ t('errorCount', { count: synthesisReport.errors }) }}
-            </span>
+          <div class="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              :disabled="synthesisLog.trim().length === 0"
+              class="h-7 gap-1.5 px-2 text-xs"
+              @click="copySynthesisLog"
+            >
+              <Check v-if="synthesisLogCopied" class="h-3.5 w-3.5" />
+              <Copy v-else class="h-3.5 w-3.5" />
+              {{ synthesisLogCopied ? t('copied') : t('copyLog') }}
+            </Button>
+            <div class="flex items-center gap-2 text-xs text-muted-foreground">
+              <span v-if="synthesisReport">
+                {{ t('warningCount', { count: synthesisReport.warnings }) }}
+              </span>
+              <span v-if="synthesisReport">
+                {{ t('errorCount', { count: synthesisReport.errors }) }}
+              </span>
+            </div>
           </div>
         </CardHeader>
         <CardContent class="flex-1 min-h-0 p-0">

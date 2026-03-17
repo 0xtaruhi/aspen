@@ -2,6 +2,8 @@ export const ASPEN_PROJECT_FILENAME = 'aspen.project.json'
 export const ASPEN_SOURCES_DIRNAME = 'src'
 export const ASPEN_OUTPUT_DIRNAME = 'output'
 export const ASPEN_INTERNAL_DIRNAME = '.aspen'
+export const ASPEN_FLOWS_DIRNAME = 'flows'
+export const ASPEN_SYNTHESIS_MANIFEST_FILENAME = 'synthesis-manifest.json'
 
 export function normalizePath(path: string) {
   return path.replace(/\\/g, '/')
@@ -35,6 +37,11 @@ export function getProjectRootDirectory(projectPath: string | null) {
   return getDirectoryName(projectPath)
 }
 
+export function getProjectInternalDirectory(projectPath: string | null) {
+  const projectRoot = getProjectRootDirectory(projectPath)
+  return projectRoot ? joinPath(projectRoot, ASPEN_INTERNAL_DIRNAME) : null
+}
+
 export function getProjectMetadataPath(projectPath: string | null) {
   if (projectPath) {
     return projectPath
@@ -51,4 +58,14 @@ export function getProjectSourcesDirectory(projectPath: string | null) {
 export function getProjectOutputDirectory(projectPath: string | null) {
   const projectRoot = getProjectRootDirectory(projectPath)
   return projectRoot ? joinPath(projectRoot, ASPEN_OUTPUT_DIRNAME) : null
+}
+
+export function getProjectFlowsDirectory(projectPath: string | null) {
+  const internalDirectory = getProjectInternalDirectory(projectPath)
+  return internalDirectory ? joinPath(internalDirectory, ASPEN_FLOWS_DIRNAME) : null
+}
+
+export function getProjectSynthesisManifestPath(projectPath: string | null) {
+  const flowsDirectory = getProjectFlowsDirectory(projectPath)
+  return flowsDirectory ? joinPath(flowsDirectory, ASPEN_SYNTHESIS_MANIFEST_FILENAME) : null
 }

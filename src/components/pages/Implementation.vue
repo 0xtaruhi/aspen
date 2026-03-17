@@ -5,7 +5,7 @@ import type {
   ImplementationRouteMode,
 } from '@/lib/implementation-settings'
 
-import { SlidersHorizontal } from 'lucide-vue-next'
+import { Check, Copy, SlidersHorizontal } from 'lucide-vue-next'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -14,6 +14,7 @@ import NewProjectDialog from '@/components/project/NewProjectDialog.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { copyTextToClipboard } from '@/lib/clipboard'
 import { useI18n } from '@/lib/i18n'
 import { getProjectRootDirectory } from '@/lib/project-layout'
 import { buildConstraintXml, resolveCurrentProjectPinConstraints } from '@/lib/project-constraints'
@@ -30,6 +31,8 @@ const { t } = useI18n()
 const showNewProjectDialog = ref(false)
 const showSettingsDrawer = ref(false)
 const implementationLogViewportRef = ref<HTMLDivElement | null>(null)
+const implementationLogCopied = ref(false)
+let implementationLogCopiedTimer: ReturnType<typeof setTimeout> | null = null
 
 const isBusy = hardwareStore.implementationRunning
 const implementationReport = hardwareStore.implementationReport
@@ -334,6 +337,26 @@ async function scrollImplementationLogToBottom() {
   viewport.scrollTop = viewport.scrollHeight
 }
 
+async function copyImplementationLog() {
+  if (implementationLog.value.trim().length === 0) {
+    return
+  }
+
+  try {
+    await copyTextToClipboard(implementationLog.value)
+    implementationLogCopied.value = true
+    if (implementationLogCopiedTimer) {
+      clearTimeout(implementationLogCopiedTimer)
+    }
+    implementationLogCopiedTimer = setTimeout(() => {
+      implementationLogCopied.value = false
+      implementationLogCopiedTimer = null
+    }, 1500)
+  } catch {
+    // Clipboard failures should not interrupt the flow page.
+  }
+}
+
 watch(
   [
     () => designContextStore.primaryModule.value,
@@ -607,9 +630,23 @@ watch(
         <Card class="min-h-0 flex flex-col">
           <CardHeader class="flex-row items-center justify-between space-y-0">
             <CardTitle>{{ t('implementationLog') }}</CardTitle>
-            <span class="text-xs text-muted-foreground">
-              {{ designContextStore.sourceName.value }}
-            </span>
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-muted-foreground">
+                {{ designContextStore.sourceName.value }}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                :disabled="implementationLog.trim().length === 0"
+                class="h-7 gap-1.5 px-2 text-xs"
+                @click="copyImplementationLog"
+              >
+                <Check v-if="implementationLogCopied" class="h-3.5 w-3.5" />
+                <Copy v-else class="h-3.5 w-3.5" />
+                {{ implementationLogCopied ? t('copied') : t('copyLog') }}
+              </Button>
+            </div>
           </CardHeader>
           <CardContent class="flex-1 min-h-0 p-0">
             <div
