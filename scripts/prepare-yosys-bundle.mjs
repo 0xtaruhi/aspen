@@ -62,10 +62,15 @@ async function main() {
   mkdirSync(extractDir, { recursive: true })
 
   console.log(`Downloading ${asset.name} from ${asset.browser_download_url}`)
+  const downloadStartedAt = Date.now()
   await downloadFile(asset.browser_download_url, archivePath)
+  console.log(`Downloaded ${asset.name} in ${formatDuration(Date.now() - downloadStartedAt)}.`)
+  const extractStartedAt = Date.now()
   extractArchive(archivePath, extractDir)
+  console.log(`Extracted ${asset.name} in ${formatDuration(Date.now() - extractStartedAt)}.`)
 
   const extractedRoot = findToolchainRoot(extractDir)
+  const bundleStartedAt = Date.now()
   rmSync(bundleTargetDir, { recursive: true, force: true })
   mkdirSync(dirname(bundleTargetDir), { recursive: true })
   cpSync(extractedRoot, bundleTargetDir, { recursive: true, dereference: true })
@@ -73,6 +78,9 @@ async function main() {
   pruneBundledToolchain(bundleTargetDir)
   ensureBundlePlaceholder(bundleTargetDir)
   validateBundledYosys(bundleTargetDir)
+  console.log(
+    `Prepared and validated bundled Yosys in ${formatDuration(Date.now() - bundleStartedAt)}.`,
+  )
   const bundledBytes = getDirectorySize(bundleTargetDir)
   rmSync(downloadDir, { recursive: true, force: true })
 
@@ -227,12 +235,19 @@ async function downloadFile(url, destinationPath) {
 
 function tryNativeDownload(url, destinationPath) {
   if (process.platform === 'win32') {
-    const result = spawnSync(
+    const curlResult = spawnSync('curl.exe', ['-L', '--fail', '--output', destinationPath, url], {
+      stdio: 'inherit',
+    })
+    if (curlResult.status === 0) {
+      return true
+    }
+
+    const powershellResult = spawnSync(
       'powershell',
       ['-NoProfile', '-Command', `Invoke-WebRequest -Uri "${url}" -OutFile "${destinationPath}"`],
       { stdio: 'inherit' },
     )
-    return result.status === 0
+    return powershellResult.status === 0
   }
 
   const result = spawnSync('curl', ['-L', '--fail', '--output', destinationPath, url], {
@@ -684,6 +699,7 @@ function validateBundledYosys(bundleRoot) {
           {
             cwd: validationDir,
             encoding: 'utf8',
+            windowsVerbatimArguments: true,
           },
         )
       : spawnSync(yosysExecutable, ['-s', scriptPath], {
@@ -739,4 +755,19 @@ function formatBytes(bytes) {
     .toFixed(value >= 10 ? 1 : 2)
     .replace(/\.0+$/, '')
     .replace(/(\.\d*[1-9])0$/, '$1')} ${units[unitIndex]}`
+}
+
+function formatDuration(durationMs) {
+  if (durationMs < 1000) {
+    return `${durationMs} ms`
+  }
+
+  const totalSeconds = durationMs / 1000
+  if (totalSeconds < 60) {
+    return `${totalSeconds.toFixed(1).replace(/\.0$/, '')} s`
+  }
+
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds - minutes * 60
+  return `${minutes}m ${seconds.toFixed(1).replace(/\.0$/, '')}s`
 }

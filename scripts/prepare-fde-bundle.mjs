@@ -539,6 +539,7 @@ function runYosysValidation(yosysBin, yosysEnv, scriptPath, cwd) {
           {
             cwd,
             encoding: 'utf8',
+            windowsVerbatimArguments: true,
           },
         )
       : spawnSync(yosysBin, ['-s', scriptPath], {

@@ -4,7 +4,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    time::Instant,
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 const TEST_BUNDLED_YOSYS_DIR: &str = "vendor/yosys";
@@ -127,14 +127,29 @@ write_edif {}\n",
             .map(|root| root.join("environment.bat"))
             .filter(|path| path.is_file())
             .ok_or_else(|| "Bundled Yosys environment.bat is missing".to_string())?;
-        let shell_command = format!(
-            "call \"{}\" && \"{}\" -s \"{}\"",
-            environment_batch.display(),
-            yosys_bin.display(),
-            script_path.display()
-        );
+        let wrapper_path = workdir.join(format!(
+            "aspen-test-yosys-{}-{}.cmd",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|duration| duration.as_millis())
+                .unwrap_or_default()
+        ));
+        fs::write(
+            &wrapper_path,
+            format!(
+                "@echo off\r\n\
+call \"{}\"\r\n\
+if errorlevel 1 exit /b %errorlevel%\r\n\
+\"{}\" -s \"{}\"\r\n",
+                environment_batch.display(),
+                yosys_bin.display(),
+                script_path.display()
+            ),
+        )
+        .map_err(|err| err.to_string())?;
         let mut command = Command::new("cmd");
-        command.arg("/d").arg("/s").arg("/c").arg(shell_command);
+        command.arg("/d").arg("/c").arg(&wrapper_path);
         command
     } else {
         let mut command = Command::new(&yosys_bin);

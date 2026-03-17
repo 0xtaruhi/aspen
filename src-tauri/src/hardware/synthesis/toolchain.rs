@@ -1,7 +1,8 @@
 use std::{
-    env,
+    env, fs,
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use tauri::{path::BaseDirectory, AppHandle, Manager};
@@ -63,22 +64,12 @@ pub(super) fn spawn_yosys_process(
 ) -> std::io::Result<std::process::Child> {
     if cfg!(target_os = "windows") {
         if let Some(environment_batch) = &toolchain.yosys_env {
-            let command = format!(
-                "call \"{}\" && \"{}\" -s \"{}\"",
-                environment_batch.display(),
-                toolchain.yosys_bin.display(),
-                script_path.display()
+            return spawn_windows_yosys_process(
+                environment_batch,
+                toolchain.yosys_bin,
+                script_path,
+                workdir,
             );
-
-            return Command::new("cmd")
-                .arg("/d")
-                .arg("/s")
-                .arg("/c")
-                .arg(command)
-                .current_dir(workdir)
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn();
         }
     }
 
@@ -89,6 +80,48 @@ pub(super) fn spawn_yosys_process(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
+}
+
+fn spawn_windows_yosys_process(
+    environment_batch: &Path,
+    yosys_bin: &Path,
+    script_path: &Path,
+    workdir: &Path,
+) -> std::io::Result<std::process::Child> {
+    let wrapper_path = workdir.join(format!("aspen-run-yosys-{}.cmd", wrapper_file_suffix()));
+    fs::write(
+        &wrapper_path,
+        format!(
+            "@echo off\r\n\
+call \"{}\"\r\n\
+if errorlevel 1 goto :cleanup\r\n\
+\"{}\" -s \"{}\"\r\n\
+:cleanup\r\n\
+set ASPEN_EXIT=%errorlevel%\r\n\
+del \"%~f0\" >nul 2>nul\r\n\
+exit /b %ASPEN_EXIT%\r\n",
+            environment_batch.display(),
+            yosys_bin.display(),
+            script_path.display()
+        ),
+    )?;
+
+    Command::new("cmd")
+        .arg("/d")
+        .arg("/c")
+        .arg(&wrapper_path)
+        .current_dir(workdir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+}
+
+fn wrapper_file_suffix() -> String {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or_default();
+    format!("{}-{}", std::process::id(), timestamp)
 }
 
 pub(super) fn resolve_fde_support_file(
