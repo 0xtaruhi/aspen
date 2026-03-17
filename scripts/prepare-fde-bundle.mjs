@@ -180,13 +180,26 @@ function resolveBuildEnvironment() {
 function resolveWindowsBuildEnvironment() {
   const baseEnv = { ...process.env }
   const env = captureWindowsVisualStudioEnvironment(baseEnv)
+  for (const key of [
+    'ChocolateyInstall',
+    'CHOCOLATEYINSTALL',
+    'VCPKG_ROOT',
+    'VCPKG_INSTALLATION_ROOT',
+    'VCPKG_DEFAULT_BINARY_CACHE',
+    'WIN_FLEX_PATH',
+    'WIN_BISON_PATH',
+  ]) {
+    if (baseEnv[key]) {
+      env[key] = baseEnv[key]
+    }
+  }
   const pathEntries = env.PATH ? env.PATH.split(delimiter) : []
   const llvmBin = resolveWindowsLlvmBin(env)
   if (llvmBin) {
     pathEntries.unshift(llvmBin)
   }
 
-  const vcpkgRoot = resolveWindowsVcpkgRoot(env)
+  const vcpkgRoot = resolveWindowsVcpkgRoot(baseEnv) || resolveWindowsVcpkgRoot(env)
   if (!vcpkgRoot) {
     throw new Error(
       'Unable to locate vcpkg on Windows. Set VCPKG_ROOT or VCPKG_INSTALLATION_ROOT before running pnpm prepare:fde-bundle.',
@@ -194,6 +207,7 @@ function resolveWindowsBuildEnvironment() {
   }
 
   env.VCPKG_ROOT = vcpkgRoot
+  env.VCPKG_INSTALLATION_ROOT = vcpkgRoot
   env.PATH = dedupeEntries(pathEntries).join(delimiter)
   return env
 }
@@ -504,6 +518,10 @@ function configureBuild(sourceRoot, buildRoot, env) {
   if (process.platform === 'win32') {
     const vcpkgRoot = resolveWindowsVcpkgRoot(env)
     const vcpkgTriplet = process.env.FDE_VCPKG_TRIPLET?.trim() || 'x64-windows-static'
+    const vcpkgInstalledRoot = vcpkgRoot ? join(vcpkgRoot, 'installed', vcpkgTriplet) : null
+    const boostConfigDir = vcpkgInstalledRoot ? join(vcpkgInstalledRoot, 'share', 'boost') : null
+    const boostIncludeDir = vcpkgInstalledRoot ? join(vcpkgInstalledRoot, 'include') : null
+    const boostLibraryDir = vcpkgInstalledRoot ? join(vcpkgInstalledRoot, 'lib') : null
     const clangClPath = resolveRequiredToolPath(
       ['clang-cl'],
       env,
@@ -556,11 +574,17 @@ function configureBuild(sourceRoot, buildRoot, env) {
       ['CMAKE_TOOLCHAIN_FILE', vcpkgToolchain],
       ['VCPKG_TARGET_TRIPLET', vcpkgTriplet],
       ['VCPKG_HOST_TRIPLET', 'x64-windows'],
+      ['CMAKE_FIND_PACKAGE_PREFER_CONFIG', 'ON'],
+      ['CMAKE_POLICY_DEFAULT_CMP0167', 'NEW'],
       ['CMAKE_C_COMPILER', clangClPath],
       ['CMAKE_CXX_COMPILER', clangClPath],
       ['CMAKE_MAKE_PROGRAM', ninjaPath],
       ['FLEX_EXECUTABLE', flexPath],
       ['BISON_EXECUTABLE', bisonPath],
+      ['BOOST_ROOT', vcpkgInstalledRoot],
+      ['BOOST_INCLUDEDIR', boostIncludeDir],
+      ['BOOST_LIBRARYDIR', boostLibraryDir],
+      ['Boost_DIR', boostConfigDir],
     ]
     for (const [name, value] of toolArgs) {
       if (value) {
