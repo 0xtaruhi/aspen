@@ -286,15 +286,30 @@ function copyRuntimeDependencies(bundleBinDir, bundleLibDir) {
     .map((entry) => join(bundleBinDir, entry))
     .filter((entry) => isExecutableTarget(entry))
   const copied = new Set()
+  const scanned = new Set()
+  const destinationDir = process.platform === 'win32' ? bundleBinDir : bundleLibDir
+  const queue = [...runtimeTargets]
 
-  for (const target of runtimeTargets) {
+  while (queue.length > 0) {
+    const target = queue.shift()
+    if (!target || scanned.has(target) || !existsSync(target)) {
+      continue
+    }
+    scanned.add(target)
+
     for (const dependency of collectDependencies(target)) {
-      if (copied.has(dependency) || !existsSync(dependency)) {
+      if (!existsSync(dependency)) {
         continue
       }
-      copied.add(dependency)
-      const destinationDir = process.platform === 'win32' ? bundleBinDir : bundleLibDir
-      copyFileSync(dependency, join(destinationDir, basename(dependency)))
+
+      if (!copied.has(dependency)) {
+        copied.add(dependency)
+        const destinationPath = join(destinationDir, basename(dependency))
+        copyFileSync(dependency, destinationPath)
+        queue.push(destinationPath)
+      } else if (process.platform === 'win32') {
+        queue.push(join(destinationDir, basename(dependency)))
+      }
     }
   }
 }
@@ -629,9 +644,14 @@ function runFdeValidationStage(bundleBinDir, bundleLibDir, stage, args, cwd) {
     encoding: 'utf8',
     env,
   })
-  if (result.status !== 0) {
+  if (result.status !== 0 || result.error) {
     throw new Error(
-      `Bundled FDE validation failed during ${stage}.\n${result.stdout || ''}${result.stderr || ''}`.trim(),
+      formatFdeValidationFailure(`Bundled FDE validation failed during ${stage}.`, result, {
+        executablePath,
+        args,
+        cwd,
+        bundleBinDir,
+      }),
     )
   }
 }
@@ -739,6 +759,28 @@ function formatCmakeFailure(message, result, options) {
 
       sections.push(`${label} (${filePath})\n${tailLines(contents, 200)}`)
     }
+  }
+
+  return sections.join('\n\n')
+}
+
+function formatFdeValidationFailure(message, result, options) {
+  const { executablePath, args, cwd, bundleBinDir } = options
+  const sections = [formatSpawnFailure(message, result)]
+
+  if (executablePath) {
+    sections.push(`Executable: ${executablePath}`)
+  }
+  if (Array.isArray(args) && args.length > 0) {
+    sections.push(`Args: ${args.join(' ')}`)
+  }
+  if (cwd) {
+    sections.push(`Working directory: ${cwd}`)
+  }
+
+  if (process.platform === 'win32' && bundleBinDir && existsSync(bundleBinDir)) {
+    const bundledEntries = readdirSync(bundleBinDir).sort()
+    sections.push(`Bundled bin contents: ${bundledEntries.join(', ')}`)
   }
 
   return sections.join('\n\n')
