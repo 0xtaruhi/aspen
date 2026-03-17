@@ -59,28 +59,36 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install boost bison flex icu4c ninja cmake
 
-      - name: Setup MSYS2 FDE build environment
-        if: runner.os == 'Windows'
-        id: msys2
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          path-type: inherit
-          install: >-
-            mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-ninja
-            mingw-w64-x86_64-boost
-            flex
-            bison
-            mingw-w64-x86_64-icu
-            mingw-w64-x86_64-zlib
-
-      - name: Export MSYS2 root
+      - name: Configure Windows FDE build environment
         if: runner.os == 'Windows'
         shell: pwsh
-        run: echo "MSYS2_ROOT=${{ steps.msys2.outputs.msys2-location }}" >> $env:GITHUB_ENV
+        run: |
+          if (-not $env:VCPKG_INSTALLATION_ROOT) {
+            throw "VCPKG_INSTALLATION_ROOT is not set on this runner."
+          }
+          echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
+          echo "FDE_VCPKG_TRIPLET=x64-windows-static" >> $env:GITHUB_ENV
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$env:RUNNER_TEMP\vcpkg-binary-cache" >> $env:GITHUB_ENV
+
+      - name: Cache Windows vcpkg binaries
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}\vcpkg-binary-cache
+          key: windows-vcpkg-fde-${{ hashFiles('.github/workflows/ci.yml', 'scripts/prepare-fde-bundle.mjs') }}
+
+      - name: Install Windows FDE build dependencies
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
+          choco install winflexbison3 --no-progress -y
+          & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet $env:FDE_VCPKG_TRIPLET `
+            boost-date-time `
+            boost-filesystem `
+            boost-log `
+            boost-program-options `
+            boost-regex
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -161,28 +169,36 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install boost bison flex icu4c ninja cmake
 
-      - name: Setup MSYS2 FDE build environment
-        if: runner.os == 'Windows'
-        id: msys2
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          path-type: inherit
-          install: >-
-            mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-ninja
-            mingw-w64-x86_64-boost
-            flex
-            bison
-            mingw-w64-x86_64-icu
-            mingw-w64-x86_64-zlib
-
-      - name: Export MSYS2 root
+      - name: Configure Windows FDE build environment
         if: runner.os == 'Windows'
         shell: pwsh
-        run: echo "MSYS2_ROOT=${{ steps.msys2.outputs.msys2-location }}" >> $env:GITHUB_ENV
+        run: |
+          if (-not $env:VCPKG_INSTALLATION_ROOT) {
+            throw "VCPKG_INSTALLATION_ROOT is not set on this runner."
+          }
+          echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
+          echo "FDE_VCPKG_TRIPLET=x64-windows-static" >> $env:GITHUB_ENV
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$env:RUNNER_TEMP\vcpkg-binary-cache" >> $env:GITHUB_ENV
+
+      - name: Cache Windows vcpkg binaries
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}\vcpkg-binary-cache
+          key: windows-vcpkg-fde-${{ hashFiles('.github/workflows/ci.yml', 'scripts/prepare-fde-bundle.mjs') }}
+
+      - name: Install Windows FDE build dependencies
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
+          choco install winflexbison3 --no-progress -y
+          & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet $env:FDE_VCPKG_TRIPLET `
+            boost-date-time `
+            boost-filesystem `
+            boost-log `
+            boost-program-options `
+            boost-regex
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

@@ -56,7 +56,7 @@ async function main() {
   copyExecutables(buildRoot, bundleBinDir)
   copyRuntimeDependencies(bundleBinDir, bundleLibDir, buildEnv)
   ensurePlaceholder(bundleTargetDir)
-  validateBundledFde(bundleBinDir, bundleLibDir)
+  validateBundledFde(bundleBinDir, bundleLibDir, buildEnv)
 
   const bundleBytes = getDirectorySize(bundleTargetDir)
   rmSync(workingRoot, { recursive: true, force: true })
@@ -139,7 +139,7 @@ function patchWindowsTargetVersion(sourceRoot) {
 }
 
 function resolveBuildEnvironment() {
-  const env = { ...process.env }
+  const env = process.platform === 'win32' ? resolveWindowsBuildEnvironment() : { ...process.env }
   const pathEntries = env.PATH ? env.PATH.split(delimiter) : []
   const prefixEntries = env.CMAKE_PREFIX_PATH ? env.CMAKE_PREFIX_PATH.split(delimiter) : []
   const libraryEntries = env.LIBRARY_PATH ? env.LIBRARY_PATH.split(delimiter) : []
@@ -166,21 +166,6 @@ function resolveBuildEnvironment() {
     }
   }
 
-  if (process.platform === 'win32') {
-    const msysRoot = process.env.MSYS2_ROOT?.trim() || 'C:\\msys64'
-    const mingwBin = join(msysRoot, 'mingw64', 'bin')
-    const usrBin = join(msysRoot, 'usr', 'bin')
-    const mingwPrefix = join(msysRoot, 'mingw64')
-    for (const entry of [mingwBin, usrBin]) {
-      if (existsSync(entry)) {
-        pathEntries.unshift(entry)
-      }
-    }
-    if (existsSync(mingwPrefix)) {
-      prefixEntries.unshift(mingwPrefix)
-    }
-  }
-
   env.PATH = dedupeEntries(pathEntries).join(delimiter)
   if (prefixEntries.length > 0) {
     env.CMAKE_PREFIX_PATH = dedupeEntries(prefixEntries).join(delimiter)
@@ -192,30 +177,202 @@ function resolveBuildEnvironment() {
   return env
 }
 
+function resolveWindowsBuildEnvironment() {
+  const baseEnv = { ...process.env }
+  const env = captureWindowsVisualStudioEnvironment(baseEnv)
+  const pathEntries = env.PATH ? env.PATH.split(delimiter) : []
+  const llvmBin = resolveWindowsLlvmBin(env)
+  if (llvmBin) {
+    pathEntries.unshift(llvmBin)
+  }
+
+  const vcpkgRoot = resolveWindowsVcpkgRoot(env)
+  if (!vcpkgRoot) {
+    throw new Error(
+      'Unable to locate vcpkg on Windows. Set VCPKG_ROOT or VCPKG_INSTALLATION_ROOT before running pnpm prepare:fde-bundle.',
+    )
+  }
+
+  env.VCPKG_ROOT = vcpkgRoot
+  env.PATH = dedupeEntries(pathEntries).join(delimiter)
+  return env
+}
+
+function captureWindowsVisualStudioEnvironment(baseEnv) {
+  const setupScript = resolveWindowsVcvarsPath(baseEnv)
+  if (!setupScript) {
+    throw new Error(
+      'Unable to locate Visual Studio Build Tools on Windows. Install Visual Studio 2022 C++ tools with the LLVM/Clang workload.',
+    )
+  }
+
+  const result = spawnSync(
+    'cmd.exe',
+    ['/d', '/s', '/c', `call "${setupScript}" >nul 2>&1 && set`],
+    {
+      encoding: 'utf8',
+      env: {
+        ...baseEnv,
+        VSCMD_SKIP_SENDTELEMETRY: '1',
+      },
+      maxBuffer: 16 * 1024 * 1024,
+    },
+  )
+  if (result.status !== 0 || result.error) {
+    throw new Error(
+      formatSpawnFailure('Failed to load the Visual Studio build environment.', result),
+    )
+  }
+
+  const env = { ...baseEnv }
+  for (const line of result.stdout.split(/\r?\n/)) {
+    const separatorIndex = line.indexOf('=')
+    if (separatorIndex <= 0) {
+      continue
+    }
+    env[line.slice(0, separatorIndex)] = line.slice(separatorIndex + 1)
+  }
+  return env
+}
+
+function resolveWindowsVcvarsPath(env) {
+  const explicitCandidates = [
+    env.VCVARS64_PATH,
+    env.VCVARSALL_PATH,
+    env.VSINSTALLDIR ? join(env.VSINSTALLDIR, 'VC', 'Auxiliary', 'Build', 'vcvars64.bat') : null,
+  ]
+  const explicitMatch = findExistingPath(explicitCandidates)
+  if (explicitMatch) {
+    return explicitMatch
+  }
+
+  const vswherePath = resolveVswherePath(env)
+  if (vswherePath) {
+    const result = spawnSync(
+      vswherePath,
+      [
+        '-latest',
+        '-products',
+        '*',
+        '-requires',
+        'Microsoft.VisualStudio.Component.VC.Tools.x86.x64',
+        '-property',
+        'installationPath',
+      ],
+      {
+        encoding: 'utf8',
+      },
+    )
+    if (result.status === 0) {
+      const installRoot = result.stdout.trim()
+      const discoveredPath = installRoot
+        ? join(installRoot, 'VC', 'Auxiliary', 'Build', 'vcvars64.bat')
+        : null
+      if (discoveredPath && existsSync(discoveredPath)) {
+        return discoveredPath
+      }
+    }
+  }
+
+  return findExistingPath([
+    'C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvars64.bat',
+    'C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional\\VC\\Auxiliary\\Build\\vcvars64.bat',
+    'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat',
+    'C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat',
+  ])
+}
+
+function resolveVswherePath(env) {
+  return findExistingPath([
+    env.VSWHERE_PATH,
+    env['ProgramFiles(x86)']
+      ? join(env['ProgramFiles(x86)'], 'Microsoft Visual Studio', 'Installer', 'vswhere.exe')
+      : null,
+    env.ProgramFiles
+      ? join(env.ProgramFiles, 'Microsoft Visual Studio', 'Installer', 'vswhere.exe')
+      : null,
+  ])
+}
+
+function resolveWindowsLlvmBin(env) {
+  return findExistingPath([
+    env.LLVM_ROOT ? join(env.LLVM_ROOT, 'bin') : null,
+    env.VSINSTALLDIR ? join(env.VSINSTALLDIR, 'VC', 'Tools', 'Llvm', 'x64', 'bin') : null,
+    env.VSINSTALLDIR ? join(env.VSINSTALLDIR, 'VC', 'Tools', 'Llvm', 'bin') : null,
+    'C:\\Program Files\\LLVM\\bin',
+  ])
+}
+
+function resolveWindowsVcpkgRoot(env) {
+  return findExistingPath([env.VCPKG_ROOT, env.VCPKG_INSTALLATION_ROOT, 'C:\\vcpkg'])
+}
+
 function configureBuild(sourceRoot, buildRoot, env) {
   mkdirSync(buildRoot, { recursive: true })
   const args = ['-S', sourceRoot, '-B', buildRoot, '-G', 'Ninja', '-DCMAKE_BUILD_TYPE=Release']
   const cmakePath = resolveToolPath('cmake', env) || 'cmake'
 
   if (process.platform === 'win32') {
+    const vcpkgRoot = resolveWindowsVcpkgRoot(env)
+    const vcpkgTriplet = process.env.FDE_VCPKG_TRIPLET?.trim() || 'x64-windows-static'
+    const clangClPath = resolveRequiredToolPath(
+      ['clang-cl'],
+      env,
+      'Install LLVM/Clang or the Visual Studio Clang toolset.',
+    )
+    const ninjaPath = resolveRequiredToolPath(['ninja'], env, 'Install Ninja or add it to PATH.')
+    const flexPath = resolveRequiredToolPath(
+      ['win_flex', 'flex'],
+      env,
+      'Install winflexbison3 and ensure win_flex.exe is on PATH.',
+    )
+    const bisonPath = resolveRequiredToolPath(
+      ['win_bison', 'bison'],
+      env,
+      'Install winflexbison3 and ensure win_bison.exe is on PATH.',
+    )
+    const vcpkgToolchain = vcpkgRoot
+      ? join(vcpkgRoot, 'scripts', 'buildsystems', 'vcpkg.cmake')
+      : null
+    if (!vcpkgToolchain || !existsSync(vcpkgToolchain)) {
+      throw new Error(
+        `Unable to locate the vcpkg CMake toolchain file. Expected ${vcpkgToolchain ?? '<unknown>'}.`,
+      )
+    }
+
+    console.log(
+      [
+        `Windows FDE toolchain: clang-cl=${clangClPath}`,
+        `ninja=${ninjaPath}`,
+        `flex=${flexPath}`,
+        `bison=${bisonPath}`,
+        `vcpkg=${vcpkgRoot}`,
+        `triplet=${vcpkgTriplet}`,
+      ].join(', '),
+    )
+
     const toolArgs = [
-      ['CMAKE_C_COMPILER', resolveToolPath('gcc', env)],
-      ['CMAKE_CXX_COMPILER', resolveToolPath('g++', env)],
-      ['CMAKE_MAKE_PROGRAM', resolveToolPath('ninja', env)],
-      ['FLEX_EXECUTABLE', resolveToolPath('flex', env)],
-      ['BISON_EXECUTABLE', resolveToolPath('bison', env)],
+      ['CMAKE_TOOLCHAIN_FILE', vcpkgToolchain],
+      ['VCPKG_TARGET_TRIPLET', vcpkgTriplet],
+      ['VCPKG_HOST_TRIPLET', 'x64-windows'],
+      ['CMAKE_C_COMPILER', clangClPath],
+      ['CMAKE_CXX_COMPILER', clangClPath],
+      ['CMAKE_MAKE_PROGRAM', ninjaPath],
+      ['FLEX_EXECUTABLE', flexPath],
+      ['BISON_EXECUTABLE', bisonPath],
     ]
     for (const [name, value] of toolArgs) {
       if (value) {
         args.push(`-D${name}=${value}`)
       }
     }
-    args.push('-DCMAKE_SH=CMAKE_SH-NOTFOUND')
+    args.push('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
   }
 
   const result = spawnSync(cmakePath, args, {
     encoding: 'utf8',
     env,
+    maxBuffer: 64 * 1024 * 1024,
   })
   if (result.stdout) {
     process.stdout.write(result.stdout)
@@ -240,6 +397,7 @@ function buildTargetsInTree(buildRoot, env) {
   const result = spawnSync(cmakePath, ['--build', buildRoot, '--target', ...buildTargets, '-j4'], {
     encoding: 'utf8',
     env,
+    maxBuffer: 64 * 1024 * 1024,
   })
   if (result.stdout) {
     process.stdout.write(result.stdout)
@@ -326,7 +484,10 @@ function isExecutableTarget(filePath) {
 
 function collectDependencies(filePath, runtimeEnv = process.env) {
   if (process.platform === 'darwin') {
-    const result = spawnSync('otool', ['-L', filePath], { encoding: 'utf8' })
+    const result = spawnSync('otool', ['-L', filePath], {
+      encoding: 'utf8',
+      maxBuffer: 16 * 1024 * 1024,
+    })
     if (result.status !== 0) {
       return []
     }
@@ -338,7 +499,10 @@ function collectDependencies(filePath, runtimeEnv = process.env) {
   }
 
   if (process.platform === 'linux') {
-    const result = spawnSync('ldd', [filePath], { encoding: 'utf8' })
+    const result = spawnSync('ldd', [filePath], {
+      encoding: 'utf8',
+      maxBuffer: 16 * 1024 * 1024,
+    })
     if (result.status !== 0) {
       return []
     }
@@ -363,15 +527,44 @@ function collectDependencies(filePath, runtimeEnv = process.env) {
       })
   }
 
-  const result = spawnSync('objdump', ['-p', filePath], { encoding: 'utf8' })
+  const dllNames = collectWindowsDependencyNames(filePath, runtimeEnv)
+  return dllNames.map((name) => resolveWindowsDependency(name, runtimeEnv)).filter(Boolean)
+}
+
+function collectWindowsDependencyNames(filePath, runtimeEnv = process.env) {
+  const dumpbinPath = resolveToolPath('dumpbin', runtimeEnv)
+  if (dumpbinPath) {
+    const result = spawnSync(dumpbinPath, ['/dependents', filePath], {
+      encoding: 'utf8',
+      env: runtimeEnv,
+      maxBuffer: 16 * 1024 * 1024,
+    })
+    if (result.status === 0) {
+      return result.stdout
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => /\.dll$/i.test(line))
+    }
+  }
+
+  const objdumpPath = resolveToolPath('llvm-objdump', runtimeEnv)
+  if (!objdumpPath) {
+    return []
+  }
+
+  const result = spawnSync(objdumpPath, ['-p', filePath], {
+    encoding: 'utf8',
+    env: runtimeEnv,
+    maxBuffer: 16 * 1024 * 1024,
+  })
   if (result.status !== 0) {
     return []
   }
-  const dllNames = result.stdout
+
+  return result.stdout
     .split(/\r?\n/)
     .map((line) => line.match(/DLL Name:\s+(.+)$/)?.[1]?.trim())
     .filter(Boolean)
-  return dllNames.map((name) => resolveWindowsDependency(name, runtimeEnv)).filter(Boolean)
 }
 
 function resolveWindowsDependency(name, runtimeEnv = process.env) {
@@ -411,7 +604,7 @@ function ensurePlaceholder(bundleRoot) {
   )
 }
 
-function validateBundledFde(bundleBinDir, bundleLibDir) {
+function validateBundledFde(bundleBinDir, bundleLibDir, runtimeEnv = process.env) {
   if (!existsSync(bundledYosysDir)) {
     throw new Error(
       `Bundled Yosys was not found at ${bundledYosysDir}. Run pnpm prepare:yosys-bundle first.`,
@@ -516,6 +709,7 @@ function validateBundledFde(bundleBinDir, bundleLibDir) {
       '-e',
     ],
     validationDir,
+    runtimeEnv,
   )
   runFdeValidationStage(
     bundleBinDir,
@@ -537,6 +731,7 @@ function validateBundledFde(bundleBinDir, bundleLibDir) {
       '-e',
     ],
     validationDir,
+    runtimeEnv,
   )
   runFdeValidationStage(
     bundleBinDir,
@@ -557,6 +752,7 @@ function validateBundledFde(bundleBinDir, bundleLibDir) {
       '-e',
     ],
     validationDir,
+    runtimeEnv,
   )
   runFdeValidationStage(
     bundleBinDir,
@@ -575,6 +771,7 @@ function validateBundledFde(bundleBinDir, bundleLibDir) {
       '-e',
     ],
     validationDir,
+    runtimeEnv,
   )
   runFdeValidationStage(
     bundleBinDir,
@@ -594,6 +791,7 @@ function validateBundledFde(bundleBinDir, bundleLibDir) {
       '-e',
     ],
     validationDir,
+    runtimeEnv,
   )
   runFdeValidationStage(
     bundleBinDir,
@@ -635,14 +833,22 @@ function runYosysValidation(yosysBin, yosysEnv, scriptPath, cwd) {
   }
 }
 
-function runFdeValidationStage(bundleBinDir, bundleLibDir, stage, args, cwd) {
+function runFdeValidationStage(
+  bundleBinDir,
+  bundleLibDir,
+  stage,
+  args,
+  cwd,
+  runtimeEnv = process.env,
+) {
   const executableName = process.platform === 'win32' ? `${stage}.exe` : stage
   const executablePath = join(bundleBinDir, executableName)
-  const env = buildFdeRuntimeEnv(bundleBinDir, bundleLibDir)
+  const env = buildFdeRuntimeEnv(bundleBinDir, bundleLibDir, runtimeEnv)
   const result = spawnSync(executablePath, args, {
     cwd,
     encoding: 'utf8',
     env,
+    maxBuffer: 16 * 1024 * 1024,
   })
   if (result.status !== 0 || result.error) {
     throw new Error(
@@ -651,13 +857,14 @@ function runFdeValidationStage(bundleBinDir, bundleLibDir, stage, args, cwd) {
         args,
         cwd,
         bundleBinDir,
+        env,
       }),
     )
   }
 }
 
-function buildFdeRuntimeEnv(bundleBinDir, bundleLibDir) {
-  const env = { ...process.env }
+function buildFdeRuntimeEnv(bundleBinDir, bundleLibDir, baseEnv = process.env) {
+  const env = { ...baseEnv }
   const pathEntries = env.PATH ? env.PATH.split(delimiter) : []
   pathEntries.unshift(bundleBinDir)
   env.PATH = dedupeEntries(pathEntries).join(delimiter)
@@ -765,7 +972,7 @@ function formatCmakeFailure(message, result, options) {
 }
 
 function formatFdeValidationFailure(message, result, options) {
-  const { executablePath, args, cwd, bundleBinDir } = options
+  const { executablePath, args, cwd, bundleBinDir, env } = options
   const sections = [formatSpawnFailure(message, result)]
 
   if (executablePath) {
@@ -783,6 +990,13 @@ function formatFdeValidationFailure(message, result, options) {
     sections.push(`Bundled bin contents: ${bundledEntries.join(', ')}`)
   }
 
+  if (process.platform === 'win32' && executablePath && existsSync(executablePath)) {
+    const dependencies = collectWindowsDependencyNames(executablePath, env)
+    if (dependencies.length > 0) {
+      sections.push(`Detected DLL dependencies: ${dependencies.join(', ')}`)
+    }
+  }
+
   return sections.join('\n\n')
 }
 
@@ -793,6 +1007,26 @@ function tailLines(text, lineCount) {
 
 function normalizePath(path) {
   return resolve(path).replaceAll('\\', '/')
+}
+
+function findExistingPath(candidates) {
+  for (const candidate of candidates) {
+    if (candidate && existsSync(candidate)) {
+      return candidate
+    }
+  }
+  return null
+}
+
+function resolveRequiredToolPath(names, env, hint) {
+  for (const name of names) {
+    const resolved = resolveToolPath(name, env)
+    if (resolved) {
+      return resolved
+    }
+  }
+
+  throw new Error(`Unable to locate ${names.join(' or ')} on PATH. ${hint}`)
 }
 
 function resolveToolPath(name, env) {
