@@ -94,7 +94,7 @@ function prepareSourceTree(sourceRoot) {
 
 function patchStaExitBug(sourceRoot) {
   const staAppPath = join(sourceRoot, 'sta', 'sta_app.cpp')
-  let source = readFileSync(staAppPath, 'utf8')
+  let source = readFileSync(staAppPath, 'utf8').replace(/\r\n/g, '\n')
   const needle = `STAApp::~STAApp() {\n  if (arg_)\n    delete arg_;\n  if (design_)\n    delete design_;\n  if (engine_)\n    delete engine_;\n}\n`
   const replacement = `STAApp::~STAApp() {\n  arg_ = nullptr;\n  if (design_)\n    delete design_;\n  if (engine_)\n    delete engine_;\n}\n`
   if (source.includes(replacement)) {
