@@ -75,7 +75,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}\vcpkg-binary-cache
-          key: windows-vcpkg-binary-cache-x64-windows-static-v1
+          key: windows-vcpkg-binary-cache-x64-windows-static-v2
 
       - name: Install Windows FDE build dependencies
         if: runner.os == 'Windows'
@@ -97,19 +97,42 @@ jobs:
           if (Test-Path $winBison) {
             "WIN_BISON_PATH=$winBison" >> $env:GITHUB_ENV
           }
-          & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet $env:FDE_VCPKG_TRIPLET `
-            boost-date-time `
-            boost-filesystem `
-            boost-log `
-            boost-program-options `
-            boost-regex
+          $vcpkgPackages = @(
+            'boost-algorithm'
+            'boost-any'
+            'boost-assign'
+            'boost-core'
+            'boost-date-time'
+            'boost-dynamic-bitset'
+            'boost-filesystem'
+            'boost-format'
+            'boost-iostreams'
+            'boost-iterator'
+            'boost-lambda'
+            'boost-lexical-cast'
+            'boost-log'
+            'boost-phoenix'
+            'boost-pool'
+            'boost-program-options'
+            'boost-property-tree'
+            'boost-ptr-container'
+            'boost-random'
+            'boost-range'
+            'boost-regex'
+            'boost-smart-ptr'
+            'boost-spirit'
+            'boost-timer'
+            'boost-tokenizer'
+            'boost-tuple'
+          )
+          & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet $env:FDE_VCPKG_TRIPLET @vcpkgPackages
 
       - name: Save Windows vcpkg binary cache
         if: runner.os == 'Windows'
         uses: actions/cache/save@v4
         with:
           path: ${{ runner.temp }}\vcpkg-binary-cache
-          key: windows-vcpkg-binary-cache-x64-windows-static-v1
+          key: windows-vcpkg-binary-cache-x64-windows-static-v2
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -206,7 +229,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}\vcpkg-binary-cache
-          key: windows-vcpkg-binary-cache-x64-windows-static-v1
+          key: windows-vcpkg-binary-cache-x64-windows-static-v2
 
       - name: Install Windows FDE build dependencies
         if: runner.os == 'Windows'
@@ -228,19 +251,42 @@ jobs:
           if (Test-Path $winBison) {
             "WIN_BISON_PATH=$winBison" >> $env:GITHUB_ENV
           }
-          & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet $env:FDE_VCPKG_TRIPLET `
-            boost-date-time `
-            boost-filesystem `
-            boost-log `
-            boost-program-options `
-            boost-regex
+          $vcpkgPackages = @(
+            'boost-algorithm'
+            'boost-any'
+            'boost-assign'
+            'boost-core'
+            'boost-date-time'
+            'boost-dynamic-bitset'
+            'boost-filesystem'
+            'boost-format'
+            'boost-iostreams'
+            'boost-iterator'
+            'boost-lambda'
+            'boost-lexical-cast'
+            'boost-log'
+            'boost-phoenix'
+            'boost-pool'
+            'boost-program-options'
+            'boost-property-tree'
+            'boost-ptr-container'
+            'boost-random'
+            'boost-range'
+            'boost-regex'
+            'boost-smart-ptr'
+            'boost-spirit'
+            'boost-timer'
+            'boost-tokenizer'
+            'boost-tuple'
+          )
+          & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet $env:FDE_VCPKG_TRIPLET @vcpkgPackages
 
       - name: Save Windows vcpkg binary cache
         if: runner.os == 'Windows'
         uses: actions/cache/save@v4
         with:
           path: ${{ runner.temp }}\vcpkg-binary-cache
-          key: windows-vcpkg-binary-cache-x64-windows-static-v1
+          key: windows-vcpkg-binary-cache-x64-windows-static-v2
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
