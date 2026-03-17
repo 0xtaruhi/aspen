@@ -199,51 +199,61 @@ function resolveWindowsBuildEnvironment() {
 }
 
 function captureWindowsVisualStudioEnvironment(baseEnv) {
-  const setupScript = resolveWindowsVcvarsPath(baseEnv)
-  if (!setupScript) {
+  const setupCandidates = discoverWindowsVisualStudioEnvironmentCandidates(baseEnv)
+  if (setupCandidates.length === 0) {
     throw new Error(
-      'Unable to locate Visual Studio Build Tools on Windows. Install Visual Studio 2022 C++ tools with the LLVM/Clang workload.',
+      'Unable to locate a Visual Studio build environment on Windows. Install Visual Studio C++ tools with the LLVM/Clang workload.',
     )
   }
 
-  const result = spawnSync(
-    'cmd.exe',
-    ['/d', '/s', '/c', `call "${setupScript}" >nul 2>&1 && set`],
-    {
+  const failures = []
+  for (const candidate of setupCandidates) {
+    const command = buildWindowsBatchCallCommand(candidate.path, candidate.args)
+    const result = spawnSync('cmd.exe', ['/d', '/s', '/c', command], {
       encoding: 'utf8',
       env: {
         ...baseEnv,
         VSCMD_SKIP_SENDTELEMETRY: '1',
       },
       maxBuffer: 16 * 1024 * 1024,
-    },
-  )
-  if (result.status !== 0 || result.error) {
-    throw new Error(
-      formatSpawnFailure('Failed to load the Visual Studio build environment.', result),
-    )
+    })
+    if (result.status === 0 && !result.error) {
+      const env = { ...baseEnv }
+      for (const line of result.stdout.split(/\r?\n/)) {
+        const separatorIndex = line.indexOf('=')
+        if (separatorIndex <= 0) {
+          continue
+        }
+        env[line.slice(0, separatorIndex)] = line.slice(separatorIndex + 1)
+      }
+      return env
+    }
+
+    failures.push({
+      candidate,
+      summary: formatSpawnFailure('failed', result),
+    })
   }
 
-  const env = { ...baseEnv }
-  for (const line of result.stdout.split(/\r?\n/)) {
-    const separatorIndex = line.indexOf('=')
-    if (separatorIndex <= 0) {
-      continue
-    }
-    env[line.slice(0, separatorIndex)] = line.slice(separatorIndex + 1)
-  }
-  return env
+  const details = failures
+    .map(({ candidate, summary }) => {
+      const suffix = candidate.args.length > 0 ? ` ${candidate.args.join(' ')}` : ''
+      return `${candidate.path}${suffix}\n${summary}`
+    })
+    .join('\n\n')
+  throw new Error(`Failed to load the Visual Studio build environment.\n\n${details}`)
 }
 
-function resolveWindowsVcvarsPath(env) {
-  const explicitCandidates = [
-    env.VCVARS64_PATH,
-    env.VCVARSALL_PATH,
-    env.VSINSTALLDIR ? join(env.VSINSTALLDIR, 'VC', 'Auxiliary', 'Build', 'vcvars64.bat') : null,
-  ]
-  const explicitMatch = findExistingPath(explicitCandidates)
-  if (explicitMatch) {
-    return explicitMatch
+function discoverWindowsVisualStudioEnvironmentCandidates(env) {
+  const preferredCandidates = []
+  const seen = new Set()
+
+  for (const candidate of discoverExplicitWindowsBuildEnvironmentCandidates(env)) {
+    const key = `${candidate.path}::${candidate.args.join(' ')}`
+    if (!seen.has(key)) {
+      seen.add(key)
+      preferredCandidates.push(candidate)
+    }
   }
 
   const vswherePath = resolveVswherePath(env)
@@ -265,21 +275,27 @@ function resolveWindowsVcvarsPath(env) {
     )
     if (result.status === 0) {
       const installRoot = result.stdout.trim()
-      const discoveredPath = installRoot
-        ? join(installRoot, 'VC', 'Auxiliary', 'Build', 'vcvars64.bat')
-        : null
-      if (discoveredPath && existsSync(discoveredPath)) {
-        return discoveredPath
+      if (installRoot) {
+        for (const candidate of buildWindowsBuildEnvironmentCandidates(installRoot)) {
+          const key = `${candidate.path}::${candidate.args.join(' ')}`
+          if (!seen.has(key)) {
+            seen.add(key)
+            preferredCandidates.push(candidate)
+          }
+        }
       }
     }
   }
 
-  return findExistingPath([
-    'C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvars64.bat',
-    'C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional\\VC\\Auxiliary\\Build\\vcvars64.bat',
-    'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat',
-    'C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat',
-  ])
+  for (const candidate of discoverWindowsBuildEnvironmentCandidates(env)) {
+    const key = `${candidate.path}::${candidate.args.join(' ')}`
+    if (!seen.has(key)) {
+      seen.add(key)
+      preferredCandidates.push(candidate)
+    }
+  }
+
+  return preferredCandidates
 }
 
 function resolveVswherePath(env) {
@@ -305,6 +321,85 @@ function resolveWindowsLlvmBin(env) {
 
 function resolveWindowsVcpkgRoot(env) {
   return findExistingPath([env.VCPKG_ROOT, env.VCPKG_INSTALLATION_ROOT, 'C:\\vcpkg'])
+}
+
+function discoverExplicitWindowsBuildEnvironmentCandidates(env) {
+  const explicitPaths = [
+    env.VSDEVCMD_PATH ? { path: env.VSDEVCMD_PATH, args: ['-arch=x64', '-host_arch=x64'] } : null,
+    env.VCVARS64_PATH ? { path: env.VCVARS64_PATH, args: [] } : null,
+    env.VCVARSALL_PATH ? { path: env.VCVARSALL_PATH, args: ['x64'] } : null,
+    env.VSINSTALLDIR ? buildWindowsBuildEnvironmentCandidates(env.VSINSTALLDIR) : [],
+  ].flat()
+
+  return explicitPaths.filter((candidate) => candidate?.path && existsSync(candidate.path))
+}
+
+function discoverWindowsBuildEnvironmentCandidates(env) {
+  const visualStudioRoots = dedupeEntries([
+    env['ProgramFiles(x86)'] ? join(env['ProgramFiles(x86)'], 'Microsoft Visual Studio') : null,
+    env.ProgramFiles ? join(env.ProgramFiles, 'Microsoft Visual Studio') : null,
+  ]).filter((root) => existsSync(root))
+
+  const preferredEditions = ['Enterprise', 'Professional', 'Community', 'BuildTools']
+  const candidates = []
+
+  for (const root of visualStudioRoots) {
+    const versionNames = readdirSync(root, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort((left, right) => right.localeCompare(left, undefined, { numeric: true }))
+
+    for (const versionName of versionNames) {
+      const versionRoot = join(root, versionName)
+      const editionNames = readdirSync(versionRoot, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name)
+        .sort((left, right) => {
+          const leftRank = preferredEditions.indexOf(left)
+          const rightRank = preferredEditions.indexOf(right)
+          const normalizedLeftRank = leftRank === -1 ? preferredEditions.length : leftRank
+          const normalizedRightRank = rightRank === -1 ? preferredEditions.length : rightRank
+          if (normalizedLeftRank !== normalizedRightRank) {
+            return normalizedLeftRank - normalizedRightRank
+          }
+          return left.localeCompare(right)
+        })
+
+      for (const editionName of editionNames) {
+        candidates.push(...buildWindowsBuildEnvironmentCandidates(join(versionRoot, editionName)))
+      }
+    }
+  }
+
+  return candidates.filter((candidate) => existsSync(candidate.path))
+}
+
+function buildWindowsBuildEnvironmentCandidates(installRoot) {
+  if (!installRoot) {
+    return []
+  }
+
+  return [
+    {
+      path: join(installRoot, 'Common7', 'Tools', 'VsDevCmd.bat'),
+      args: ['-arch=x64', '-host_arch=x64'],
+    },
+    {
+      path: join(installRoot, 'VC', 'Auxiliary', 'Build', 'vcvars64.bat'),
+      args: [],
+    },
+    {
+      path: join(installRoot, 'VC', 'Auxiliary', 'Build', 'vcvarsall.bat'),
+      args: ['x64'],
+    },
+  ]
+}
+
+function buildWindowsBatchCallCommand(filePath, args = []) {
+  const quotedArgs = args.map((arg) => {
+    return /[\s"]/u.test(arg) ? `"${String(arg).replaceAll('"', '\\"')}"` : arg
+  })
+  return `call "${filePath}"${quotedArgs.length > 0 ? ` ${quotedArgs.join(' ')}` : ''} && set`
 }
 
 function configureBuild(sourceRoot, buildRoot, env) {
