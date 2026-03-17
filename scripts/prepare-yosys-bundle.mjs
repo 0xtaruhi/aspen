@@ -14,7 +14,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { basename, dirname, join, relative, resolve } from 'node:path'
+import { basename, delimiter, dirname, join, relative, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
@@ -349,11 +349,6 @@ function pruneBundledToolchain(bundleRoot) {
   if (process.platform === 'linux' && existsSync(join(bundleRoot, 'lib64'))) {
     keepRootEntries.add('lib64')
   }
-  if (process.platform === 'win32') {
-    keepRootEntries.add('environment.bat')
-    keepRootEntries.add('start.bat')
-  }
-
   pruneChildren(bundleRoot, keepRootEntries)
   pruneBinDirectory(join(bundleRoot, 'bin'))
   pruneLibexecDirectory(join(bundleRoot, 'libexec'))
@@ -685,27 +680,11 @@ function validateBundledYosys(bundleRoot) {
     ].join('\n'),
   )
 
-  const environmentBatch = join(bundleRoot, 'environment.bat')
-  const result =
-    process.platform === 'win32' && existsSync(environmentBatch)
-      ? spawnSync(
-          'cmd.exe',
-          [
-            '/d',
-            '/s',
-            '/c',
-            `call "${environmentBatch}" && "${yosysExecutable}" -s "${scriptPath}"`,
-          ],
-          {
-            cwd: validationDir,
-            encoding: 'utf8',
-            windowsVerbatimArguments: true,
-          },
-        )
-      : spawnSync(yosysExecutable, ['-s', scriptPath], {
-          cwd: validationDir,
-          encoding: 'utf8',
-        })
+  const result = spawnSync(yosysExecutable, ['-s', scriptPath], {
+    cwd: validationDir,
+    encoding: 'utf8',
+    env: buildYosysRuntimeEnv(bundleRoot),
+  })
   rmSync(validationDir, { recursive: true, force: true })
 
   if (result.status !== 0) {
@@ -770,4 +749,14 @@ function formatDuration(durationMs) {
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds - minutes * 60
   return `${minutes}m ${seconds.toFixed(1).replace(/\.0$/, '')}s`
+}
+
+function buildYosysRuntimeEnv(bundleRoot) {
+  const env = { ...process.env }
+  const pathEntries = env.PATH ? env.PATH.split(delimiter) : []
+  const runtimeEntries = [join(bundleRoot, 'bin'), join(bundleRoot, 'libexec')].filter((entry) =>
+    existsSync(entry),
+  )
+  env.PATH = [...new Set([...runtimeEntries, ...pathEntries].filter(Boolean))].join(delimiter)
+  return env
 }

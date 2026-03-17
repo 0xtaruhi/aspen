@@ -336,7 +336,6 @@ function validateBundledFde(bundleBinDir, bundleLibDir) {
     process.platform === 'win32'
       ? join(bundledYosysDir, 'bin', 'yosys.exe')
       : join(bundledYosysDir, 'bin', 'yosys')
-  const yosysEnv = join(bundledYosysDir, 'environment.bat')
   const fdeSimlib = join(bundledYosysSupportDir, 'fdesimlib.v')
   const fdeCellsMap = join(bundledYosysSupportDir, 'cells_map.v')
   const sourcePath = join(validationDir, 'top.v')
@@ -409,7 +408,7 @@ function validateBundledFde(bundleBinDir, bundleLibDir) {
     ].join('\n'),
   )
 
-  runYosysValidation(yosysBin, yosysEnv, scriptPath, validationDir)
+  runYosysValidation(yosysBin, scriptPath, validationDir)
 
   runFdeValidationStage(
     bundleBinDir,
@@ -530,22 +529,12 @@ function validateBundledFde(bundleBinDir, bundleLibDir) {
   rmSync(validationDir, { recursive: true, force: true })
 }
 
-function runYosysValidation(yosysBin, yosysEnv, scriptPath, cwd) {
-  const result =
-    process.platform === 'win32' && existsSync(yosysEnv)
-      ? spawnSync(
-          'cmd.exe',
-          ['/d', '/s', '/c', `call "${yosysEnv}" && "${yosysBin}" -s "${scriptPath}"`],
-          {
-            cwd,
-            encoding: 'utf8',
-            windowsVerbatimArguments: true,
-          },
-        )
-      : spawnSync(yosysBin, ['-s', scriptPath], {
-          cwd,
-          encoding: 'utf8',
-        })
+function runYosysValidation(yosysBin, scriptPath, cwd) {
+  const result = spawnSync(yosysBin, ['-s', scriptPath], {
+    cwd,
+    encoding: 'utf8',
+    env: buildYosysRuntimeEnv(bundledYosysDir),
+  })
 
   if (result.status !== 0) {
     throw new Error(
@@ -586,6 +575,16 @@ function buildFdeRuntimeEnv(bundleBinDir, bundleLibDir) {
     env.LD_LIBRARY_PATH = dedupeEntries(ldEntries).join(':')
   }
 
+  return env
+}
+
+function buildYosysRuntimeEnv(bundleRoot) {
+  const env = { ...process.env }
+  const pathEntries = env.PATH ? env.PATH.split(delimiter) : []
+  const runtimeEntries = [join(bundleRoot, 'bin'), join(bundleRoot, 'libexec')].filter((entry) =>
+    existsSync(entry),
+  )
+  env.PATH = dedupeEntries([...runtimeEntries, ...pathEntries]).join(delimiter)
   return env
 }
 

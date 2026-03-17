@@ -105,7 +105,6 @@ endmodule
     let report = run_yosys_in_workdir(
         &toolchain::SynthesisToolchainPaths {
             yosys_bin: &yosys_bin,
-            yosys_env: resolve_yosys_environment(&yosys_bin),
             fde_simlib: &fde_simlib,
             fde_techmap: &fde_techmap,
             fde_cells_map: &fde_cells_map,

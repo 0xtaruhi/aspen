@@ -18,8 +18,8 @@ use self::{
     netlist::parse_synthesized_netlist,
     process::{build_yosys_script, emit_log_chunk, stream_output},
     toolchain::{
-        resolve_fde_support_file, resolve_yosys_binary, resolve_yosys_environment,
-        spawn_yosys_process, SynthesisToolchainPaths,
+        resolve_fde_support_file, resolve_yosys_binary, spawn_yosys_process,
+        SynthesisToolchainPaths,
     },
 };
 use super::types::{SynthesisLogChunkV1, SynthesisReportV1, SynthesisRequestV1, SynthesisStatsV1};
@@ -44,7 +44,6 @@ pub fn run_yosys_synthesis(
     let fde_cells_map = resolve_fde_support_file(app, FDE_CELLS_MAP_FILE)?;
     let toolchain = SynthesisToolchainPaths {
         yosys_bin: &yosys_bin,
-        yosys_env: resolve_yosys_environment(&yosys_bin),
         fde_simlib: &fde_simlib,
         fde_techmap: &fde_techmap,
         fde_cells_map: &fde_cells_map,
