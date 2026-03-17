@@ -4,7 +4,7 @@ import {
   applyThemeAccentColor,
   DEFAULT_THEME_ACCENT,
   normalizeThemeAccentColor,
-} from '@/lib/theme-accent'
+} from '../lib/theme-accent'
 
 export type AppLanguage = 'en-US' | 'zh-CN'
 

@@ -1,6 +1,6 @@
 import { computed } from 'vue'
 
-import { settingsStore } from '@/stores/settings'
+import { settingsStore } from '../stores/settings'
 
 const messages = {
   'en-US': {

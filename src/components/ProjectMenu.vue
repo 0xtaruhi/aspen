@@ -31,12 +31,11 @@ const { isMobile } = useSidebar()
 const { t } = useI18n()
 const showNewProjectDialog = ref(false)
 const router = useRouter()
-const activeProject = computed(() => ({
-  name: projectStore.hasProject
+const activeProject = computed(() =>
+  projectStore.hasProject
     ? `${projectStore.files[0]?.name || 'Aspen FPGA'}${projectStore.hasUnsavedChanges ? ' *' : ''}`
     : t('noProjectOpen'),
-  plan: t('projectManagement'),
-}))
+)
 const recentProjects = computed(() => recentProjectsStore.state.entries)
 
 function openSettings() {
@@ -65,9 +64,8 @@ function handleOpenRecentProject(path: string) {
             </div>
             <div class="grid flex-1 text-left text-sm leading-tight">
               <span class="truncate font-medium">
-                {{ activeProject.name }}
+                {{ activeProject }}
               </span>
-              <span class="truncate text-xs">{{ activeProject.plan }}</span>
             </div>
             <ChevronsUpDown class="ml-auto" />
           </SidebarMenuButton>
