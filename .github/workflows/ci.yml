@@ -346,8 +346,7 @@ jobs:
           path: src-tauri/vendor
 
       - name: Restore bundled toolchain execute permissions
-        run: |
-          chmod +x src-tauri/vendor/yosys/bin/* src-tauri/vendor/yosys/libexec/* src-tauri/vendor/fde/bin/*
+        run: bash scripts/restore-bundled-toolchain-perms.sh
 
       - name: Rust fmt check
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
@@ -401,8 +400,7 @@ jobs:
           path: src-tauri/vendor
 
       - name: Restore bundled toolchain execute permissions
-        run: |
-          chmod +x src-tauri/vendor/yosys/bin/* src-tauri/vendor/yosys/libexec/* src-tauri/vendor/fde/bin/*
+        run: bash scripts/restore-bundled-toolchain-perms.sh
 
       - name: Build Aspen installer packages
         run: pnpm tauri build --ci -c src-tauri/tauri.yosys.conf.json
@@ -450,8 +448,7 @@ jobs:
           path: src-tauri/vendor
 
       - name: Restore bundled toolchain execute permissions
-        run: |
-          chmod +x src-tauri/vendor/yosys/bin/* src-tauri/vendor/yosys/libexec/* src-tauri/vendor/fde/bin/*
+        run: bash scripts/restore-bundled-toolchain-perms.sh
 
       - name: Build Aspen installer packages
         run: pnpm tauri build --ci -c src-tauri/tauri.yosys.conf.json
