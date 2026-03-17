@@ -48,7 +48,7 @@ async function main() {
   mkdirSync(bundleLibDir, { recursive: true })
 
   patchStaExitBug(join(workingRoot, 'source'))
-  patchWindowsBoostLogCompatibility(join(workingRoot, 'source'))
+  patchWindowsTargetVersion(join(workingRoot, 'source'))
 
   const buildEnv = resolveBuildEnvironment()
   configureBuild(join(workingRoot, 'source'), buildRoot, buildEnv)
@@ -108,43 +108,34 @@ function patchStaExitBug(sourceRoot) {
   writeFileSync(staAppPath, source)
 }
 
-function patchWindowsBoostLogCompatibility(sourceRoot) {
+function patchWindowsTargetVersion(sourceRoot) {
   if (process.platform !== 'win32') {
     return
   }
 
-  const marker = '#define _WIN32_WINNT 0x0602'
-  const macroBlock = [
-    '#ifdef _WIN32',
-    '#ifndef WINVER',
-    '#define WINVER 0x0602',
-    '#endif',
-    '#ifndef _WIN32_WINNT',
-    '#define _WIN32_WINNT 0x0602',
-    '#endif',
-    '#endif',
+  const rootCmakePath = join(sourceRoot, 'CMakeLists.txt')
+  let source = readFileSync(rootCmakePath, 'utf8').replace(/\r\n/g, '\n')
+  const marker = 'add_definitions(-D_WIN32_WINNT=0x0602 -DWINVER=0x0602)'
+  if (source.includes(marker)) {
+    return
+  }
+
+  const needle = 'set(CMAKE_CXX_STANDARD 17)\n'
+  if (!source.includes(needle)) {
+    throw new Error(`Unable to patch Windows target version in ${rootCmakePath}.`)
+  }
+
+  const replacement = [
+    'set(CMAKE_CXX_STANDARD 17)',
+    '',
+    'if(WIN32)',
+    '\tadd_definitions(-D_WIN32_WINNT=0x0602 -DWINVER=0x0602)',
+    'endif()',
     '',
   ].join('\n')
 
-  const targets = [
-    [join(sourceRoot, 'common', 'utils', 'log.h'), '#include <boost/log/attributes.hpp>\n'],
-    [
-      join(sourceRoot, 'common', 'utils', 'log.cpp'),
-      '#include <boost/log/support/date_time.hpp>\n',
-    ],
-  ]
-
-  for (const [filePath, needle] of targets) {
-    let source = readFileSync(filePath, 'utf8').replace(/\r\n/g, '\n')
-    if (source.includes(marker)) {
-      continue
-    }
-    if (!source.includes(needle)) {
-      throw new Error(`Unable to patch Windows Boost.Log compatibility in ${filePath}.`)
-    }
-    source = source.replace(needle, `${macroBlock}\n${needle}`)
-    writeFileSync(filePath, source)
-  }
+  source = source.replace(needle, replacement)
+  writeFileSync(rootCmakePath, source)
 }
 
 function resolveBuildEnvironment() {
