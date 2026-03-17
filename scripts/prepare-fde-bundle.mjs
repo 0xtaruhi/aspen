@@ -208,15 +208,7 @@ function captureWindowsVisualStudioEnvironment(baseEnv) {
 
   const failures = []
   for (const candidate of setupCandidates) {
-    const command = buildWindowsBatchCallCommand(candidate.path, candidate.args)
-    const result = spawnSync('cmd.exe', ['/d', '/s', '/c', command], {
-      encoding: 'utf8',
-      env: {
-        ...baseEnv,
-        VSCMD_SKIP_SENDTELEMETRY: '1',
-      },
-      maxBuffer: 16 * 1024 * 1024,
-    })
+    const result = runWindowsBatchAndCaptureEnvironment(candidate.path, candidate.args, baseEnv)
     if (result.status === 0 && !result.error) {
       const env = { ...baseEnv }
       for (const line of result.stdout.split(/\r?\n/)) {
@@ -395,11 +387,37 @@ function buildWindowsBuildEnvironmentCandidates(installRoot) {
   ]
 }
 
-function buildWindowsBatchCallCommand(filePath, args = []) {
-  const quotedArgs = args.map((arg) => {
-    return /[\s"]/u.test(arg) ? `"${String(arg).replaceAll('"', '\\"')}"` : arg
-  })
-  return `call "${filePath}"${quotedArgs.length > 0 ? ` ${quotedArgs.join(' ')}` : ''} && set`
+function runWindowsBatchAndCaptureEnvironment(filePath, args = [], baseEnv = process.env) {
+  const wrapperPath = join(tmpdir(), `aspen-vs-env-${process.pid}-${Date.now()}.cmd`)
+  const escapedArgs = args.map((arg) => quoteWindowsBatchArgument(arg)).join(' ')
+  writeFileSync(
+    wrapperPath,
+    [
+      '@echo off',
+      `call "${filePath}"${escapedArgs ? ` ${escapedArgs}` : ''}`,
+      'if errorlevel 1 exit /b %errorlevel%',
+      'set',
+      '',
+    ].join('\r\n'),
+  )
+
+  try {
+    return spawnSync('cmd.exe', ['/d', '/c', wrapperPath], {
+      encoding: 'utf8',
+      env: {
+        ...baseEnv,
+        VSCMD_SKIP_SENDTELEMETRY: '1',
+      },
+      maxBuffer: 16 * 1024 * 1024,
+    })
+  } finally {
+    rmSync(wrapperPath, { force: true })
+  }
+}
+
+function quoteWindowsBatchArgument(arg) {
+  const text = String(arg)
+  return /[\s"]/u.test(text) ? `"${text.replaceAll('"', '""')}"` : text
 }
 
 function configureBuild(sourceRoot, buildRoot, env) {

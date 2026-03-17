@@ -70,12 +70,12 @@ jobs:
           echo "FDE_VCPKG_TRIPLET=x64-windows-static" >> $env:GITHUB_ENV
           echo "VCPKG_DEFAULT_BINARY_CACHE=$env:RUNNER_TEMP\vcpkg-binary-cache" >> $env:GITHUB_ENV
 
-      - name: Cache Windows vcpkg binaries
+      - name: Restore Windows vcpkg binary cache
         if: runner.os == 'Windows'
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}\vcpkg-binary-cache
-          key: windows-vcpkg-fde-${{ hashFiles('.github/workflows/ci.yml', 'scripts/prepare-fde-bundle.mjs') }}
+          key: windows-vcpkg-binary-cache-x64-windows-static-v1
 
       - name: Install Windows FDE build dependencies
         if: runner.os == 'Windows'
@@ -89,6 +89,13 @@ jobs:
             boost-log `
             boost-program-options `
             boost-regex
+
+      - name: Save Windows vcpkg binary cache
+        if: runner.os == 'Windows'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}\vcpkg-binary-cache
+          key: windows-vcpkg-binary-cache-x64-windows-static-v1
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -180,12 +187,12 @@ jobs:
           echo "FDE_VCPKG_TRIPLET=x64-windows-static" >> $env:GITHUB_ENV
           echo "VCPKG_DEFAULT_BINARY_CACHE=$env:RUNNER_TEMP\vcpkg-binary-cache" >> $env:GITHUB_ENV
 
-      - name: Cache Windows vcpkg binaries
+      - name: Restore Windows vcpkg binary cache
         if: runner.os == 'Windows'
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}\vcpkg-binary-cache
-          key: windows-vcpkg-fde-${{ hashFiles('.github/workflows/ci.yml', 'scripts/prepare-fde-bundle.mjs') }}
+          key: windows-vcpkg-binary-cache-x64-windows-static-v1
 
       - name: Install Windows FDE build dependencies
         if: runner.os == 'Windows'
@@ -199,6 +206,13 @@ jobs:
             boost-log `
             boost-program-options `
             boost-regex
+
+      - name: Save Windows vcpkg binary cache
+        if: runner.os == 'Windows'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}\vcpkg-binary-cache
+          key: windows-vcpkg-binary-cache-x64-windows-static-v1
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
