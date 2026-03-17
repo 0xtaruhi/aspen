@@ -164,22 +164,66 @@ function resolveBuildEnvironment() {
 function configureBuild(sourceRoot, buildRoot, env) {
   mkdirSync(buildRoot, { recursive: true })
   const args = ['-S', sourceRoot, '-B', buildRoot, '-G', 'Ninja', '-DCMAKE_BUILD_TYPE=Release']
-  const result = spawnSync('cmake', args, {
-    stdio: 'inherit',
+  const cmakePath = resolveToolPath('cmake', env) || 'cmake'
+
+  if (process.platform === 'win32') {
+    const toolArgs = [
+      ['CMAKE_C_COMPILER', resolveToolPath('gcc', env)],
+      ['CMAKE_CXX_COMPILER', resolveToolPath('g++', env)],
+      ['CMAKE_MAKE_PROGRAM', resolveToolPath('ninja', env)],
+      ['FLEX_EXECUTABLE', resolveToolPath('flex', env)],
+      ['BISON_EXECUTABLE', resolveToolPath('bison', env)],
+    ]
+    for (const [name, value] of toolArgs) {
+      if (value) {
+        args.push(`-D${name}=${value}`)
+      }
+    }
+    args.push('-DCMAKE_SH=CMAKE_SH-NOTFOUND')
+  }
+
+  const result = spawnSync(cmakePath, args, {
+    encoding: 'utf8',
     env,
   })
-  if (result.status !== 0) {
-    throw new Error('Failed to configure FDE-Source with CMake.')
+  if (result.stdout) {
+    process.stdout.write(result.stdout)
+  }
+  if (result.stderr) {
+    process.stderr.write(result.stderr)
+  }
+  if (result.status !== 0 || result.error) {
+    throw new Error(
+      formatCmakeFailure('Failed to configure FDE-Source with CMake.', result, {
+        buildRoot,
+        commandPath: cmakePath,
+        args,
+        includeConfigureLogs: true,
+      }),
+    )
   }
 }
 
 function buildTargetsInTree(buildRoot, env) {
-  const result = spawnSync('cmake', ['--build', buildRoot, '--target', ...buildTargets, '-j4'], {
-    stdio: 'inherit',
+  const cmakePath = resolveToolPath('cmake', env) || 'cmake'
+  const result = spawnSync(cmakePath, ['--build', buildRoot, '--target', ...buildTargets, '-j4'], {
+    encoding: 'utf8',
     env,
   })
-  if (result.status !== 0) {
-    throw new Error('Failed to build the bundled FDE toolchain.')
+  if (result.stdout) {
+    process.stdout.write(result.stdout)
+  }
+  if (result.stderr) {
+    process.stderr.write(result.stderr)
+  }
+  if (result.status !== 0 || result.error) {
+    throw new Error(
+      formatCmakeFailure('Failed to build the bundled FDE toolchain.', result, {
+        buildRoot,
+        commandPath: cmakePath,
+        args: ['--build', buildRoot, '--target', ...buildTargets, '-j4'],
+      }),
+    )
   }
 }
 
@@ -634,8 +678,64 @@ function formatSpawnFailure(message, result) {
   return message
 }
 
+function formatCmakeFailure(message, result, options) {
+  const { buildRoot, commandPath, args, includeConfigureLogs = false } = options
+  const sections = [formatSpawnFailure(message, result), `Build directory: ${buildRoot}`]
+
+  if (commandPath) {
+    sections.push(`Command: ${commandPath}`)
+  }
+  if (Array.isArray(args) && args.length > 0) {
+    sections.push(`Args: ${args.join(' ')}`)
+  }
+
+  if (includeConfigureLogs) {
+    const cmakeFilesDir = join(buildRoot, 'CMakeFiles')
+    const logFiles = [
+      ['CMakeError.log', join(cmakeFilesDir, 'CMakeError.log')],
+      ['CMakeOutput.log', join(cmakeFilesDir, 'CMakeOutput.log')],
+    ]
+
+    for (const [label, filePath] of logFiles) {
+      if (!existsSync(filePath)) {
+        continue
+      }
+
+      const contents = readFileSync(filePath, 'utf8').trim()
+      if (!contents) {
+        continue
+      }
+
+      sections.push(`${label} (${filePath})\n${tailLines(contents, 200)}`)
+    }
+  }
+
+  return sections.join('\n\n')
+}
+
+function tailLines(text, lineCount) {
+  const lines = text.split(/\r?\n/)
+  return lines.slice(-lineCount).join('\n')
+}
+
 function normalizePath(path) {
   return resolve(path).replaceAll('\\', '/')
+}
+
+function resolveToolPath(name, env) {
+  const extensions = process.platform === 'win32' ? ['.exe', '.cmd', '.bat', ''] : ['']
+  const pathEntries = env.PATH ? env.PATH.split(delimiter) : []
+
+  for (const entry of pathEntries) {
+    for (const extension of extensions) {
+      const candidate = join(entry, `${name}${extension}`)
+      if (existsSync(candidate)) {
+        return candidate
+      }
+    }
+  }
+
+  return null
 }
 
 function dedupeEntries(entries) {
