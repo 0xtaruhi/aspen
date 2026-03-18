@@ -374,6 +374,11 @@ function buildPrunePlan(bundleRoot) {
   const lib64Entries = new Set()
   const frameworkEntries = new Set()
 
+  if (process.platform === 'linux') {
+    addLinuxLoaderEntries(join(bundleRoot, 'lib'), libEntries)
+    addLinuxLoaderEntries(join(bundleRoot, 'lib64'), lib64Entries)
+  }
+
   for (const dependencyPath of bundledDependencies) {
     const relPath = relative(bundleRoot, dependencyPath)
     const [topLevelDir, firstChild] = relPath.split(/[\\/]/, 2)
@@ -412,6 +417,22 @@ function buildPrunePlan(bundleRoot) {
     libEntries,
     lib64Entries,
     frameworkEntries,
+  }
+}
+
+function addLinuxLoaderEntries(libDir, keepEntries) {
+  if (!existsSync(libDir)) {
+    return
+  }
+
+  for (const entry of readdirSync(libDir, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      continue
+    }
+
+    if (/^ld-linux[-A-Za-z0-9._]*\.so(?:\.\d+)*$/i.test(entry.name)) {
+      keepEntries.add(entry.name)
+    }
   }
 }
 
