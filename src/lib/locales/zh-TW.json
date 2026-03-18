@@ -171,6 +171,7 @@
   "flowSettings": "流程設定",
   "implementationFlowSettings": "實作流程設定",
   "implementationFlowIdle": "尚未執行",
+  "elapsedTime": "耗時",
   "implementationPlaceEngine": "佈局演算法",
   "implementationPlaceEngineDescription": "佈局階段決定邏輯簇先落在哪些區域，再進入佈線。",
   "implementationRouteEngine": "繞線演算法",
@@ -441,5 +442,7 @@
   "selectionCount": "已選取 {count} 個",
   "deleteSelected": "刪除所選",
   "deleteSelectedDevicesTitle": "刪除所選裝置",
-  "deleteSelectedDevicesConfirm": "確定要刪除已選取的 {count} 個裝置嗎？"
+  "deleteSelectedDevicesConfirm": "確定要刪除已選取的 {count} 個裝置嗎？",
+  "deviceConnected": "裝置已連線",
+  "deviceRemoved": "裝置已移除"
 }

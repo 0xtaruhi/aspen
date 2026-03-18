@@ -225,22 +225,6 @@ const routeModeOptions = computed<
   },
 ])
 
-const selectedPlaceModeLabel = computed(() => {
-  return (
-    placeModeOptions.value.find(
-      (option) => option.value === projectStore.implementationSettings.placeMode,
-    )?.label ?? t('implementationPlaceModeTimingDriven')
-  )
-})
-
-const selectedRouteModeLabel = computed(() => {
-  return (
-    routeModeOptions.value.find(
-      (option) => option.value === projectStore.implementationSettings.routeMode,
-    )?.label ?? t('implementationRouteModeTimingDriven')
-  )
-})
-
 const artifactRows = computed(() => {
   const artifacts = implementationReport.value?.artifacts
   if (!artifacts) {
@@ -286,6 +270,64 @@ function stageBadgeClass(stage: { result: (typeof stageCards.value)[number]['res
     return 'border-amber-500/20 bg-amber-500/10 text-amber-600'
   }
   return 'border-destructive/20 bg-destructive/10 text-destructive'
+}
+
+const implementationStatusBadgeClass = computed(() => {
+  if (isBusy.value) {
+    return 'border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-300'
+  }
+
+  if (implementationReport.value?.success) {
+    return 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+  }
+
+  if (implementationReport.value && !implementationReport.value.success) {
+    return 'border-destructive/20 bg-destructive/10 text-destructive'
+  }
+
+  return 'border-border/70 bg-muted/40 text-foreground'
+})
+
+const implementationHeaderMeta = computed(() => {
+  return implementationReport.value
+    ? formatDuration(implementationReport.value.elapsed_ms)
+    : designContextStore.sourceName.value || t('implementationFlowIdle')
+})
+
+const summaryStageCards = computed(() => {
+  const summaryOrder = ['map', 'place', 'route', 'bitgen'] as const
+  const stageMap = new Map(stageCards.value.map((stage) => [stage.stage, stage]))
+  return summaryOrder
+    .map((stage) => stageMap.get(stage))
+    .filter((stage): stage is (typeof stageCards.value)[number] => Boolean(stage))
+})
+
+function stageStatusLabel(stage: (typeof stageCards.value)[number]) {
+  if (!stage.result) {
+    return t('pending')
+  }
+
+  if (stage.result.success) {
+    return t('completed')
+  }
+
+  return stage.result.optional ? t('warnings') : t('failed')
+}
+
+function stageStatusDotClass(stage: (typeof stageCards.value)[number]) {
+  if (!stage.result) {
+    return 'bg-muted-foreground/35'
+  }
+
+  if (stage.result.success) {
+    return 'bg-emerald-500'
+  }
+
+  if (stage.result.optional) {
+    return 'bg-amber-500'
+  }
+
+  return 'bg-destructive'
 }
 
 async function runImplementation() {
@@ -387,14 +429,20 @@ watch(
 <template>
   <NewProjectDialog v-model:open="showNewProjectDialog" />
   <div class="p-8 space-y-8 h-full flex flex-col animate-in fade-in duration-500">
-    <div class="flex items-start justify-between shrink-0 gap-6">
+    <div class="flex items-center justify-between shrink-0 gap-4">
       <div class="space-y-2">
         <h2 class="text-3xl font-bold tracking-tight">{{ t('implementation') }}</h2>
         <p class="max-w-3xl text-sm text-muted-foreground">
           {{ t('implementationDescription', { name: designContextStore.sourceName.value }) }}
         </p>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center justify-end gap-2">
+        <Badge variant="outline" :class="implementationStatusBadgeClass">
+          {{ implementationStatus }}
+        </Badge>
+        <span class="text-sm text-muted-foreground">
+          {{ implementationHeaderMeta }}
+        </span>
         <RightDrawer
           v-model="showSettingsDrawer"
           :title="t('implementationFlowSettings')"
@@ -479,19 +527,6 @@ watch(
             </section>
           </div>
         </RightDrawer>
-
-        <Badge
-          variant="outline"
-          :class="
-            implementationReport?.success
-              ? 'bg-green-500/10 text-green-600 border-green-500/20'
-              : implementationReport && !implementationReport.success
-                ? 'bg-red-500/10 text-red-600 border-red-500/20'
-                : ''
-          "
-        >
-          {{ implementationStatus }}
-        </Badge>
         <Button
           type="button"
           size="sm"
@@ -582,53 +617,22 @@ watch(
         {{ implementationErrorMessage }}
       </div>
 
-      <Card class="shrink-0 overflow-hidden border-border/70">
-        <CardContent class="flex flex-wrap items-center justify-between gap-4 py-4">
-          <div class="flex flex-wrap items-center gap-2">
-            <Badge variant="outline">{{ projectStore.targetDeviceId }}</Badge>
-            <Badge variant="outline">
-              {{ t('implementationPlaceSummary', { mode: selectedPlaceModeLabel }) }}
-            </Badge>
-            <Badge variant="outline">
-              {{ t('implementationRouteSummary', { mode: selectedRouteModeLabel }) }}
-            </Badge>
-            <Badge
-              v-if="implementationReport"
-              variant="outline"
-              :class="
-                implementationReport.timing_success
-                  ? 'border-green-500/20 bg-green-500/10 text-green-600'
-                  : 'border-amber-500/20 bg-amber-500/10 text-amber-600'
-              "
-            >
-              {{
-                implementationReport.timing_success
-                  ? t('timingCompleted')
-                  : t('timingCompletedWithWarnings')
-              }}
-            </Badge>
-          </div>
-          <div class="flex items-center gap-3 text-sm text-muted-foreground">
-            <span>
-              {{
-                implementationReport
-                  ? formatDuration(implementationReport.elapsed_ms)
-                  : t('implementationFlowIdle')
-              }}
-            </span>
-            <div class="flex flex-wrap justify-end gap-2">
-              <Badge
-                v-for="stage in stageCards"
-                :key="stage.stage"
-                variant="outline"
-                :class="stageBadgeClass(stage)"
-              >
-                {{ stage.title }}
-              </Badge>
+      <div class="grid gap-4 md:grid-cols-4 shrink-0">
+        <Card v-for="stage in summaryStageCards" :key="stage.stage">
+          <CardHeader class="pb-2">
+            <div class="flex items-center justify-between gap-3">
+              <CardTitle class="text-sm font-medium">{{ stage.title }}</CardTitle>
+              <span class="h-2 w-2 rounded-full" :class="stageStatusDotClass(stage)" />
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardHeader>
+          <CardContent>
+            <div class="text-2xl font-bold">{{ stageStatusLabel(stage) }}</div>
+            <p class="text-xs text-muted-foreground">
+              {{ stage.result ? formatDuration(stage.result.elapsed_ms) : t('notRunYet') }}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
 
       <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px] flex-1 min-h-0">
         <Card class="min-h-0 flex flex-col">
@@ -667,28 +671,6 @@ watch(
             <CardTitle>{{ t('implementationArtifacts') }}</CardTitle>
           </CardHeader>
           <CardContent class="min-h-0 flex-1 space-y-6 overflow-auto">
-            <div class="space-y-2">
-              <div class="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                {{ t('flowSettings') }}
-              </div>
-              <div class="rounded-xl border border-border/70 bg-muted/25 p-3">
-                <div class="grid gap-3">
-                  <div class="flex items-center justify-between gap-3">
-                    <span class="text-sm text-muted-foreground">{{
-                      t('implementationPlaceEngine')
-                    }}</span>
-                    <span class="text-sm font-medium">{{ selectedPlaceModeLabel }}</span>
-                  </div>
-                  <div class="flex items-center justify-between gap-3">
-                    <span class="text-sm text-muted-foreground">{{
-                      t('implementationRouteEngine')
-                    }}</span>
-                    <span class="text-sm font-medium">{{ selectedRouteModeLabel }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
             <div class="space-y-2">
               <div class="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
                 {{ t('status') }}

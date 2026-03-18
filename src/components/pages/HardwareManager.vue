@@ -26,25 +26,13 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable'
-import {
-  allFpgaDeviceDescriptors,
-  getFpgaDeviceDescriptor,
-  resolveFpgaDeviceId,
-  type FpgaDeviceId,
-} from '@/lib/fpga-device-catalog'
+import { getFpgaDeviceDescriptor, resolveFpgaDeviceId } from '@/lib/fpga-device-catalog'
 import { getImplementationBitstreamPath } from '@/lib/implementation-artifacts'
 import { useI18n } from '@/lib/i18n'
 import { getProjectOutputDirectory, joinPath } from '@/lib/project-layout'
 import { hardwareStore } from '@/stores/hardware'
 import { projectStore } from '@/stores/project'
 import type { HardwarePhase } from '@/lib/hardware-client'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 
 interface HardwareStatus {
   board: string
@@ -107,13 +95,6 @@ const isBusy = computed(() => {
 
 const isConnecting = computed(() => flowPhase.value === 'probing')
 const isProgramming = computed(() => flowPhase.value === 'programming')
-
-const lastRefresh = computed(() => {
-  if (hardwareState.value.updated_at_ms <= 0) {
-    return null
-  }
-  return new Date(hardwareState.value.updated_at_ms).toLocaleTimeString()
-})
 
 const targets = computed<HardwareTarget[]>(() => {
   if (!hardwareStatus.value) {
@@ -192,19 +173,28 @@ const flowLabel = computed(() => {
       return t('bitstreamReady')
     case 'programming':
       return t('programming')
-    case 'programmed':
-      return t('programmed')
     case 'error':
       return t('error')
     case 'device_disconnected':
       return t('disconnected')
     default:
-      return t('idle')
+      return ''
   }
 })
 
+const showToolbarFlowBadge = computed(() => {
+  return (
+    flowPhase.value === 'probing' ||
+    flowPhase.value === 'generating' ||
+    flowPhase.value === 'bitstream_ready' ||
+    flowPhase.value === 'programming' ||
+    flowPhase.value === 'error' ||
+    flowPhase.value === 'device_disconnected'
+  )
+})
+
 const flowBadgeClass = computed(() => {
-  if (flowPhase.value === 'programmed' || flowPhase.value === 'bitstream_ready') {
+  if (flowPhase.value === 'bitstream_ready') {
     return 'text-green-600 bg-green-500/10 border-green-200'
   }
   if (flowPhase.value === 'error' || flowPhase.value === 'device_disconnected') {
@@ -219,14 +209,6 @@ const flowBadgeClass = computed(() => {
   }
   return ''
 })
-
-function handleTargetDeviceChange(value: unknown) {
-  const nextValue = String(value)
-
-  if (allFpgaDeviceDescriptors.some((descriptor) => descriptor.id === nextValue)) {
-    projectStore.setTargetDevice(nextValue as FpgaDeviceId)
-  }
-}
 
 watch(
   () => hardwareState.value.artifact,
@@ -439,38 +421,11 @@ onBeforeUnmount(() => {
         {{ t('programDeviceShort') }}
       </Button>
 
-      <Separator orientation="vertical" class="h-6 mx-2" />
-
-      <div class="flex items-center gap-2">
-        <span class="text-xs text-muted-foreground">{{ t('projectTargetDevice') }}</span>
-        <Select
-          :model-value="projectStore.targetDeviceId"
-          @update:model-value="handleTargetDeviceChange"
-        >
-          <SelectTrigger class="h-8 w-40">
-            <SelectValue :placeholder="t('projectTargetDevice')" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem
-              v-for="descriptor in allFpgaDeviceDescriptors"
-              :key="descriptor.id"
-              :value="descriptor.id"
-            >
-              {{ descriptor.displayName }}
-            </SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <span v-if="lastRefresh" class="text-xs text-muted-foreground ml-2">
-        {{ t('lastProbe', { time: lastRefresh }) }}
-      </span>
-
       <span v-if="hotplugLog" class="text-xs text-muted-foreground ml-auto">
         {{ hotplugLog }}
       </span>
 
-      <Badge variant="outline" class="ml-2" :class="flowBadgeClass">
+      <Badge v-if="showToolbarFlowBadge" variant="outline" class="ml-2" :class="flowBadgeClass">
         {{ flowLabel }}
       </Badge>
     </div>

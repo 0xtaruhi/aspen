@@ -171,6 +171,7 @@
   "flowSettings": "Flow Settings",
   "implementationFlowSettings": "Implementation Flow Settings",
   "implementationFlowIdle": "Not run yet",
+  "elapsedTime": "Elapsed",
   "implementationPlaceEngine": "Place Engine",
   "implementationPlaceEngineDescription": "Placement decides where logic clusters land before routing starts.",
   "implementationRouteEngine": "Route Engine",
@@ -441,5 +442,7 @@
   "selectionCount": "{count} selected",
   "deleteSelected": "Delete Selected",
   "deleteSelectedDevicesTitle": "Delete Selected Devices",
-  "deleteSelectedDevicesConfirm": "Are you sure you want to delete {count} selected devices?"
+  "deleteSelectedDevicesConfirm": "Are you sure you want to delete {count} selected devices?",
+  "deviceConnected": "Device connected",
+  "deviceRemoved": "Device removed"
 }

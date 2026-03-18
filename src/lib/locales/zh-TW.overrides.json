@@ -45,6 +45,7 @@
   "runImplementation": "執行實作",
   "implementationFailedReviewStages": "一個或多個實作階段失敗，請檢視下方的階段狀態與日誌。",
   "implementationFlowSettings": "實作流程設定",
+  "elapsedTime": "耗時",
   "implementationRouteEngine": "繞線演算法",
   "implementationRouteEngineDescription": "繞線階段決定求解器要用多積極的策略來連接已完成佈局的設計。",
   "implementationPlaceModeTimingDrivenDescription": "預設建議。會花較多時間最佳化佈局品質與時序收斂。",
@@ -130,5 +131,7 @@
   "selectionCount": "已選取 {count} 個",
   "deleteSelected": "刪除所選",
   "deleteSelectedDevicesTitle": "刪除所選裝置",
-  "deleteSelectedDevicesConfirm": "確定要刪除已選取的 {count} 個裝置嗎？"
+  "deleteSelectedDevicesConfirm": "確定要刪除已選取的 {count} 個裝置嗎？",
+  "deviceConnected": "裝置已連線",
+  "deviceRemoved": "裝置已移除"
 }

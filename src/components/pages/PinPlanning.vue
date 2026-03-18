@@ -300,7 +300,6 @@ function goToSynthesis() {
       </div>
       <div class="flex items-center gap-2">
         <Badge variant="outline">{{ boardDescriptor.displayName }}</Badge>
-        <Badge variant="secondary">{{ projectStore.targetDeviceId }}</Badge>
       </div>
     </div>
 

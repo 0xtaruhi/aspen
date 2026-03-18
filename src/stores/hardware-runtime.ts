@@ -26,6 +26,7 @@ import {
   startHardwareDataStream,
   stopHardwareDataStream,
 } from '@/lib/hardware-client'
+import { translate } from '@/lib/i18n'
 
 type HotplugPayload = {
   kind: 'arrived' | 'left'
@@ -464,7 +465,8 @@ export async function start() {
     })
 
     unlistenHotplug = await listen<HotplugPayload>('hardware:hotplug', (event) => {
-      hotplugLog.value = event.payload.kind === 'arrived' ? 'Device connected' : 'Device removed'
+      hotplugLog.value =
+        event.payload.kind === 'arrived' ? translate('deviceConnected') : translate('deviceRemoved')
     })
 
     await invoke('start_hotplug_watch')
