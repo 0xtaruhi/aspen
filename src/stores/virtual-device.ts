@@ -7,7 +7,6 @@ import type {
 import { ref } from 'vue'
 
 import {
-  createCanvasDeviceSnapshot,
   deviceDrivesSignal as deviceTypeDrivesSignal,
   deviceReceivesSignal as deviceTypeReceivesSignal,
   getCanvasDeviceBoundSignal,
@@ -37,10 +36,7 @@ function isVirtualDeviceAction(action: HardwareActionV1): action is VirtualDevic
   )
 }
 
-const defaultCanvasDevices: CanvasDeviceSnapshot[] = [
-  createCanvasDeviceSnapshot('led', '1', 100, 100, 0),
-  createCanvasDeviceSnapshot('switch', '2', 300, 100, 0),
-]
+const defaultCanvasDevices: CanvasDeviceSnapshot[] = []
 
 const canvasDevices = ref<CanvasDeviceSnapshot[]>([])
 resetState()

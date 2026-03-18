@@ -1,3 +1,5 @@
+#[cfg(target_os = "macos")]
+mod app_menu;
 mod hardware;
 
 use std::{
@@ -368,7 +370,7 @@ fn stop_hotplug_watch(state: tauri::State<'_, Arc<HotplugState>>) -> Result<(), 
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(Arc::new(HotplugState::default()))
@@ -393,7 +395,18 @@ pub fn run() {
             inspect_project_directory,
             start_hotplug_watch,
             stop_hotplug_watch
-        ])
+        ]);
+
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .menu(app_menu::build_app_menu)
+        .on_menu_event(|app, event| {
+            if let Some(action) = app_menu::menu_action_for_id(event.id().as_ref()) {
+                let _ = app.emit("aspen://menu-action", action);
+            }
+        });
+
+    builder
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -14,6 +14,10 @@ export type DesignSource = {
   isHardwareSource: boolean
 }
 
+export type DesignModuleSource = DesignSource & {
+  moduleNames: string[]
+}
+
 type SignalSummary = {
   inputs: number
   outputs: number
@@ -95,6 +99,15 @@ const sourceCode = computed(() => selectedSource.value?.code ?? '')
 const projectSources = computed(() => collectDesignSources(projectStore.files))
 const hardwareSources = computed(() => {
   return projectSources.value.filter((source) => source.isHardwareSource)
+})
+
+const moduleSources = computed<DesignModuleSource[]>(() => {
+  return hardwareSources.value
+    .map((source) => ({
+      ...source,
+      moduleNames: extractVerilogModuleNames(source.code),
+    }))
+    .filter((source) => source.moduleNames.length > 0)
 })
 
 const parsedModuleNames = computed(() => {
@@ -215,6 +228,7 @@ export const designContextStore = {
   sourceCode,
   projectSources,
   hardwareSources,
+  moduleSources,
   moduleNames,
   moduleNamesStale,
   primaryModule,

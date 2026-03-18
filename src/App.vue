@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { isTauri } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { Settings2 } from 'lucide-vue-next'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 
 import AppSidebar from '@/components/AppSidebar.vue'
+import NewProjectDialog from '@/components/project/NewProjectDialog.vue'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -14,15 +17,24 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { useI18n } from '@/lib/i18n'
-import { saveProject } from '@/lib/project-io'
+import { openProject, saveProject, saveProjectAs } from '@/lib/project-io'
 import ThemeToggleButton from '@/components/ThemeToggleButton.vue'
 import { routeLabelMap, type AppRouteName } from '@/router'
 import { projectStore } from '@/stores/project'
 import { uiStore } from '@/stores/ui'
 
+type AppMenuAction =
+  | 'new-project'
+  | 'open-project'
+  | 'save-project'
+  | 'save-project-as'
+  | 'open-settings'
+
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
+const showNewProjectDialog = ref(false)
+let unlistenAppMenu: (() => void) | null = null
 const moduleLabelKeyMap = {
   'project-management': 'projectManagement',
   'fpga-flow': 'fpgaFlow',
@@ -102,21 +114,56 @@ function openSettings() {
   void router.push({ name: 'settings' })
 }
 
+function handleAppMenuAction(action: AppMenuAction) {
+  switch (action) {
+    case 'new-project':
+      showNewProjectDialog.value = true
+      return
+    case 'open-project':
+      void openProject()
+      return
+    case 'save-project':
+      void saveProject()
+      return
+    case 'save-project-as':
+      void saveProjectAs()
+      return
+    case 'open-settings':
+      openSettings()
+  }
+}
+
 onMounted(() => {
   if (typeof window !== 'undefined') {
     window.addEventListener('keydown', handleGlobalKeydown, { capture: true })
   }
+
+  if (!isTauri()) {
+    return
+  }
+
+  void listen<AppMenuAction>('aspen://menu-action', (event) => {
+    handleAppMenuAction(event.payload)
+  }).then((unlisten) => {
+    unlistenAppMenu = unlisten
+  })
 })
 
 onUnmounted(() => {
   if (typeof window !== 'undefined') {
     window.removeEventListener('keydown', handleGlobalKeydown, { capture: true })
   }
+
+  if (unlistenAppMenu) {
+    unlistenAppMenu()
+    unlistenAppMenu = null
+  }
 })
 </script>
 
 <template>
   <div class="min-h-screen bg-background text-foreground transition-colors">
+    <NewProjectDialog v-model:open="showNewProjectDialog" />
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset class="relative h-screen overflow-hidden flex flex-col">

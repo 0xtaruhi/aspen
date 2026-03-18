@@ -11,6 +11,7 @@ import { useRouter } from 'vue-router'
 
 import RightDrawer from '@/components/RightDrawer.vue'
 import NewProjectDialog from '@/components/project/NewProjectDialog.vue'
+import RecentProjectsPanel from '@/components/project/RecentProjectsPanel.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -529,6 +530,9 @@ watch(
             <Button type="button" variant="outline" @click="openProject">
               {{ t('openProject') }}
             </Button>
+            <div class="w-full pt-1">
+              <RecentProjectsPanel />
+            </div>
           </template>
         </div>
       </CardContent>

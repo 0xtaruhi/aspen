@@ -6,7 +6,7 @@ import {
   normalizeThemeAccentColor,
 } from '../lib/theme-accent'
 
-export type AppLanguage = 'en-US' | 'zh-CN'
+export type AppLanguage = 'en-US' | 'zh-CN' | 'zh-TW'
 
 type SettingsState = {
   language: AppLanguage
@@ -18,8 +18,59 @@ type SettingsState = {
 
 const STORAGE_KEY = 'aspen-settings'
 
+function normalizeLanguage(value: unknown): AppLanguage | null {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const normalized = value.trim().toLowerCase().replace('_', '-')
+  if (!normalized) {
+    return null
+  }
+
+  if (
+    normalized.startsWith('zh-hant') ||
+    normalized.includes('-hant') ||
+    normalized.endsWith('-tw') ||
+    normalized.endsWith('-hk') ||
+    normalized.endsWith('-mo')
+  ) {
+    return 'zh-TW'
+  }
+
+  if (normalized.startsWith('zh')) {
+    return 'zh-CN'
+  }
+
+  if (normalized.startsWith('en')) {
+    return 'en-US'
+  }
+
+  return null
+}
+
+function detectPreferredLanguage(): AppLanguage {
+  if (typeof navigator === 'undefined') {
+    return 'zh-CN'
+  }
+
+  const candidates = Array.isArray(navigator.languages) ? navigator.languages : []
+  const orderedLanguages = candidates.length > 0 ? candidates : [navigator.language]
+
+  for (const candidate of orderedLanguages) {
+    const language = normalizeLanguage(candidate)
+    if (language) {
+      return language
+    }
+  }
+
+  return 'en-US'
+}
+
+const defaultLanguage = detectPreferredLanguage()
+
 const defaultSettings: SettingsState = {
-  language: 'zh-CN',
+  language: defaultLanguage,
   themeAccent: DEFAULT_THEME_ACCENT,
   editorFontSize: 14,
   editorMinimap: true,
@@ -31,7 +82,8 @@ function applyLanguage(language: AppLanguage) {
     return
   }
 
-  document.documentElement.lang = language
+  document.documentElement.lang =
+    language === 'zh-CN' ? 'zh-Hans' : language === 'zh-TW' ? 'zh-Hant' : language
 }
 
 function readStoredSettings(): Partial<SettingsState> {
@@ -52,6 +104,7 @@ function readStoredSettings(): Partial<SettingsState> {
 
     return {
       ...parsed,
+      language: normalizeLanguage(parsed.language) ?? defaultLanguage,
       themeAccent: normalizeThemeAccentColor(parsed.themeAccent),
     }
   } catch (_) {

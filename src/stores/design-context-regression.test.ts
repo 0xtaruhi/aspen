@@ -97,4 +97,47 @@ endmodule`,
     expect(designContextStore.moduleNamesStale.value).toBe(true)
     expect(designContextStore.primaryModule.value).toBe('helper')
   })
+
+  it('collects detected modules from every hardware source in the project', () => {
+    projectStore.createNewProject('MultiFileProject', 'empty')
+    projectStore.files = [
+      {
+        id: 'root',
+        name: 'MultiFileProject',
+        type: 'folder',
+        isOpen: true,
+        children: [
+          {
+            id: 'top-file',
+            name: 'top.sv',
+            type: 'file',
+            content: `module automatic actual_top(input logic clk, output logic led);
+  assign led = clk;
+endmodule`,
+          },
+          {
+            id: 'helper-file',
+            name: 'helper.v',
+            type: 'file',
+            content: `module helper(input wire a, output wire y);
+  assign y = a;
+endmodule`,
+          },
+        ],
+      },
+    ]
+    projectStore.topFileId = 'top-file'
+    projectStore.activeFileId = 'top-file'
+    projectStore.selectedNodeId = 'top-file'
+
+    expect(designContextStore.moduleSources.value).toHaveLength(2)
+    expect(designContextStore.moduleSources.value.map((source) => source.path)).toEqual([
+      'MultiFileProject/top.sv',
+      'MultiFileProject/helper.v',
+    ])
+    expect(designContextStore.moduleSources.value.map((source) => source.moduleNames)).toEqual([
+      ['actual_top'],
+      ['helper'],
+    ])
+  })
 })

@@ -29,7 +29,7 @@ const themeAccentInput = computed(() => normalizeThemeAccentColor(settingsStore.
 const themePresetOptions = Object.keys(APP_THEME_PRESET_COLORS) as AppThemePresetColor[]
 
 function handleLanguageChange(value: unknown) {
-  if (value === 'en-US' || value === 'zh-CN') {
+  if (value === 'en-US' || value === 'zh-CN' || value === 'zh-TW') {
     settingsStore.setLanguage(value as AppLanguage)
   }
 }
@@ -91,6 +91,7 @@ function handleThemeAccentInput(value: string) {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="zh-CN">{{ t('chinese') }}</SelectItem>
+                    <SelectItem value="zh-TW">{{ t('traditionalChinese') }}</SelectItem>
                     <SelectItem value="en-US">{{ t('english') }}</SelectItem>
                   </SelectContent>
                 </Select>
