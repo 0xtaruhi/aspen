@@ -24,9 +24,150 @@ env:
   OSS_CAD_SUITE_VERSION: '2026-03-17'
 
 jobs:
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      rust: ${{ steps.filter.outputs.rust }}
+      toolchain: ${{ steps.filter.outputs.toolchain }}
+      desktop: ${{ steps.filter.outputs.desktop }}
+      force_full: ${{ steps.flags.outputs.force_full }}
+      run_frontend: ${{ steps.flags.outputs.run_frontend }}
+      run_rust: ${{ steps.flags.outputs.run_rust }}
+      run_packages: ${{ steps.flags.outputs.run_packages }}
+      run_toolchain_linux: ${{ steps.flags.outputs.run_toolchain_linux }}
+      run_toolchain_macos: ${{ steps.flags.outputs.run_toolchain_macos }}
+      run_toolchain_windows: ${{ steps.flags.outputs.run_toolchain_windows }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Filter changed paths
+        id: filter
+        if: github.event_name != 'workflow_dispatch' && !startsWith(github.ref, 'refs/tags/v')
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            frontend:
+              - 'src/**'
+              - 'index.html'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'tsconfig*.json'
+              - 'vite.config.*'
+              - 'vitest.config.*'
+            rust:
+              - 'src-tauri/build.rs'
+              - 'src-tauri/src/**'
+              - 'src-tauri/Cargo.toml'
+              - 'src-tauri/Cargo.lock'
+            toolchain:
+              - 'scripts/prepare-yosys-bundle.mjs'
+              - 'scripts/prepare-fde-bundle.mjs'
+              - 'scripts/restore-bundled-toolchain-perms.sh'
+              - 'src-tauri/resource/**'
+            desktop:
+              - 'src/**'
+              - 'src-tauri/**'
+              - 'index.html'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'tsconfig*.json'
+              - 'vite.config.*'
+              - 'vitest.config.*'
+              - 'scripts/prepare-yosys-bundle.mjs'
+              - 'scripts/prepare-fde-bundle.mjs'
+              - 'scripts/restore-bundled-toolchain-perms.sh'
+
+      - name: Compute CI matrix
+        id: flags
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          frontend="${{ steps.filter.outputs.frontend }}"
+          rust="${{ steps.filter.outputs.rust }}"
+          toolchain="${{ steps.filter.outputs.toolchain }}"
+          desktop="${{ steps.filter.outputs.desktop }}"
+
+          [ -n "$frontend" ] || frontend=false
+          [ -n "$rust" ] || rust=false
+          [ -n "$toolchain" ] || toolchain=false
+          [ -n "$desktop" ] || desktop=false
+
+          force_full=false
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            force_full=true
+          fi
+
+          run_frontend=false
+          run_rust=false
+          run_packages=false
+          run_toolchain_linux=false
+          run_toolchain_macos=false
+          run_toolchain_windows=false
+
+          if [ "$force_full" = true ]; then
+            run_frontend=true
+            run_rust=true
+            run_packages=true
+            run_toolchain_linux=true
+            run_toolchain_macos=true
+            run_toolchain_windows=true
+          else
+            if [ "$rust" = true ] || [ "$toolchain" = true ]; then
+              run_rust=true
+            fi
+
+            if [ "${{ github.event_name }}" != "pull_request" ] && [ "$desktop" = true ]; then
+              run_packages=true
+            fi
+
+            if [ "$frontend" = true ] || [ "$run_packages" = true ]; then
+              run_frontend=true
+            fi
+
+            if [ "$run_rust" = true ] || [ "$run_packages" = true ]; then
+              run_toolchain_linux=true
+            fi
+
+            if [ "$run_packages" = true ]; then
+              run_toolchain_macos=true
+              run_toolchain_windows=true
+            fi
+          fi
+
+          {
+            echo "force_full=$force_full"
+            echo "run_frontend=$run_frontend"
+            echo "run_rust=$run_rust"
+            echo "run_packages=$run_packages"
+            echo "run_toolchain_linux=$run_toolchain_linux"
+            echo "run_toolchain_macos=$run_toolchain_macos"
+            echo "run_toolchain_windows=$run_toolchain_windows"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "frontend=$frontend"
+          echo "rust=$rust"
+          echo "toolchain=$toolchain"
+          echo "desktop=$desktop"
+          echo "force_full=$force_full"
+          echo "run_frontend=$run_frontend"
+          echo "run_rust=$run_rust"
+          echo "run_packages=$run_packages"
+          echo "run_toolchain_linux=$run_toolchain_linux"
+          echo "run_toolchain_macos=$run_toolchain_macos"
+          echo "run_toolchain_windows=$run_toolchain_windows"
+
   frontend-checks:
     name: Frontend Checks
     runs-on: ubuntu-latest
+    needs:
+      - changes
+    if: needs.changes.outputs.run_frontend == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -57,6 +198,9 @@ jobs:
   toolchain-linux:
     name: Toolchains (ubuntu-22.04)
     runs-on: ubuntu-22.04
+    needs:
+      - changes
+    if: needs.changes.outputs.run_toolchain_linux == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -135,7 +279,9 @@ jobs:
   toolchain-macos:
     name: Toolchains (macos-latest)
     runs-on: macos-latest
-    if: github.event_name != 'pull_request'
+    needs:
+      - changes
+    if: needs.changes.outputs.run_toolchain_macos == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -201,7 +347,9 @@ jobs:
   toolchain-windows:
     name: Toolchains (windows-latest)
     runs-on: windows-latest
-    if: github.event_name != 'pull_request'
+    needs:
+      - changes
+    if: needs.changes.outputs.run_toolchain_windows == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -332,7 +480,9 @@ jobs:
     name: Rust Checks
     runs-on: ubuntu-22.04
     needs:
+      - changes
       - toolchain-linux
+    if: needs.changes.outputs.run_rust == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -368,10 +518,11 @@ jobs:
   packages-linux:
     name: Aspen Packages (ubuntu-22.04)
     runs-on: ubuntu-22.04
-    if: github.event_name != 'pull_request'
     needs:
+      - changes
       - frontend-checks
       - toolchain-linux
+    if: needs.changes.outputs.run_packages == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -428,10 +579,11 @@ jobs:
   packages-macos:
     name: Aspen Packages (macos-latest)
     runs-on: macos-latest
-    if: github.event_name != 'pull_request'
     needs:
+      - changes
       - frontend-checks
       - toolchain-macos
+    if: needs.changes.outputs.run_packages == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -498,10 +650,11 @@ jobs:
   packages-windows:
     name: Aspen Packages (windows-latest)
     runs-on: windows-latest
-    if: github.event_name != 'pull_request'
     needs:
+      - changes
       - frontend-checks
       - toolchain-windows
+    if: needs.changes.outputs.run_packages == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -545,6 +698,7 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     needs:
+      - changes
       - rust-checks
       - packages-linux
       - packages-macos
