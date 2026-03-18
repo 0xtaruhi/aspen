@@ -377,6 +377,12 @@ function buildPrunePlan(bundleRoot) {
   if (process.platform === 'linux') {
     addLinuxLoaderEntries(join(bundleRoot, 'lib'), libEntries)
     addLinuxLoaderEntries(join(bundleRoot, 'lib64'), lib64Entries)
+    if (existsSync(join(bundleRoot, 'lib', 'yosys'))) {
+      libEntries.add('yosys')
+    }
+    if (existsSync(join(bundleRoot, 'lib', 'yosys-abc'))) {
+      libEntries.add('yosys-abc')
+    }
   }
 
   for (const dependencyPath of bundledDependencies) {
@@ -585,7 +591,18 @@ function getRuntimeTargetPaths(bundleRoot) {
     join(bundleRoot, 'bin', 'yosys-abc'),
   ]
 
-  return candidates.filter((candidate) => existsSync(candidate) && !isShellScript(candidate))
+  return candidates.filter((candidate) => {
+    if (!existsSync(candidate)) {
+      return false
+    }
+
+    if (!isShellScript(candidate)) {
+      return true
+    }
+
+    const relPath = relative(bundleRoot, candidate)
+    return relPath.startsWith('lib/') || relPath.startsWith('lib\\')
+  })
 }
 
 function isShellScript(filePath) {
@@ -621,7 +638,12 @@ function collectBundledDependencies(bundleRoot, runtimeTargets) {
 }
 
 function collectShellWrapperDependencies(bundleRoot) {
-  const wrappers = [join(bundleRoot, 'bin', 'yosys'), join(bundleRoot, 'bin', 'yosys-abc')]
+  const wrappers = [
+    join(bundleRoot, 'bin', 'yosys'),
+    join(bundleRoot, 'bin', 'yosys-abc'),
+    join(bundleRoot, 'lib', 'yosys'),
+    join(bundleRoot, 'lib', 'yosys-abc'),
+  ]
   const discovered = new Set()
 
   for (const wrapperPath of wrappers) {
