@@ -1,59 +1,105 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch, type Component } from 'vue'
+import {
+  computed,
+  onMounted,
+  onUnmounted,
+  ref,
+  watch,
+  type Component,
+  type CSSProperties,
+} from 'vue'
+
 import BaseDevice from '../devices/BaseDevice.vue'
-import WireLayer from './WireLayer.vue'
-import LedDevice from '../devices/LedDevice.vue'
-import SwitchDevice from '../devices/SwitchDevice.vue'
 import ButtonDevice from '../devices/ButtonDevice.vue'
 import GenericPanelDevice from '../devices/GenericPanelDevice.vue'
-import SegmentDisplayDevice from '../devices/SegmentDisplayDevice.vue'
+import LedDevice from '../devices/LedDevice.vue'
 import LedMatrixDevice from '../devices/LedMatrixDevice.vue'
-import { hardwareStore } from '@/stores/hardware'
+import SegmentDisplayDevice from '../devices/SegmentDisplayDevice.vue'
+import SwitchDevice from '../devices/SwitchDevice.vue'
+import WireLayer from './WireLayer.vue'
 import type { CanvasDeviceSnapshot, CanvasDeviceType } from '@/lib/hardware-client'
-import { consumePaletteDrop, paletteDragStore } from '@/stores/palette-drag'
+import {
+  buildDraggedPositions,
+  collectIntersectingBoundsIds,
+  normalizeCanvasRect,
+  snapDraggedPositions,
+  snapToGrid,
+  type CanvasPoint,
+} from '@/lib/canvas-selection'
 import {
   canvasDeviceEmitsToggle,
   createCanvasDeviceSnapshot,
+  deviceReceivesSignal,
   getCanvasDeviceBoundSignal,
   getCanvasDeviceBoundSignalCount,
-  deviceReceivesSignal,
-  getCanvasMatrixDimensions,
-  getCanvasSegmentDisplayConfig,
   getCanvasDeviceRendererProps,
   getCanvasDeviceShellSize,
+  getCanvasMatrixDimensions,
+  getCanvasSegmentDisplayConfig,
   isCanvasMatrixDevice,
   isCanvasSegmentDisplayDevice,
 } from '@/lib/canvas-devices'
+import { hardwareStore } from '@/stores/hardware'
+import { consumePaletteDrop, paletteDragStore } from '@/stores/palette-drag'
+
+type DeviceSelectionMode = 'preserve' | 'replace' | 'toggle'
+
+type DragSelectionState = {
+  append: boolean
+  baseSelectedIds: string[]
+  currentClientX: number
+  currentClientY: number
+  startClientX: number
+  startClientY: number
+}
+
+type GroupDragState = {
+  ids: string[]
+  leaderId: string
+  startPositions: Record<string, CanvasPoint>
+}
 
 const props = defineProps<{
   selectedDeviceId?: string | null
+  selectedDeviceIds?: string[]
   blockedTopInset?: number
 }>()
 
 const emit = defineEmits<{
   (e: 'update:selectedDeviceId', value: string | null): void
+  (e: 'update:selectedDeviceIds', value: string[]): void
   (e: 'open-settings', value: string): void
 }>()
 
 const canvasRef = ref<HTMLElement | null>(null)
-
-// State
 const scale = ref(1)
 const offset = ref({ x: 0, y: 0 })
 const isDraggingCanvas = ref(false)
 const lastMousePos = ref({ x: 0, y: 0 })
+const selectionState = ref<DragSelectionState | null>(null)
 const transientDevicePositions = ref<Record<string, { x: number; y: number }>>({})
 const animatingDeviceIds = ref<Record<string, boolean>>({})
-
-const devices = computed(() => hardwareStore.state.value.canvas_devices)
-const streamRunning = computed(() => hardwareStore.dataStreamStatus.value.running)
-
+const groupDragState = ref<GroupDragState | null>(null)
+const internalSelectedDeviceId = ref<string | null>(null)
+const internalSelectedDeviceIds = ref<string[]>([])
 const wires = ref<
   Array<{ id: string; x1: number; y1: number; x2: number; y2: number; color: string }>
 >([])
 
-const internalSelectedDeviceId = ref<string | null>(null)
-const selectedDeviceId = computed(() => props.selectedDeviceId ?? internalSelectedDeviceId.value)
+const devices = computed(() => hardwareStore.state.value.canvas_devices)
+const streamRunning = computed(() => hardwareStore.dataStreamStatus.value.running)
+const selectedDeviceIds = computed(() => {
+  if (props.selectedDeviceIds !== undefined) {
+    return props.selectedDeviceIds
+  }
+
+  if (props.selectedDeviceId !== undefined) {
+    return props.selectedDeviceId ? [props.selectedDeviceId] : []
+  }
+
+  return internalSelectedDeviceIds.value
+})
+const selectedDeviceIdSet = computed(() => new Set(selectedDeviceIds.value))
 
 const deviceRendererByType: Record<CanvasDeviceType, Component> = {
   led: LedDevice,
@@ -72,9 +118,9 @@ const deviceRendererByType: Record<CanvasDeviceType, Component> = {
 let dropIdCounter = 0
 const SNAP_GRID = 20
 const SNAP_ANIMATION_MS = 180
+const MARQUEE_THRESHOLD_PX = 4
 const snapAnimationTimers = new Map<string, number>()
 
-// Canvas Navigation
 function handleWheel(e: WheelEvent) {
   if (e.ctrlKey || e.metaKey) {
     e.preventDefault()
@@ -87,98 +133,119 @@ function handleWheel(e: WheelEvent) {
   }
 }
 
+function normalizeSelectedIds(ids: readonly string[]) {
+  const availableIds = new Set(devices.value.map((device) => device.id))
+  const seen = new Set<string>()
+  const normalized: string[] = []
+
+  for (const id of ids) {
+    if (!availableIds.has(id) || seen.has(id)) {
+      continue
+    }
+
+    seen.add(id)
+    normalized.push(id)
+  }
+
+  return normalized
+}
+
+function setSelectedDevices(ids: readonly string[], primaryId: string | null = null) {
+  const normalizedIds = normalizeSelectedIds(ids)
+  const nextPrimaryId =
+    normalizedIds.length === 1
+      ? primaryId && normalizedIds.includes(primaryId)
+        ? primaryId
+        : (normalizedIds[0] ?? null)
+      : null
+
+  internalSelectedDeviceIds.value = normalizedIds
+  internalSelectedDeviceId.value = nextPrimaryId
+  emit('update:selectedDeviceIds', [...normalizedIds])
+  emit('update:selectedDeviceId', nextPrimaryId)
+}
+
+function selectDevice(id: string, mode: DeviceSelectionMode) {
+  if (mode === 'preserve') {
+    if (selectedDeviceIdSet.value.has(id)) {
+      setSelectedDevices(selectedDeviceIds.value, selectedDeviceIds.value.length === 1 ? id : null)
+      return
+    }
+
+    setSelectedDevices([id], id)
+    return
+  }
+
+  if (mode === 'replace') {
+    setSelectedDevices([id], id)
+    return
+  }
+
+  const nextIds = selectedDeviceIdSet.value.has(id)
+    ? selectedDeviceIds.value.filter((selectedId) => selectedId !== id)
+    : [...selectedDeviceIds.value, id]
+  setSelectedDevices(nextIds, nextIds.length === 1 ? (nextIds[0] ?? null) : null)
+}
+
 function startPan(e: MouseEvent) {
+  isDraggingCanvas.value = true
+  lastMousePos.value = { x: e.clientX, y: e.clientY }
+  window.addEventListener('mousemove', handleWindowMouseMove)
+  window.addEventListener('mouseup', handleWindowMouseUp)
+}
+
+function startSelection(e: MouseEvent) {
+  selectionState.value = {
+    append: e.shiftKey || e.metaKey,
+    baseSelectedIds: e.shiftKey || e.metaKey ? [...selectedDeviceIds.value] : [],
+    currentClientX: e.clientX,
+    currentClientY: e.clientY,
+    startClientX: e.clientX,
+    startClientY: e.clientY,
+  }
+  window.addEventListener('mousemove', handleWindowMouseMove)
+  window.addEventListener('mouseup', handleWindowMouseUp)
+}
+
+function handleCanvasMouseDown(e: MouseEvent) {
   if (e.button === 1 || (e.button === 0 && e.altKey)) {
-    // Middle click or Alt+Left
-    isDraggingCanvas.value = true
+    e.preventDefault()
+    startPan(e)
+    return
+  }
+
+  if (e.button !== 0) {
+    return
+  }
+
+  e.preventDefault()
+  startSelection(e)
+}
+
+function handleWindowMouseMove(e: MouseEvent) {
+  if (isDraggingCanvas.value) {
+    const dx = e.clientX - lastMousePos.value.x
+    const dy = e.clientY - lastMousePos.value.y
+    offset.value.x += dx
+    offset.value.y += dy
     lastMousePos.value = { x: e.clientX, y: e.clientY }
     return
   }
 
-  if (e.button === 0) {
-    setSelectedDeviceId(null)
-  }
-}
-
-function pan(e: MouseEvent) {
-  if (!isDraggingCanvas.value) return
-  const dx = e.clientX - lastMousePos.value.x
-  const dy = e.clientY - lastMousePos.value.y
-  offset.value.x += dx
-  offset.value.y += dy
-  lastMousePos.value = { x: e.clientX, y: e.clientY }
-}
-
-function endPan() {
-  isDraggingCanvas.value = false
-}
-
-// Device Interaction
-function setSelectedDeviceId(id: string | null) {
-  internalSelectedDeviceId.value = id
-  emit('update:selectedDeviceId', id)
-}
-
-function selectDevice(id: string) {
-  setSelectedDeviceId(id)
-}
-
-function updateDevicePosition(id: string, x: number, y: number) {
-  clearSnapAnimation(id)
-  delete animatingDeviceIds.value[id]
-  transientDevicePositions.value[id] = { x, y }
-}
-
-function openDeviceSettings(id: string) {
-  setSelectedDeviceId(id)
-  emit('open-settings', id)
-}
-
-async function renameDevice(id: string, label: string) {
-  const device = devices.value.find((candidate) => candidate.id === id)
-  if (!device || device.label === label) {
+  if (!selectionState.value) {
     return
   }
 
-  await hardwareStore.upsertCanvasDevice({
-    ...device,
-    label,
-  })
-}
-
-function removeDevice(id: string) {
-  clearSnapAnimation(id)
-  delete animatingDeviceIds.value[id]
-  delete transientDevicePositions.value[id]
-
-  if (selectedDeviceId.value === id) {
-    setSelectedDeviceId(null)
-  }
-
-  void hardwareStore.removeCanvasDevice(id)
-}
-
-function snapToGrid(value: number) {
-  return Math.round(value / SNAP_GRID) * SNAP_GRID
-}
-
-function clearSnapAnimation(id: string) {
-  const timer = snapAnimationTimers.get(id)
-  if (timer) {
-    clearTimeout(timer)
-    snapAnimationTimers.delete(id)
+  selectionState.value = {
+    ...selectionState.value,
+    currentClientX: e.clientX,
+    currentClientY: e.clientY,
   }
 }
 
-function runNextFrame(callback: () => void) {
-  if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
-    window.requestAnimationFrame(() => {
-      callback()
-    })
-    return
-  }
-
-  window.setTimeout(callback, 16)
+function removeWindowMouseListeners() {
+  window.removeEventListener('mousemove', handleWindowMouseMove)
+  window.removeEventListener('mouseup', handleWindowMouseUp)
 }
 
 function resolveCanvasPlacement(clientX: number, clientY: number) {
@@ -201,12 +268,205 @@ function resolveCanvasPlacement(clientX: number, clientY: number) {
   }
 }
 
+function resolveCanvasPoint(clientX: number, clientY: number) {
+  if (!canvasRef.value) {
+    return null
+  }
+
+  const rect = canvasRef.value.getBoundingClientRect()
+  return {
+    x: (clientX - rect.left - offset.value.x) / scale.value,
+    y: (clientY - rect.top - offset.value.y) / scale.value,
+  }
+}
+
+function clampToCanvas(clientX: number, clientY: number) {
+  if (!canvasRef.value) {
+    return null
+  }
+
+  const rect = canvasRef.value.getBoundingClientRect()
+  return {
+    x: Math.max(0, Math.min(rect.width, clientX - rect.left)),
+    y: Math.max(0, Math.min(rect.height, clientY - rect.top)),
+  }
+}
+
+function selectionMovedEnough(state: DragSelectionState) {
+  return (
+    Math.abs(state.currentClientX - state.startClientX) >= MARQUEE_THRESHOLD_PX ||
+    Math.abs(state.currentClientY - state.startClientY) >= MARQUEE_THRESHOLD_PX
+  )
+}
+
+function collectSelectionIds(state: DragSelectionState) {
+  const start = resolveCanvasPoint(state.startClientX, state.startClientY)
+  const end = resolveCanvasPoint(state.currentClientX, state.currentClientY)
+  if (!start || !end) {
+    return state.append ? [...state.baseSelectedIds] : []
+  }
+
+  const ids = collectIntersectingBoundsIds(
+    normalizeCanvasRect(start, end),
+    devices.value.map((device) => {
+      const position = devicePosition(device)
+      const size = shellSize(device)
+      return {
+        id: device.id,
+        x: position.x,
+        y: position.y,
+        width: size.width,
+        height: size.height,
+      }
+    }),
+  )
+
+  return state.append ? [...state.baseSelectedIds, ...ids] : ids
+}
+
+const selectionOverlayStyle = computed<CSSProperties | null>(() => {
+  if (!selectionState.value || !canvasRef.value) {
+    return null
+  }
+
+  const start = clampToCanvas(selectionState.value.startClientX, selectionState.value.startClientY)
+  const end = clampToCanvas(
+    selectionState.value.currentClientX,
+    selectionState.value.currentClientY,
+  )
+  if (!start || !end) {
+    return null
+  }
+
+  const rect = normalizeCanvasRect(start, end)
+  return {
+    left: `${rect.x}px`,
+    top: `${rect.y}px`,
+    width: `${rect.width}px`,
+    height: `${rect.height}px`,
+  }
+})
+
+const displayedSelectedDeviceIds = computed(() => {
+  if (!selectionState.value || !selectionMovedEnough(selectionState.value)) {
+    return selectedDeviceIds.value
+  }
+
+  return normalizeSelectedIds(collectSelectionIds(selectionState.value))
+})
+
+const displayedSelectedDeviceIdSet = computed(() => new Set(displayedSelectedDeviceIds.value))
+
+function finishSelection() {
+  const currentSelection = selectionState.value
+  selectionState.value = null
+
+  if (!currentSelection) {
+    return
+  }
+
+  if (!selectionMovedEnough(currentSelection)) {
+    if (!currentSelection.append) {
+      setSelectedDevices([], null)
+    }
+    return
+  }
+
+  const nextIds = normalizeSelectedIds(collectSelectionIds(currentSelection))
+  setSelectedDevices(nextIds, nextIds.length === 1 ? (nextIds[0] ?? null) : null)
+}
+
+function handleWindowMouseUp() {
+  if (isDraggingCanvas.value) {
+    isDraggingCanvas.value = false
+  }
+
+  if (selectionState.value) {
+    finishSelection()
+  }
+
+  removeWindowMouseListeners()
+}
+
+function clearGroupDrag() {
+  groupDragState.value = null
+}
+
+function startGroupDrag(id: string) {
+  if (!selectedDeviceIdSet.value.has(id) || selectedDeviceIds.value.length <= 1) {
+    clearGroupDrag()
+    return
+  }
+
+  const startPositions = Object.fromEntries(
+    selectedDeviceIds.value.flatMap((selectedId) => {
+      const device = devices.value.find((candidate) => candidate.id === selectedId)
+      if (!device) {
+        return []
+      }
+
+      const position = devicePosition(device)
+      return [[selectedId, { x: position.x, y: position.y }]]
+    }),
+  )
+
+  groupDragState.value = {
+    ids: Object.keys(startPositions),
+    leaderId: id,
+    startPositions,
+  }
+}
+
 function devicePosition(device: CanvasDeviceSnapshot) {
   return transientDevicePositions.value[device.id] ?? { x: device.x, y: device.y }
 }
 
-function isDeviceAnimating(id: string) {
-  return Boolean(animatingDeviceIds.value[id])
+function clearSnapAnimation(id: string) {
+  const timer = snapAnimationTimers.get(id)
+  if (timer) {
+    clearTimeout(timer)
+    snapAnimationTimers.delete(id)
+  }
+}
+
+function clearDeviceAnimation(id: string) {
+  clearSnapAnimation(id)
+  delete animatingDeviceIds.value[id]
+}
+
+function updateDevicePosition(id: string, x: number, y: number) {
+  const activeGroupDrag = groupDragState.value
+  if (activeGroupDrag && activeGroupDrag.leaderId === id) {
+    const draggedPositions = buildDraggedPositions(
+      activeGroupDrag.ids,
+      activeGroupDrag.startPositions,
+      id,
+      {
+        x,
+        y,
+      },
+    )
+
+    for (const [deviceId, position] of Object.entries(draggedPositions)) {
+      clearDeviceAnimation(deviceId)
+      transientDevicePositions.value[deviceId] = position
+    }
+    return
+  }
+
+  clearDeviceAnimation(id)
+  transientDevicePositions.value[id] = { x, y }
+}
+
+function runNextFrame(callback: () => void) {
+  if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+    window.requestAnimationFrame(() => {
+      callback()
+    })
+    return
+  }
+
+  window.setTimeout(callback, 16)
 }
 
 async function settleDevicePosition(id: string, x: number, y: number) {
@@ -216,25 +476,28 @@ async function settleDevicePosition(id: string, x: number, y: number) {
   clearSnapAnimation(id)
 }
 
-function animateDeviceToGrid(id: string, x: number, y: number) {
-  const snappedX = snapToGrid(x)
-  const snappedY = snapToGrid(y)
-
+function animateDeviceToPosition(id: string, targetX: number, targetY: number) {
   clearSnapAnimation(id)
-  transientDevicePositions.value[id] = { x, y }
 
-  if (snappedX === x && snappedY === y) {
-    void settleDevicePosition(id, snappedX, snappedY)
+  const currentDevice = devices.value.find((device) => device.id === id)
+  const resolvedCurrent = transientDevicePositions.value[id]
+    ? transientDevicePositions.value[id]
+    : currentDevice
+      ? { x: currentDevice.x, y: currentDevice.y }
+      : null
+
+  if (resolvedCurrent && resolvedCurrent.x === targetX && resolvedCurrent.y === targetY) {
+    void settleDevicePosition(id, targetX, targetY)
     return
   }
 
   animatingDeviceIds.value[id] = true
 
   runNextFrame(() => {
-    transientDevicePositions.value[id] = { x: snappedX, y: snappedY }
+    transientDevicePositions.value[id] = { x: targetX, y: targetY }
 
     const timer = window.setTimeout(() => {
-      void settleDevicePosition(id, snappedX, snappedY)
+      void settleDevicePosition(id, targetX, targetY)
     }, SNAP_ANIMATION_MS)
 
     snapAnimationTimers.set(id, timer)
@@ -242,7 +505,57 @@ function animateDeviceToGrid(id: string, x: number, y: number) {
 }
 
 function finishDeviceDrag(id: string, x: number, y: number) {
-  animateDeviceToGrid(id, x, y)
+  const activeGroupDrag = groupDragState.value
+  if (activeGroupDrag && activeGroupDrag.leaderId === id) {
+    const snappedPositions = snapDraggedPositions(
+      activeGroupDrag.ids,
+      activeGroupDrag.startPositions,
+      id,
+      { x, y },
+      SNAP_GRID,
+    )
+
+    for (const [deviceId, position] of Object.entries(snappedPositions)) {
+      animateDeviceToPosition(deviceId, position.x, position.y)
+    }
+
+    clearGroupDrag()
+    return
+  }
+
+  animateDeviceToPosition(id, snapToGrid(x, SNAP_GRID), snapToGrid(y, SNAP_GRID))
+}
+
+function isDeviceAnimating(id: string) {
+  return Boolean(animatingDeviceIds.value[id])
+}
+
+function openDeviceSettings(id: string) {
+  setSelectedDevices([id], id)
+  emit('open-settings', id)
+}
+
+async function renameDevice(id: string, label: string) {
+  const device = devices.value.find((candidate) => candidate.id === id)
+  if (!device || device.label === label) {
+    return
+  }
+
+  await hardwareStore.upsertCanvasDevice({
+    ...device,
+    label,
+  })
+}
+
+function removeDevice(id: string) {
+  clearDeviceAnimation(id)
+  delete transientDevicePositions.value[id]
+  clearGroupDrag()
+  setSelectedDevices(
+    selectedDeviceIds.value.filter((selectedId) => selectedId !== id),
+    null,
+  )
+  void hardwareStore.removeCanvasDevice(id)
 }
 
 async function createDeviceAt(type: CanvasDeviceType, clientX: number, clientY: number) {
@@ -261,7 +574,11 @@ async function createDeviceAt(type: CanvasDeviceType, clientX: number, clientY: 
   )
 
   await hardwareStore.upsertCanvasDevice(device)
-  animateDeviceToGrid(device.id, placement.x, placement.y)
+  animateDeviceToPosition(
+    device.id,
+    snapToGrid(placement.x, SNAP_GRID),
+    snapToGrid(placement.y, SNAP_GRID),
+  )
 }
 
 function nextCanvasDeviceId(): string {
@@ -335,10 +652,7 @@ function rendererProps(device: CanvasDeviceSnapshot) {
     }
   }
 
-  switch (device.type) {
-    default:
-      return getCanvasDeviceRendererProps(resolvedDevice)
-  }
+  return getCanvasDeviceRendererProps(resolvedDevice)
 }
 
 function rendererListeners(
@@ -386,6 +700,17 @@ const palettePreview = computed<CanvasDeviceSnapshot | null>(() => {
 })
 
 watch(
+  devices,
+  () => {
+    const nextIds = normalizeSelectedIds(selectedDeviceIds.value)
+    if (nextIds.length !== selectedDeviceIds.value.length) {
+      setSelectedDevices(nextIds, nextIds.length === 1 ? (nextIds[0] ?? null) : null)
+    }
+  },
+  { deep: true },
+)
+
+watch(
   () => paletteDragStore.state.pendingDrop?.nonce,
   (nonce) => {
     if (!nonce || !paletteDragStore.state.pendingDrop) {
@@ -401,6 +726,14 @@ watch(
 onMounted(() => {
   void hardwareStore.syncState()
 })
+
+onUnmounted(() => {
+  removeWindowMouseListeners()
+  for (const timer of snapAnimationTimers.values()) {
+    clearTimeout(timer)
+  }
+  snapAnimationTimers.clear()
+})
 </script>
 
 <template>
@@ -409,12 +742,8 @@ onMounted(() => {
     class="w-full h-full bg-background overflow-hidden relative cursor-default transition-colors"
     :class="palettePreview ? 'ring-1 ring-primary/40 ring-inset' : ''"
     @wheel="handleWheel"
-    @mousedown="startPan"
-    @mousemove="pan"
-    @mouseup="endPan"
-    @mouseleave="endPan"
+    @mousedown="handleCanvasMouseDown"
   >
-    <!-- Grid Background -->
     <div
       class="absolute inset-0 pointer-events-none opacity-10"
       :style="{
@@ -425,17 +754,14 @@ onMounted(() => {
       }"
     ></div>
 
-    <!-- World Container -->
     <div
       class="absolute origin-top-left will-change-transform"
       :style="{
         transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
       }"
     >
-      <!-- Wires Layer -->
       <WireLayer :wires="wires" />
 
-      <!-- Devices Layer -->
       <BaseDevice
         v-for="device in devices"
         :key="device.id"
@@ -445,13 +771,14 @@ onMounted(() => {
         :width="shellSize(device).width"
         :height="shellSize(device).height"
         :label="device.label"
-        :selected="selectedDeviceId === device.id"
+        :selected="displayedSelectedDeviceIdSet.has(device.id)"
         :bound-signal="getCanvasDeviceBoundSignal(device) || undefined"
         :bound-signals-count="boundSignalsCount(device)"
         :scale="scale"
         :animated="isDeviceAnimating(device.id)"
-        @select="selectDevice(device.id)"
+        @select="(id, mode) => selectDevice(id, mode)"
         @update:position="(x, y) => updateDevicePosition(device.id, x, y)"
+        @drag-start="startGroupDrag"
         @drag-end="(id, x, y) => finishDeviceDrag(id, x, y)"
         @open-settings="openDeviceSettings"
         @delete="removeDevice"
@@ -482,9 +809,15 @@ onMounted(() => {
       </BaseDevice>
     </div>
 
-    <!-- Overlay Controls -->
+    <div
+      v-if="selectionOverlayStyle"
+      class="pointer-events-none absolute rounded-md border border-primary/70 bg-primary/10"
+      :style="selectionOverlayStyle"
+    ></div>
+
     <div
       class="absolute bottom-4 right-4 bg-card/80 backdrop-blur p-2 rounded-md border border-border text-xs"
+      @mousedown.stop
     >
       Scale: {{ Math.round(scale * 100) }}%
       <br />

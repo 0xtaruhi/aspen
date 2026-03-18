@@ -437,5 +437,9 @@
   "bytesValue": "{count} bytes",
   "inputDirection": "input",
   "outputDirection": "output",
-  "inoutDirection": "inout"
+  "inoutDirection": "inout",
+  "selectionCount": "{count} selected",
+  "deleteSelected": "Delete Selected",
+  "deleteSelectedDevicesTitle": "Delete Selected Devices",
+  "deleteSelectedDevicesConfirm": "Are you sure you want to delete {count} selected devices?"
 }

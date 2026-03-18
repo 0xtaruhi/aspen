@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import { nextTick, onUnmounted, ref, watch } from 'vue'
 import { Settings2 } from 'lucide-vue-next'
+
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
+import { Input } from '@/components/ui/input'
 import { confirmAction } from '@/lib/confirm-action'
 import { useI18n } from '@/lib/i18n'
-import { Input } from '@/components/ui/input'
 import { settingsStore } from '@/stores/settings'
+
+type DeviceSelectionMode = 'preserve' | 'replace' | 'toggle'
 
 const props = defineProps<{
   id: string
@@ -29,9 +32,10 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'update:position', x: number, y: number): void
-  (e: 'select', id: string, multi: boolean): void
+  (e: 'select', id: string, mode: DeviceSelectionMode): void
   (e: 'open-settings', id: string): void
   (e: 'delete', id: string): void
+  (e: 'drag-start', id: string): void
   (e: 'drag-end', id: string, x: number, y: number): void
   (e: 'rename', id: string, label: string): void
 }>()
@@ -49,6 +53,7 @@ const dragState = ref<{
 } | null>(null)
 const isRenaming = ref(false)
 const renameValue = ref('')
+const suppressNextMouseDownSelection = ref(false)
 
 watch(
   () => props.label,
@@ -60,17 +65,30 @@ watch(
   { immediate: true },
 )
 
+function resolveSelectionMode(multiSelect: boolean): DeviceSelectionMode {
+  if (multiSelect) {
+    return 'toggle'
+  }
+
+  return 'replace'
+}
+
 function onMouseDown(e: MouseEvent) {
   if (props.preview) {
     return
   }
 
+  if (suppressNextMouseDownSelection.value) {
+    suppressNextMouseDownSelection.value = false
+    return
+  }
+
   e.stopPropagation()
-  emit('select', props.id, e.shiftKey || e.metaKey)
+  emit('select', props.id, resolveSelectionMode(e.shiftKey || e.metaKey))
 }
 
 function openSettings() {
-  emit('select', props.id, false)
+  emit('select', props.id, 'replace')
   emit('open-settings', props.id)
 }
 
@@ -164,21 +182,20 @@ function onPointerMove(e: PointerEvent) {
 }
 
 function startDrag(e: PointerEvent) {
-  if (props.preview) {
-    return
-  }
-
-  if (isRenaming.value) {
-    return
-  }
-
-  if (e.button !== 0) {
+  if (props.preview || isRenaming.value || e.button !== 0) {
     return
   }
 
   e.preventDefault()
   e.stopPropagation()
-  emit('select', props.id, e.shiftKey || e.metaKey)
+
+  suppressNextMouseDownSelection.value = true
+  emit(
+    'select',
+    props.id,
+    e.shiftKey || e.metaKey ? 'toggle' : props.selected ? 'preserve' : 'replace',
+  )
+  emit('drag-start', props.id)
 
   dragState.value = {
     startX: props.x,
@@ -216,13 +233,11 @@ onUnmounted(() => {
   >
     <ContextMenu>
       <ContextMenuTrigger>
-        <!-- Selection Ring -->
         <div
           class="absolute -inset-1 rounded-lg border-2 border-primary transition-opacity pointer-events-none"
           :class="selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'"
         ></div>
 
-        <!-- Content -->
         <div
           class="relative flex h-full min-h-0 flex-col rounded-md border border-border bg-card shadow-sm overflow-hidden"
           :class="props.preview ? 'border-primary/60 ring-1 ring-primary/30' : ''"
@@ -239,7 +254,6 @@ onUnmounted(() => {
             <Settings2 class="h-3.5 w-3.5" />
           </button>
 
-          <!-- Header / Drag Handle -->
           <div
             class="flex min-h-10 w-full items-center gap-3 border-b border-border/70 bg-muted/45 px-3 py-2"
             :class="props.preview ? 'cursor-copy' : 'cursor-grab active:cursor-grabbing'"

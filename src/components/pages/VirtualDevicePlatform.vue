@@ -14,6 +14,7 @@ import { useI18n } from '@/lib/i18n'
 import { designContextStore } from '@/stores/design-context'
 import { hardwareStore } from '@/stores/hardware'
 import { signalCatalogStore } from '@/stores/signal-catalog'
+import { settingsStore } from '@/stores/settings'
 
 const STREAM_WORDS_PER_CYCLE = 4
 const STREAM_SIGNAL_LIMIT = STREAM_WORDS_PER_CYCLE * 16
@@ -21,6 +22,7 @@ const DISPLAY_UPDATE_INTERVAL_MS = 1000
 
 const showGallery = ref(false)
 const selectedDeviceId = ref<string | null>(null)
+const selectedDeviceIds = ref<string[]>([])
 const inspectorOpen = ref(false)
 const galleryDropBlockInset = 60
 const streamBusy = ref(false)
@@ -51,6 +53,7 @@ const streamSignalOverflow = computed(() => {
   return Math.max(0, availableSignalCount.value - streamSignalNames.value.length)
 })
 const hasCanvasDevices = computed(() => hardwareStore.state.value.canvas_devices.length > 0)
+const selectedDeviceCount = computed(() => selectedDeviceIds.value.length)
 const streamStatus = computed(() => hardwareStore.dataStreamStatus.value)
 const streamRunning = computed(() => streamStatus.value.running)
 const canApplyRate = computed(() => streamRunning.value && !streamBusy.value)
@@ -105,6 +108,7 @@ function startDisplayedHzTimer() {
 }
 
 function openInspectorForDevice(id: string) {
+  selectedDeviceIds.value = [id]
   selectedDeviceId.value = id
   inspectorOpen.value = true
 }
@@ -219,12 +223,82 @@ async function clearCanvas() {
   try {
     inspectorOpen.value = false
     selectedDeviceId.value = null
+    selectedDeviceIds.value = []
     await hardwareStore.clearCanvasDevices()
   } catch (err) {
     streamMessage.value = getErrorMessage(err)
   } finally {
     streamBusy.value = false
   }
+}
+
+function isEditableTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+
+  return (
+    target.isContentEditable ||
+    ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) ||
+    Boolean(target.closest('[contenteditable="true"]'))
+  )
+}
+
+async function deleteSelectedDevices() {
+  const ids = [...selectedDeviceIds.value]
+  if (ids.length === 0) {
+    return
+  }
+
+  const devicesById = new Map(
+    hardwareStore.state.value.canvas_devices.map((device) => [device.id, device]),
+  )
+  const singleDevice = ids.length === 1 ? (devicesById.get(ids[0]) ?? null) : null
+
+  if (
+    settingsStore.state.confirmDelete &&
+    !(await confirmAction(
+      singleDevice
+        ? t('deleteDeviceConfirm', { name: singleDevice.label })
+        : t('deleteSelectedDevicesConfirm', { count: ids.length }),
+      {
+        title: singleDevice ? t('deleteDeviceTitle') : t('deleteSelectedDevicesTitle'),
+      },
+    ))
+  ) {
+    return
+  }
+
+  streamBusy.value = true
+  streamMessage.value = ''
+
+  try {
+    inspectorOpen.value = false
+    selectedDeviceId.value = null
+    selectedDeviceIds.value = []
+
+    for (const id of ids) {
+      await hardwareStore.removeCanvasDevice(id)
+    }
+  } catch (err) {
+    streamMessage.value = getErrorMessage(err)
+  } finally {
+    streamBusy.value = false
+  }
+}
+
+function handleGlobalKeydown(event: KeyboardEvent) {
+  if (
+    event.defaultPrevented ||
+    (event.key !== 'Delete' && event.key !== 'Backspace') ||
+    isEditableTarget(event.target) ||
+    selectedDeviceIds.value.length === 0
+  ) {
+    return
+  }
+
+  event.preventDefault()
+  void deleteSelectedDevices()
 }
 
 watch(selectedDevice, (device) => {
@@ -268,6 +342,10 @@ watch([streamInputSignalOrderKey, streamOutputSignalOrderKey], () => {
 })
 
 onMounted(() => {
+  if (typeof window !== 'undefined') {
+    window.addEventListener('keydown', handleGlobalKeydown, { capture: true })
+  }
+
   streamBusy.value = true
   streamMessage.value = ''
 
@@ -283,6 +361,10 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('keydown', handleGlobalKeydown, { capture: true })
+  }
+
   clearStreamStatusPollTimer()
   clearDisplayedHzTimer()
   hardwareStore.stop().catch(() => undefined)
@@ -311,8 +393,19 @@ onBeforeUnmount(() => {
         {{ t('portsUnit') }}
       </Badge>
       <Badge variant="outline">{{ actualHzLabel }}</Badge>
-
       <div class="ml-auto flex items-center gap-2">
+        <Button
+          v-if="selectedDeviceCount > 0"
+          type="button"
+          size="sm"
+          variant="outline"
+          class="gap-2 text-destructive hover:text-destructive"
+          :disabled="streamBusy"
+          @click="deleteSelectedDevices"
+        >
+          <Trash2 class="h-4 w-4" />
+          {{ t('deleteSelected') }}
+        </Button>
         <Button
           type="button"
           size="sm"
@@ -395,6 +488,7 @@ onBeforeUnmount(() => {
       <ComponentGallery :open="showGallery" />
       <DeviceCanvas
         v-model:selected-device-id="selectedDeviceId"
+        v-model:selected-device-ids="selectedDeviceIds"
         :blocked-top-inset="showGallery ? galleryDropBlockInset : 0"
         @open-settings="openInspectorForDevice"
       />

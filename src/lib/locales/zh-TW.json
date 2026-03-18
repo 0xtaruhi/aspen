@@ -437,5 +437,9 @@
   "bytesValue": "{count} 位元組",
   "inputDirection": "輸入",
   "outputDirection": "輸出",
-  "inoutDirection": "雙向"
+  "inoutDirection": "雙向",
+  "selectionCount": "已選取 {count} 個",
+  "deleteSelected": "刪除所選",
+  "deleteSelectedDevicesTitle": "刪除所選裝置",
+  "deleteSelectedDevicesConfirm": "確定要刪除已選取的 {count} 個裝置嗎？"
 }

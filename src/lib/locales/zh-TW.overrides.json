@@ -126,5 +126,9 @@
   "noHardwareTargetsOpen": "目前沒有開啟任何硬體目標。",
   "matrixSizeDescription": "調整點陣行列數，並盡量保留既有的行列綁定。",
   "noMatchingBuses": "目前沒有和該裝置尺寸相符的索引匯流排。",
-  "noCompatiblePorts": "目前的頂層模組中沒有找到相容埠。"
+  "noCompatiblePorts": "目前的頂層模組中沒有找到相容埠。",
+  "selectionCount": "已選取 {count} 個",
+  "deleteSelected": "刪除所選",
+  "deleteSelectedDevicesTitle": "刪除所選裝置",
+  "deleteSelectedDevicesConfirm": "確定要刪除已選取的 {count} 個裝置嗎？"
 }
