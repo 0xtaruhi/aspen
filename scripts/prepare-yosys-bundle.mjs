@@ -574,6 +574,8 @@ function removeEntry(entryPath) {
 
 function getRuntimeTargetPaths(bundleRoot) {
   const candidates = [
+    join(bundleRoot, 'lib', 'yosys'),
+    join(bundleRoot, 'lib', 'yosys-abc'),
     join(bundleRoot, 'libexec', 'yosys'),
     join(bundleRoot, 'libexec', 'yosys-abc'),
     join(bundleRoot, 'libexec', 'realpath'),
