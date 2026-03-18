@@ -54,4 +54,47 @@ endmodule`,
 
     expect(designContextStore.primaryModule.value).toBe('actual_top')
   })
+
+  it('keeps the last valid module list while the current top file is temporarily invalid', () => {
+    projectStore.createNewProject('TransientParseProject', 'empty')
+    projectStore.files = [
+      {
+        id: 'root',
+        name: 'TransientParseProject',
+        type: 'folder',
+        isOpen: true,
+        children: [
+          {
+            id: 'top-file',
+            name: 'top.v',
+            type: 'file',
+            content: `module helper(input wire a, output wire y);
+  assign y = a;
+endmodule
+
+module actual_top(input wire clk, output wire led);
+  assign led = clk;
+endmodule`,
+          },
+        ],
+      },
+    ]
+    projectStore.topFileId = 'top-file'
+    projectStore.activeFileId = 'top-file'
+    projectStore.selectedNodeId = 'top-file'
+
+    expect(designContextStore.moduleNames.value).toEqual(['helper', 'actual_top'])
+    expect(designContextStore.moduleNamesStale.value).toBe(false)
+
+    const topFile = projectStore.files[0]?.children?.[0]
+    if (!topFile || topFile.type !== 'file') {
+      throw new Error('Expected top file fixture to exist.')
+    }
+
+    topFile.content = '// editing in progress'
+
+    expect(designContextStore.moduleNames.value).toEqual(['helper', 'actual_top'])
+    expect(designContextStore.moduleNamesStale.value).toBe(true)
+    expect(designContextStore.primaryModule.value).toBe('helper')
+  })
 })

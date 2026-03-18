@@ -24,7 +24,6 @@ import {
 } from '@/components/ui/sidebar'
 import { useI18n } from '@/lib/i18n'
 import { type AppRouteName, modulePathMap } from '@/router'
-import { designContextStore } from '@/stores/design-context'
 import { hardwareStore } from '@/stores/hardware'
 import { projectStore } from '@/stores/project'
 import { requestProjectTextInput } from '@/stores/project-text-input'
@@ -44,7 +43,6 @@ function navigate(path: string) {
 
 const activeRouteName = computed(() => route.name as AppRouteName | undefined)
 const rootNode = computed(() => projectStore.rootNode)
-const hasTopModuleOptions = computed(() => designContextStore.moduleNames.value.length > 0)
 const isSynthesisRunning = hardwareStore.synthesisRunning
 const isImplementationRunning = hardwareStore.implementationRunning
 
@@ -220,10 +218,7 @@ function handleImportFiles() {
                 </div>
               </div>
               <div class="min-h-0 flex-1 overflow-hidden">
-                <div
-                  v-if="hasTopModuleOptions"
-                  class="mx-2 mb-2 rounded-md border border-sidebar-border/70 bg-sidebar-accent/20 px-2 py-2"
-                >
+                <div v-if="rootNode" class="mx-2 mb-2">
                   <TopModuleSelect />
                 </div>
                 <ProjectExplorer />

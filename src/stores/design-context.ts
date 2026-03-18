@@ -1,6 +1,6 @@
 import type { VerilogPort } from '../lib/verilog-parser'
 
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import { extractVerilogModuleNames } from '../lib/verilog-modules'
 import { parseVerilogPorts } from '../lib/verilog-parser'
@@ -97,8 +97,61 @@ const hardwareSources = computed(() => {
   return projectSources.value.filter((source) => source.isHardwareSource)
 })
 
-const moduleNames = computed(() => {
+const parsedModuleNames = computed(() => {
+  if (!selectedSource.value?.isHardwareSource) {
+    return []
+  }
+
   return extractVerilogModuleNames(sourceCode.value)
+})
+
+const lastResolvedModuleNames = ref<string[]>([])
+const lastResolvedSourceId = ref<string | null>(null)
+
+watch(
+  [
+    () => selectedSource.value?.id ?? null,
+    () => selectedSource.value?.isHardwareSource ?? false,
+    parsedModuleNames,
+  ],
+  ([sourceId, isHardwareSource, nextModuleNames]) => {
+    if (!sourceId || !isHardwareSource) {
+      lastResolvedSourceId.value = sourceId
+      lastResolvedModuleNames.value = []
+      return
+    }
+
+    if (sourceId !== lastResolvedSourceId.value) {
+      lastResolvedSourceId.value = sourceId
+      lastResolvedModuleNames.value = [...nextModuleNames]
+      return
+    }
+
+    if (nextModuleNames.length > 0) {
+      lastResolvedModuleNames.value = [...nextModuleNames]
+    }
+  },
+  { immediate: true },
+)
+
+const moduleNames = computed(() => {
+  if (!selectedSource.value?.isHardwareSource) {
+    return []
+  }
+
+  if (parsedModuleNames.value.length > 0) {
+    return parsedModuleNames.value
+  }
+
+  return lastResolvedModuleNames.value
+})
+
+const moduleNamesStale = computed(() => {
+  return (
+    selectedSource.value?.isHardwareSource === true &&
+    parsedModuleNames.value.length === 0 &&
+    lastResolvedModuleNames.value.length > 0
+  )
 })
 
 const primaryModule = computed(() => {
@@ -163,6 +216,7 @@ export const designContextStore = {
   projectSources,
   hardwareSources,
   moduleNames,
+  moduleNamesStale,
   primaryModule,
   codeLines,
   signals,
