@@ -354,29 +354,80 @@ function pruneBundledToolchain(bundleRoot) {
     keepRootEntries.add('start.bat')
   }
   pruneChildren(bundleRoot, keepRootEntries)
-  if (process.platform === 'win32') {
-    return
-  }
-  pruneBinDirectory(join(bundleRoot, 'bin'))
-  pruneLibexecDirectory(join(bundleRoot, 'libexec'))
+  const prunePlan = buildPrunePlan(bundleRoot)
+  pruneBinDirectory(join(bundleRoot, 'bin'), prunePlan.binEntries)
+  pruneLibexecDirectory(join(bundleRoot, 'libexec'), prunePlan.libexecEntries)
   pruneShareDirectory(join(bundleRoot, 'share'))
-  pruneLibraryDirectories(bundleRoot)
+  pruneLibraryDirectories(bundleRoot, prunePlan)
 }
 
-function pruneBinDirectory(binDir) {
+function buildPrunePlan(bundleRoot) {
+  const runtimeTargets = getRuntimeTargetPaths(bundleRoot)
+  const dependencyPaths = collectBundledDependencies(bundleRoot, runtimeTargets)
+  const wrapperDependencies = collectShellWrapperDependencies(bundleRoot)
+  const bundledDependencies = [...runtimeTargets, ...dependencyPaths, ...wrapperDependencies]
+  const binEntries = new Set(['yosys', 'yosys-abc', 'yosys.exe', 'yosys-abc.exe'])
+  const libexecEntries = new Set(['realpath', 'yosys', 'yosys-abc', 'yosys.exe', 'yosys-abc.exe'])
+  const libEntries = new Set(
+    ['tcl8.6', 'tk8.6'].filter((entry) => existsSync(join(bundleRoot, 'lib', entry))),
+  )
+  const lib64Entries = new Set()
+  const frameworkEntries = new Set()
+
+  for (const dependencyPath of bundledDependencies) {
+    const relPath = relative(bundleRoot, dependencyPath)
+    const [topLevelDir, firstChild] = relPath.split(/[\\/]/, 2)
+    if (!topLevelDir || !firstChild) {
+      continue
+    }
+
+    if (topLevelDir === 'bin') {
+      binEntries.add(firstChild)
+      continue
+    }
+
+    if (topLevelDir === 'libexec') {
+      libexecEntries.add(firstChild)
+      continue
+    }
+
+    if (topLevelDir === 'lib') {
+      libEntries.add(firstChild)
+      continue
+    }
+
+    if (topLevelDir === 'lib64') {
+      lib64Entries.add(firstChild)
+      continue
+    }
+
+    if (topLevelDir === 'Frameworks') {
+      frameworkEntries.add(firstChild)
+    }
+  }
+
+  return {
+    binEntries,
+    libexecEntries,
+    libEntries,
+    lib64Entries,
+    frameworkEntries,
+  }
+}
+
+function pruneBinDirectory(binDir, keepEntries) {
   if (!existsSync(binDir)) {
     return
   }
 
-  const keep = new Set(['yosys', 'yosys-abc', 'yosys.exe', 'yosys-abc.exe'])
+  const keep = keepEntries ?? new Set(['yosys', 'yosys-abc', 'yosys.exe', 'yosys-abc.exe'])
   for (const entry of readdirSync(binDir, { withFileTypes: true })) {
-    if (entry.isDirectory()) {
-      removeEntry(join(binDir, entry.name))
+    if (keep.has(entry.name)) {
       continue
     }
 
-    const lowerName = entry.name.toLowerCase()
-    if (keep.has(entry.name) || lowerName.endsWith('.dll')) {
+    if (entry.isDirectory()) {
+      removeEntry(join(binDir, entry.name))
       continue
     }
 
@@ -384,20 +435,20 @@ function pruneBinDirectory(binDir) {
   }
 }
 
-function pruneLibexecDirectory(libexecDir) {
+function pruneLibexecDirectory(libexecDir, keepEntries) {
   if (!existsSync(libexecDir)) {
     return
   }
 
-  const keep = new Set(['realpath', 'yosys', 'yosys-abc', 'yosys.exe', 'yosys-abc.exe'])
+  const keep =
+    keepEntries ?? new Set(['realpath', 'yosys', 'yosys-abc', 'yosys.exe', 'yosys-abc.exe'])
   for (const entry of readdirSync(libexecDir, { withFileTypes: true })) {
-    if (entry.isDirectory()) {
-      removeEntry(join(libexecDir, entry.name))
+    if (keep.has(entry.name)) {
       continue
     }
 
-    const lowerName = entry.name.toLowerCase()
-    if (keep.has(entry.name) || lowerName.endsWith('.dll')) {
+    if (entry.isDirectory()) {
+      removeEntry(join(libexecDir, entry.name))
       continue
     }
 
@@ -413,54 +464,36 @@ function pruneShareDirectory(shareDir) {
   pruneChildren(shareDir, new Set(['terminfo', 'yosys']))
 }
 
-function pruneLibraryDirectories(bundleRoot) {
-  if (process.platform === 'linux') {
-    return
-  }
-
-  const runtimeTargets = getRuntimeTargetPaths(bundleRoot)
-  const dependencyPaths = collectBundledDependencies(bundleRoot, runtimeTargets)
-  const wrapperDependencies = collectShellWrapperDependencies(bundleRoot)
-  const keepLibEntries = new Set(
-    ['tcl8.6', 'tk8.6'].filter((entry) => existsSync(join(bundleRoot, 'lib', entry))),
-  )
-  const keepFrameworkEntries = new Set()
-
-  for (const dependencyPath of [...dependencyPaths, ...wrapperDependencies]) {
-    const relPath = relative(bundleRoot, dependencyPath)
-    if (relPath.startsWith(`lib/`)) {
-      const [, firstChild] = relPath.split(/[\\/]/, 2)
-      if (firstChild) {
-        keepLibEntries.add(firstChild)
-      }
-    }
-    if (relPath.startsWith(`Frameworks/`)) {
-      const [, firstChild] = relPath.split(/[\\/]/, 2)
-      if (firstChild) {
-        keepFrameworkEntries.add(firstChild)
-      }
-    }
-  }
-
+function pruneLibraryDirectories(bundleRoot, prunePlan) {
   const libDir = join(bundleRoot, 'lib')
   if (existsSync(libDir)) {
     for (const entry of readdirSync(libDir, { withFileTypes: true })) {
-      if (keepLibEntries.has(entry.name)) {
+      if (prunePlan.libEntries.has(entry.name)) {
         continue
       }
       removeEntry(join(libDir, entry.name))
     }
   }
 
+  const lib64Dir = join(bundleRoot, 'lib64')
+  if (existsSync(lib64Dir)) {
+    for (const entry of readdirSync(lib64Dir, { withFileTypes: true })) {
+      if (prunePlan.lib64Entries.has(entry.name)) {
+        continue
+      }
+      removeEntry(join(lib64Dir, entry.name))
+    }
+  }
+
   const frameworksDir = join(bundleRoot, 'Frameworks')
   if (existsSync(frameworksDir)) {
-    if (keepFrameworkEntries.size === 0) {
+    if (prunePlan.frameworkEntries.size === 0) {
       removeEntry(frameworksDir)
       return
     }
 
     for (const entry of readdirSync(frameworksDir, { withFileTypes: true })) {
-      if (keepFrameworkEntries.has(entry.name)) {
+      if (prunePlan.frameworkEntries.has(entry.name)) {
         continue
       }
       removeEntry(join(frameworksDir, entry.name))
@@ -574,7 +607,7 @@ function collectShellWrapperDependencies(bundleRoot) {
     }
 
     const contents = readFileSync(wrapperPath, 'utf8')
-    for (const match of contents.matchAll(/\.\.\/(?:lib|libexec)\/[A-Za-z0-9._/+:-]+/g)) {
+    for (const match of contents.matchAll(/\.\.\/(?:lib|lib64|libexec)\/[A-Za-z0-9._/+:-]+/g)) {
       const rawDependency = match[0]
       const normalizedDependency = rawDependency.split('/').filter(Boolean)
       const resolvedDependency = resolve(dirname(wrapperPath), ...normalizedDependency)
@@ -625,7 +658,302 @@ function inspectDependencies(filePath, bundleRoot) {
       .filter(Boolean)
   }
 
+  if (process.platform === 'win32') {
+    return collectWindowsDependencyNames(filePath)
+      .map((dependency) => resolveWindowsBundledDependency(filePath, dependency, bundleRoot))
+      .filter(Boolean)
+  }
+
   return []
+}
+
+function collectWindowsDependencyNames(filePath) {
+  for (const tool of ['dumpbin', 'llvm-objdump']) {
+    const resolvedTool = resolveToolPath(tool)
+    if (!resolvedTool) {
+      continue
+    }
+
+    const args = tool === 'dumpbin' ? ['/dependents', filePath] : ['-p', filePath]
+    const result = spawnSync(resolvedTool, args, {
+      encoding: 'utf8',
+      env: process.env,
+      maxBuffer: 16 * 1024 * 1024,
+    })
+    if (result.status !== 0) {
+      continue
+    }
+
+    const dependencyNames =
+      tool === 'dumpbin'
+        ? result.stdout
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter((line) => /\.dll$/i.test(line))
+        : result.stdout
+            .split(/\r?\n/)
+            .map((line) => line.match(/DLL Name:\s+(.+)$/)?.[1]?.trim())
+            .filter(Boolean)
+    if (dependencyNames.length > 0) {
+      return dependencyNames
+    }
+  }
+
+  return parsePortableExecutableDependencyNames(filePath)
+}
+
+function resolveWindowsBundledDependency(filePath, dependencyName, bundleRoot) {
+  const lowerName = String(dependencyName).toLowerCase()
+  if (WINDOWS_SYSTEM_DLLS.has(lowerName)) {
+    return null
+  }
+
+  const sameDirCandidate = join(dirname(filePath), dependencyName)
+  if (existsSync(sameDirCandidate)) {
+    return sameDirCandidate
+  }
+
+  const fileIndex = getBundledFileIndex(bundleRoot)
+  const candidates = fileIndex.get(lowerName) ?? []
+  if (candidates.length === 0) {
+    return null
+  }
+
+  candidates.sort((leftPath, rightPath) => {
+    const leftDir = dirname(leftPath)
+    const rightDir = dirname(rightPath)
+    const currentDir = dirname(filePath)
+    if (leftDir === currentDir && rightDir !== currentDir) {
+      return -1
+    }
+    if (leftDir !== currentDir && rightDir === currentDir) {
+      return 1
+    }
+    if (
+      leftPath.startsWith(join(bundleRoot, 'bin')) &&
+      !rightPath.startsWith(join(bundleRoot, 'bin'))
+    ) {
+      return -1
+    }
+    if (
+      !leftPath.startsWith(join(bundleRoot, 'bin')) &&
+      rightPath.startsWith(join(bundleRoot, 'bin'))
+    ) {
+      return 1
+    }
+    return leftPath.localeCompare(rightPath)
+  })
+
+  return candidates[0] ?? null
+}
+
+function resolveToolPath(name) {
+  const extensions = process.platform === 'win32' ? ['.exe', '.cmd', '.bat', ''] : ['']
+  const pathEntries = process.env.PATH ? process.env.PATH.split(delimiter) : []
+
+  for (const entry of pathEntries) {
+    for (const extension of extensions) {
+      const candidate = join(entry, `${name}${extension}`)
+      if (existsSync(candidate)) {
+        return candidate
+      }
+    }
+  }
+
+  return null
+}
+
+const bundledFileIndexCache = new Map()
+const WINDOWS_SYSTEM_DLLS = new Set([
+  'advapi32.dll',
+  'bcrypt.dll',
+  'comdlg32.dll',
+  'gdi32.dll',
+  'kernel32.dll',
+  'ntdll.dll',
+  'ole32.dll',
+  'secur32.dll',
+  'shell32.dll',
+  'user32.dll',
+  'ws2_32.dll',
+])
+
+function getBundledFileIndex(bundleRoot) {
+  const normalizedRoot = resolve(bundleRoot)
+  const cached = bundledFileIndexCache.get(normalizedRoot)
+  if (cached) {
+    return cached
+  }
+
+  const index = new Map()
+  const queue = [normalizedRoot]
+  while (queue.length > 0) {
+    const currentDir = queue.pop()
+    if (!currentDir || !existsSync(currentDir)) {
+      continue
+    }
+
+    for (const entry of readdirSync(currentDir, { withFileTypes: true })) {
+      const entryPath = join(currentDir, entry.name)
+      if (entry.isDirectory()) {
+        queue.push(entryPath)
+        continue
+      }
+
+      const key = entry.name.toLowerCase()
+      const existing = index.get(key) ?? []
+      existing.push(entryPath)
+      index.set(key, existing)
+    }
+  }
+
+  bundledFileIndexCache.set(normalizedRoot, index)
+  return index
+}
+
+function parsePortableExecutableDependencyNames(filePath) {
+  const fileBuffer = readFileSync(filePath)
+  if (fileBuffer.length < 0x40 || fileBuffer.toString('ascii', 0, 2) !== 'MZ') {
+    return []
+  }
+
+  const peHeaderOffset = fileBuffer.readUInt32LE(0x3c)
+  if (
+    peHeaderOffset <= 0 ||
+    peHeaderOffset + 0x18 >= fileBuffer.length ||
+    fileBuffer.toString('ascii', peHeaderOffset, peHeaderOffset + 4) !== 'PE\u0000\u0000'
+  ) {
+    return []
+  }
+
+  const fileHeaderOffset = peHeaderOffset + 4
+  const numberOfSections = fileBuffer.readUInt16LE(fileHeaderOffset + 2)
+  const optionalHeaderSize = fileBuffer.readUInt16LE(fileHeaderOffset + 16)
+  const optionalHeaderOffset = fileHeaderOffset + 20
+  const sectionTableOffset = optionalHeaderOffset + optionalHeaderSize
+  if (sectionTableOffset > fileBuffer.length) {
+    return []
+  }
+
+  const optionalHeaderMagic = fileBuffer.readUInt16LE(optionalHeaderOffset)
+  let dataDirectoryOffset
+  if (optionalHeaderMagic === 0x10b) {
+    dataDirectoryOffset = optionalHeaderOffset + 96
+  } else if (optionalHeaderMagic === 0x20b) {
+    dataDirectoryOffset = optionalHeaderOffset + 112
+  } else {
+    return []
+  }
+
+  const sections = []
+  for (let index = 0; index < numberOfSections; index += 1) {
+    const offset = sectionTableOffset + index * 40
+    if (offset + 40 > fileBuffer.length) {
+      break
+    }
+
+    const virtualSize = fileBuffer.readUInt32LE(offset + 8)
+    const virtualAddress = fileBuffer.readUInt32LE(offset + 12)
+    const rawSize = fileBuffer.readUInt32LE(offset + 16)
+    const rawOffset = fileBuffer.readUInt32LE(offset + 20)
+    sections.push({
+      rawOffset,
+      rawSize,
+      virtualAddress,
+      virtualSize,
+    })
+  }
+
+  const importedNames = new Set()
+  collectPeImportedDllNames(
+    fileBuffer,
+    sections,
+    readPeDirectoryRva(fileBuffer, dataDirectoryOffset, 1),
+    20,
+    12,
+    importedNames,
+  )
+  collectPeImportedDllNames(
+    fileBuffer,
+    sections,
+    readPeDirectoryRva(fileBuffer, dataDirectoryOffset, 13),
+    32,
+    4,
+    importedNames,
+  )
+  return [...importedNames]
+}
+
+function readPeDirectoryRva(fileBuffer, dataDirectoryOffset, entryIndex) {
+  const entryOffset = dataDirectoryOffset + entryIndex * 8
+  if (entryOffset + 8 > fileBuffer.length) {
+    return 0
+  }
+  return fileBuffer.readUInt32LE(entryOffset)
+}
+
+function collectPeImportedDllNames(
+  fileBuffer,
+  sections,
+  tableRva,
+  descriptorSize,
+  nameFieldOffset,
+  importedNames,
+) {
+  if (!tableRva) {
+    return
+  }
+
+  const tableOffset = portableExecutableRvaToOffset(tableRva, sections)
+  if (tableOffset === null) {
+    return
+  }
+
+  for (
+    let descriptorOffset = tableOffset;
+    descriptorOffset + descriptorSize <= fileBuffer.length;
+    descriptorOffset += descriptorSize
+  ) {
+    const descriptor = fileBuffer.subarray(descriptorOffset, descriptorOffset + descriptorSize)
+    if (descriptor.every((byte) => byte === 0)) {
+      break
+    }
+
+    const nameRva = descriptor.readUInt32LE(nameFieldOffset)
+    const nameOffset = portableExecutableRvaToOffset(nameRva, sections)
+    if (nameOffset === null) {
+      continue
+    }
+
+    const dependencyName = readNullTerminatedAscii(fileBuffer, nameOffset)
+    if (dependencyName) {
+      importedNames.add(dependencyName)
+    }
+  }
+}
+
+function portableExecutableRvaToOffset(rva, sections) {
+  for (const section of sections) {
+    const sectionSize = Math.max(section.virtualSize, section.rawSize)
+    if (rva >= section.virtualAddress && rva < section.virtualAddress + sectionSize) {
+      return section.rawOffset + (rva - section.virtualAddress)
+    }
+  }
+
+  return null
+}
+
+function readNullTerminatedAscii(fileBuffer, offset) {
+  if (offset < 0 || offset >= fileBuffer.length) {
+    return ''
+  }
+
+  let endOffset = offset
+  while (endOffset < fileBuffer.length && fileBuffer[endOffset] !== 0) {
+    endOffset += 1
+  }
+
+  return fileBuffer.toString('ascii', offset, endOffset).trim()
 }
 
 function resolveBundledDependency(filePath, dependency, bundleRoot) {
