@@ -452,6 +452,29 @@ jobs:
       - name: Build Aspen installer packages
         run: pnpm tauri build --ci -v -b dmg -c src-tauri/tauri.yosys.conf.json
 
+      - name: Verify Aspen macOS package
+        shell: bash
+        run: |
+          set -euo pipefail
+          dmg=$(find src-tauri/target/release/bundle/dmg -maxdepth 1 -name '*.dmg' -print -quit)
+          if [ -z "$dmg" ]; then
+            echo "No DMG artifact found." >&2
+            exit 1
+          fi
+
+          hdiutil verify "$dmg"
+
+          mount_dir="$(mktemp -d)"
+          cleanup() {
+            hdiutil detach "$mount_dir" >/dev/null || true
+            rmdir "$mount_dir" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          hdiutil attach -quiet -nobrowse -readonly -mountpoint "$mount_dir" "$dmg" >/dev/null
+          test -f "$mount_dir/aspen.app/Contents/_CodeSignature/CodeResources"
+          codesign --verify --deep --strict --verbose=4 "$mount_dir/aspen.app"
+
       - name: Upload Aspen package artifacts
         uses: actions/upload-artifact@v4
         with:

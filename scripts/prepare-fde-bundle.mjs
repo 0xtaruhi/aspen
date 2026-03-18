@@ -2,6 +2,7 @@
 
 import { spawnSync } from 'node:child_process'
 import {
+  chmodSync,
   copyFileSync,
   cpSync,
   existsSync,
@@ -56,6 +57,7 @@ async function main() {
   buildTargetsInTree(buildRoot, buildEnv)
   copyExecutables(buildRoot, bundleBinDir)
   copyRuntimeDependencies(bundleBinDir, bundleLibDir, buildEnv)
+  normalizeBundlePermissions(bundleTargetDir)
   ensurePlaceholder(bundleTargetDir)
   validateBundledFde(bundleBinDir, bundleLibDir, buildEnv)
 
@@ -828,6 +830,29 @@ function copyRuntimeDependencies(bundleBinDir, bundleLibDir, runtimeEnv = proces
         queue.push(destinationPath)
       } else if (process.platform === 'win32') {
         queue.push(join(destinationDir, basename(dependency)))
+      }
+    }
+  }
+}
+
+function normalizeBundlePermissions(bundleTargetDir) {
+  const binDir = join(bundleTargetDir, 'bin')
+  const libDir = join(bundleTargetDir, 'lib')
+
+  if (existsSync(binDir)) {
+    for (const entry of readdirSync(binDir)) {
+      const filePath = join(binDir, entry)
+      if (existsSync(filePath) && !lstatSync(filePath).isDirectory()) {
+        chmodSync(filePath, 0o755)
+      }
+    }
+  }
+
+  if (existsSync(libDir)) {
+    for (const entry of readdirSync(libDir)) {
+      const filePath = join(libDir, entry)
+      if (existsSync(filePath) && !lstatSync(filePath).isDirectory()) {
+        chmodSync(filePath, 0o644)
       }
     }
   }

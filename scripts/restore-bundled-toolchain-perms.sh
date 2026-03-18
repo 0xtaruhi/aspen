@@ -4,6 +4,13 @@ set -euo pipefail
 
 root="${1:-src-tauri/vendor}"
 
+set_user_write_bits() {
+  local dir="$1"
+  if [ -d "$dir" ]; then
+    find "$dir" -type f -exec chmod u+w {} +
+  fi
+}
+
 set_exec_bits() {
   local dir="$1"
   if [ -d "$dir" ]; then
@@ -18,6 +25,8 @@ set_top_level_exec_bits() {
   fi
 }
 
+set_user_write_bits "$root/yosys"
+set_user_write_bits "$root/fde"
 set_exec_bits "$root/yosys/bin"
 set_exec_bits "$root/yosys/libexec"
 set_top_level_exec_bits "$root/yosys/lib"
