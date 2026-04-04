@@ -21,6 +21,7 @@ pub(super) struct PlannedArtifacts {
     pub sta_output_path: PathBuf,
     pub sta_report_path: PathBuf,
     pub bitstream_path: PathBuf,
+    pub bitstream_sidecar_path: PathBuf,
 }
 
 pub(super) fn resolve_workdir(
@@ -80,6 +81,7 @@ pub(super) fn plan_artifacts(
         sta_output_path: workdir.join(format!("{}_sta.xml", base_name)),
         sta_report_path: output_dir.join(format!("{}_sta.rpt", base_name)),
         bitstream_path: output_dir.join(format!("{}_bit.bit", base_name)),
+        bitstream_sidecar_path: output_dir.join(format!("{}_bit.sidecar.txt", base_name)),
     })
 }
 

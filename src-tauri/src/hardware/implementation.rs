@@ -19,8 +19,7 @@ use self::{
 };
 use super::types::{
     ImplementationLogChunkV1, ImplementationPlaceModeV1, ImplementationReportV1,
-    ImplementationRequestV1, ImplementationRouteModeV1, ImplementationStageKindV1,
-    ImplementationStageResultV1,
+    ImplementationRequestV1, ImplementationStageKindV1, ImplementationStageResultV1,
 };
 
 const BUNDLED_FDE_DIR: &str = "vendor/fde";
@@ -34,6 +33,8 @@ const FDE_ARCH_FILE: &str = "fdp3p7_arch.xml";
 const FDE_DELAY_FILE: &str = "fdp3p7_dly.xml";
 const FDE_CIL_FILE: &str = "fdp3p7_cil.xml";
 const FDE_FAMILY_NAME: &str = "fdp3";
+const FDE_DEFAULT_LUT_SIZE: u8 = 4;
+const FDE_DEFAULT_PACK_CAPACITY: u8 = 4;
 
 pub fn run_fde_implementation(
     app: &AppHandle,
@@ -167,16 +168,17 @@ fn build_stage_plans(
             optional: false,
             log_path: workdir.join("map.log"),
             output_path: artifacts.map_path.clone(),
-            executable: fde_executable_name("map"),
+            executable: fde_executable_name("fde"),
             args: vec![
-                "-y".to_string(),
-                "-i".to_string(),
+                "map".to_string(),
+                "--input".to_string(),
                 path_argument(&artifacts.edif_path, workdir)?,
-                "-o".to_string(),
+                "--output".to_string(),
                 path_argument(&artifacts.map_path, workdir)?,
-                "-c".to_string(),
+                "--cell-library".to_string(),
                 toolchain.dc_cell.to_string_lossy().to_string(),
-                "-e".to_string(),
+                "--lut-size".to_string(),
+                FDE_DEFAULT_LUT_SIZE.to_string(),
             ],
         },
         StagePlan {
@@ -184,21 +186,23 @@ fn build_stage_plans(
             optional: false,
             log_path: workdir.join("pack.log"),
             output_path: artifacts.pack_path.clone(),
-            executable: fde_executable_name("pack"),
+            executable: fde_executable_name("fde"),
             args: vec![
-                "-c".to_string(),
-                FDE_FAMILY_NAME.to_string(),
-                "-n".to_string(),
+                "pack".to_string(),
+                "--input".to_string(),
                 path_argument(&artifacts.map_path, workdir)?,
-                "-l".to_string(),
-                toolchain.pack_cell.to_string_lossy().to_string(),
-                "-r".to_string(),
-                toolchain.pack_dcp_lib.to_string_lossy().to_string(),
-                "-o".to_string(),
+                "--output".to_string(),
                 path_argument(&artifacts.pack_path, workdir)?,
-                "-g".to_string(),
+                "--family".to_string(),
+                FDE_FAMILY_NAME.to_string(),
+                "--capacity".to_string(),
+                FDE_DEFAULT_PACK_CAPACITY.to_string(),
+                "--cell-library".to_string(),
+                toolchain.pack_cell.to_string_lossy().to_string(),
+                "--dcp-library".to_string(),
+                toolchain.pack_dcp_lib.to_string_lossy().to_string(),
+                "--config".to_string(),
                 toolchain.pack_config.to_string_lossy().to_string(),
-                "-e".to_string(),
             ],
         },
         StagePlan {
@@ -206,20 +210,21 @@ fn build_stage_plans(
             optional: false,
             log_path: workdir.join("place.log"),
             output_path: artifacts.place_path.clone(),
-            executable: fde_executable_name("place"),
+            executable: fde_executable_name("fde"),
             args: vec![
-                "-a".to_string(),
-                toolchain.arch.to_string_lossy().to_string(),
-                "-d".to_string(),
-                toolchain.delay.to_string_lossy().to_string(),
-                "-i".to_string(),
+                "place".to_string(),
+                "--input".to_string(),
                 path_argument(&artifacts.pack_path, workdir)?,
-                "-o".to_string(),
+                "--output".to_string(),
                 path_argument(&artifacts.place_path, workdir)?,
-                "-c".to_string(),
+                "--arch".to_string(),
+                toolchain.arch.to_string_lossy().to_string(),
+                "--delay".to_string(),
+                toolchain.delay.to_string_lossy().to_string(),
+                "--constraints".to_string(),
                 path_argument(&artifacts.constraint_path, workdir)?,
-                place_mode_flag(request.place_mode).to_string(),
-                "-e".to_string(),
+                "--mode".to_string(),
+                place_mode_argument(request.place_mode).to_string(),
             ],
         },
         StagePlan {
@@ -227,18 +232,19 @@ fn build_stage_plans(
             optional: false,
             log_path: workdir.join("route.log"),
             output_path: artifacts.route_path.clone(),
-            executable: fde_executable_name("route"),
+            executable: fde_executable_name("fde"),
             args: vec![
-                "-a".to_string(),
-                toolchain.arch.to_string_lossy().to_string(),
-                "-n".to_string(),
+                "route".to_string(),
+                "--input".to_string(),
                 path_argument(&artifacts.place_path, workdir)?,
-                "-o".to_string(),
+                "--output".to_string(),
                 path_argument(&artifacts.route_path, workdir)?,
-                route_mode_flag(request.route_mode).to_string(),
-                "-c".to_string(),
+                "--arch".to_string(),
+                toolchain.arch.to_string_lossy().to_string(),
+                "--cil".to_string(),
+                toolchain.cil.to_string_lossy().to_string(),
+                "--constraints".to_string(),
                 path_argument(&artifacts.constraint_path, workdir)?,
-                "-e".to_string(),
             ],
         },
         StagePlan {
@@ -246,19 +252,21 @@ fn build_stage_plans(
             optional: true,
             log_path: workdir.join("sta.log"),
             output_path: artifacts.sta_report_path.clone(),
-            executable: fde_executable_name("sta"),
+            executable: fde_executable_name("fde"),
             args: vec![
-                "-a".to_string(),
-                toolchain.arch.to_string_lossy().to_string(),
-                "-i".to_string(),
+                "sta".to_string(),
+                "--input".to_string(),
                 path_argument(&artifacts.route_path, workdir)?,
-                "-l".to_string(),
-                toolchain.sta_iclib.to_string_lossy().to_string(),
-                "-o".to_string(),
+                "--output".to_string(),
                 path_argument(&artifacts.sta_output_path, workdir)?,
-                "-r".to_string(),
+                "--report".to_string(),
                 path_argument(&artifacts.sta_report_path, workdir)?,
-                "-e".to_string(),
+                "--arch".to_string(),
+                toolchain.arch.to_string_lossy().to_string(),
+                "--delay".to_string(),
+                toolchain.delay.to_string_lossy().to_string(),
+                "--timing-library".to_string(),
+                toolchain.sta_iclib.to_string_lossy().to_string(),
             ],
         },
         StagePlan {
@@ -266,17 +274,20 @@ fn build_stage_plans(
             optional: false,
             log_path: workdir.join("bitgen.log"),
             output_path: artifacts.bitstream_path.clone(),
-            executable: fde_executable_name("bitgen"),
+            executable: fde_executable_name("fde"),
             args: vec![
-                "-a".to_string(),
-                toolchain.arch.to_string_lossy().to_string(),
-                "-c".to_string(),
-                toolchain.cil.to_string_lossy().to_string(),
-                "-n".to_string(),
-                path_argument(&artifacts.route_path, workdir)?,
-                "-b".to_string(),
+                "bitgen".to_string(),
+                "--input".to_string(),
+                path_argument(&artifacts.sta_output_path, workdir)?,
+                "--output".to_string(),
                 path_argument(&artifacts.bitstream_path, workdir)?,
-                "-e".to_string(),
+                "--arch".to_string(),
+                toolchain.arch.to_string_lossy().to_string(),
+                "--cil".to_string(),
+                toolchain.cil.to_string_lossy().to_string(),
+                "--emit-sidecar".to_string(),
+                "--sidecar".to_string(),
+                path_argument(&artifacts.bitstream_sidecar_path, workdir)?,
             ],
         },
     ])
@@ -312,18 +323,10 @@ fn validate_request(request: &ImplementationRequestV1) -> Result<(), String> {
     Ok(())
 }
 
-fn place_mode_flag(mode: ImplementationPlaceModeV1) -> &'static str {
+fn place_mode_argument(mode: ImplementationPlaceModeV1) -> &'static str {
     match mode {
-        ImplementationPlaceModeV1::TimingDriven => "-t",
-        ImplementationPlaceModeV1::BoundingBox => "-b",
-    }
-}
-
-fn route_mode_flag(mode: ImplementationRouteModeV1) -> &'static str {
-    match mode {
-        ImplementationRouteModeV1::TimingDriven => "-t",
-        ImplementationRouteModeV1::DirectSearch => "-d",
-        ImplementationRouteModeV1::BreadthFirst => "-b",
+        ImplementationPlaceModeV1::TimingDriven => "timing",
+        ImplementationPlaceModeV1::BoundingBox => "bounding",
     }
 }
 

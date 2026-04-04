@@ -45,11 +45,12 @@ pub(super) fn resolve_toolchain_paths(
 }
 
 fn resolve_fde_bin_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let executable_name = fde_executable_name("fde");
     let bundled_resource_candidate = app
         .path()
         .resolve(format!("{}/bin", BUNDLED_FDE_DIR), BaseDirectory::Resource)
         .ok()
-        .filter(|path| path.is_dir());
+        .filter(|path| path.join(&executable_name).is_file());
     if let Some(candidate) = bundled_resource_candidate {
         return Ok(candidate);
     }
@@ -57,12 +58,12 @@ fn resolve_fde_bin_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let bundled_dev_candidate = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join(BUNDLED_FDE_DIR)
         .join("bin");
-    if bundled_dev_candidate.is_dir() {
+    if bundled_dev_candidate.join(&executable_name).is_file() {
         return Ok(bundled_dev_candidate);
     }
 
     Err(
-        "Unable to locate Aspen's bundled FDE toolchain. Run `pnpm prepare:fde-bundle` for local development or build with `src-tauri/tauri.yosys.conf.json` so the bundled toolchain is packaged into the app."
+        "Unable to locate Aspen's bundled Rust FDE toolchain. Run `pnpm prepare:fde-bundle` for local development or build with `src-tauri/tauri.yosys.conf.json` so the bundled toolchain is packaged into the app."
             .to_string(),
     )
 }

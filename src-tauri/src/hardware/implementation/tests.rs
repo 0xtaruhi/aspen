@@ -1,5 +1,5 @@
 use super::*;
-use crate::hardware::types::SynthesisSourceFileV1;
+use crate::hardware::types::{ImplementationRouteModeV1, SynthesisSourceFileV1};
 use std::{
     env, fs,
     path::{Path, PathBuf},
@@ -198,30 +198,14 @@ fn configure_test_yosys_runtime_env(command: &mut Command, yosys_bin: &Path) {
 }
 
 #[test]
-fn place_mode_flag_matches_legacy_cli_modes() {
+fn place_mode_argument_matches_rust_cli_modes() {
     assert_eq!(
-        place_mode_flag(ImplementationPlaceModeV1::TimingDriven),
-        "-t"
+        place_mode_argument(ImplementationPlaceModeV1::TimingDriven),
+        "timing"
     );
     assert_eq!(
-        place_mode_flag(ImplementationPlaceModeV1::BoundingBox),
-        "-b"
-    );
-}
-
-#[test]
-fn route_mode_flag_matches_legacy_cli_modes() {
-    assert_eq!(
-        route_mode_flag(ImplementationRouteModeV1::TimingDriven),
-        "-t"
-    );
-    assert_eq!(
-        route_mode_flag(ImplementationRouteModeV1::DirectSearch),
-        "-d"
-    );
-    assert_eq!(
-        route_mode_flag(ImplementationRouteModeV1::BreadthFirst),
-        "-b"
+        place_mode_argument(ImplementationPlaceModeV1::BoundingBox),
+        "bounding"
     );
 }
 
@@ -239,11 +223,81 @@ fn path_argument_keeps_absolute_paths_outside_workdir() {
 }
 
 #[test]
+fn latest_fde_stage_plans_match_current_cli_contract() {
+    let workdir = env::temp_dir().join(format!(
+        "aspen-fde-cli-contract-{}-{}",
+        std::process::id(),
+        now_millis().unwrap()
+    ));
+    fs::create_dir_all(&workdir).unwrap();
+
+    let request = ImplementationRequestV1 {
+        op_id: "impl-cli-contract".to_string(),
+        project_name: "smoke".to_string(),
+        project_dir: None,
+        top_module: "top".to_string(),
+        target_device_id: "FDP3P7".to_string(),
+        constraint_xml: "<design name=\"top\"/>".to_string(),
+        place_mode: ImplementationPlaceModeV1::TimingDriven,
+        route_mode: ImplementationRouteModeV1::BreadthFirst,
+        files: vec![SynthesisSourceFileV1 {
+            path: "top.v".to_string(),
+            content: "module top; endmodule\n".to_string(),
+        }],
+        synthesized_edif_path: Some(workdir.join("top.edf").to_string_lossy().to_string()),
+    };
+
+    let artifacts = plan_artifacts(&workdir, &request).unwrap();
+    let toolchain = toolchain::ImplementationToolchainPaths {
+        fde_bin_dir: PathBuf::from("/tmp/fde/bin"),
+        fde_lib_dir: None,
+        dc_cell: PathBuf::from("/tmp/hw_lib/dc_cell.xml"),
+        pack_cell: PathBuf::from("/tmp/hw_lib/fdp3_cell.xml"),
+        pack_dcp_lib: PathBuf::from("/tmp/hw_lib/fdp3_dcplib.xml"),
+        pack_config: PathBuf::from("/tmp/hw_lib/fdp3_config.xml"),
+        sta_iclib: PathBuf::from("/tmp/hw_lib/fdp3_con.xml"),
+        arch: PathBuf::from("/tmp/hw_lib/fdp3p7_arch.xml"),
+        delay: PathBuf::from("/tmp/hw_lib/fdp3p7_dly.xml"),
+        cil: PathBuf::from("/tmp/hw_lib/fdp3p7_cil.xml"),
+    };
+
+    let plans = build_stage_plans(&toolchain, &workdir, &request, &artifacts).unwrap();
+    let route_plan = plans
+        .iter()
+        .find(|plan| plan.stage == ImplementationStageKindV1::Route)
+        .unwrap();
+    let bitgen_plan = plans
+        .iter()
+        .find(|plan| plan.stage == ImplementationStageKindV1::Bitgen)
+        .unwrap();
+
+    assert!(
+        !route_plan.args.iter().any(|arg| arg == "--mode"),
+        "latest Rust fde route CLI no longer accepts --mode"
+    );
+    assert!(
+        route_plan.args.iter().any(|arg| arg == "--cil"),
+        "latest Rust fde route stage should pass the bundled CIL resource"
+    );
+    assert!(
+        bitgen_plan.args.iter().any(|arg| arg == "--emit-sidecar"),
+        "bitgen sidecar emission should be explicit"
+    );
+    assert!(bitgen_plan.args.iter().any(|arg| arg == "--sidecar"));
+    assert!(artifacts
+        .bitstream_sidecar_path
+        .ends_with("smoke_top_bit.sidecar.txt"));
+
+    let _ = fs::remove_dir_all(&workdir);
+}
+
+#[test]
 fn implementation_smoke_test_runs_when_bundled_toolchains_are_available() {
     let fde_bin_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join(BUNDLED_FDE_DIR)
         .join("bin");
-    if !fde_bin_dir.is_dir() {
+    let fde_binary = fde_bin_dir.join(fde_executable_name("fde"));
+    if !fde_binary.is_file() {
         return;
     }
 
