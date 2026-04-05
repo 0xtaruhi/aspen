@@ -46,8 +46,6 @@
   "implementationFailedReviewStages": "一個或多個實作階段失敗，請檢視下方的階段狀態與日誌。",
   "implementationFlowSettings": "實作流程設定",
   "elapsedTime": "耗時",
-  "implementationRouteEngine": "繞線演算法",
-  "implementationRouteEngineDescription": "繞線階段決定求解器要用多積極的策略來連接已完成佈局的設計。",
   "implementationPlaceModeTimingDrivenDescription": "預設建議。會花較多時間最佳化佈局品質與時序收斂。",
   "implementationPlaceModeBoundingBoxDescription": "較快的佈局啟發式，適合先快速檢查一輪是否可實作。",
   "implementationPlaceSummary": "佈局：{mode}",
@@ -123,7 +121,6 @@
   "safetyDescription": "控制工作區中破壞性操作的保護機制。",
   "platform": "平台",
   "autoSaveImplementationProjectFailed": "實作已完成，但自動儲存失敗：{message}",
-  "implementationRouteModeTimingDrivenDescription": "品質最高，通常也是最慢的模式，適合最終 bitstream。",
   "noHardwareTargetsOpen": "目前沒有開啟任何硬體目標。",
   "matrixSizeDescription": "調整點陣行列數，並盡量保留既有的行列綁定。",
   "noMatchingBuses": "目前沒有和該裝置尺寸相符的索引匯流排。",
@@ -133,5 +130,7 @@
   "deleteSelectedDevicesTitle": "刪除所選裝置",
   "deleteSelectedDevicesConfirm": "確定要刪除已選取的 {count} 個裝置嗎？",
   "deviceConnected": "裝置已連線",
-  "deviceRemoved": "裝置已移除"
+  "deviceRemoved": "裝置已移除",
+  "viewLog": "查看日誌",
+  "noLogAvailable": "暫時沒有日誌。"
 }

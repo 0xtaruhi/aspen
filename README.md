@@ -5,9 +5,7 @@ This template should help get you started developing with Vue 3 and TypeScript i
 ## FPGA Toolchains
 
 - Bundle Aspen's Yosys toolchain: `pnpm prepare:yosys-bundle`
-- Bundle Aspen's Rust `fde` implementation toolchain: `pnpm prepare:fde-bundle`
-
-`pnpm prepare:fde-bundle` builds `fde` from a local `../fde-rs-standalone` or `../fde-rs` checkout when available. You can override the source with `FDE_RS_DIR=/path/to/fde-rs`.
+- Aspen links Rust `fde` directly from crates.io via `fde = "1.0"`.
 
 ## Recommended IDE Setup
 

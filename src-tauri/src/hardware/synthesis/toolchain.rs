@@ -155,7 +155,7 @@ pub(super) fn resolve_fde_support_file(
     }
 
     Err(format!(
-        "Unable to locate Aspen's bundled FDE synthesis support file '{}'. Build with `src-tauri/tauri.yosys.conf.json` or keep `{}/{}` in the source tree for local development.",
+        "Unable to locate Aspen's packaged synthesis support file '{}'. Build with `src-tauri/tauri.yosys.conf.json` or keep `{}/{}` in the source tree for local development.",
         file_name, FDE_RESOURCE_DIR, file_name
     ))
 }

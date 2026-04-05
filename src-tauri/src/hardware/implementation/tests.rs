@@ -1,5 +1,8 @@
 use super::*;
-use crate::hardware::types::{ImplementationRouteModeV1, SynthesisSourceFileV1};
+use crate::hardware::types::{
+    ImplementationPlaceModeV1, ImplementationRequestV1, SynthesisSourceFileV1,
+};
+use fde::PlaceMode;
 use std::{
     env, fs,
     path::{Path, PathBuf},
@@ -84,19 +87,7 @@ opt -fast\n\
 opt -full\n\
 techmap -map {}\n\
 simplemap\n\
-dfflegalize \\\n\
-  -cell $_DFF_N_ x \\\n\
-  -cell $_DFF_P_ x \\\n\
-  -cell $_DFFE_PP_ x \\\n\
-  -cell $_DFFE_PN_ x \\\n\
-  -cell $_DFF_PN0_ x \\\n\
-  -cell $_DFF_PN1_ x \\\n\
-  -cell $_DFF_PP0_ x \\\n\
-  -cell $_DFF_PP1_ x \\\n\
-  -cell $_DFF_NN0_ x \\\n\
-  -cell $_DFF_NN1_ x \\\n\
-  -cell $_DFF_NP0_ x \\\n\
-  -cell $_DFF_NP1_ x\n\
+dfflegalize \\\n  -cell $_DFF_N_ x \\\n  -cell $_DFF_P_ x \\\n  -cell $_DFFE_PP_ x \\\n  -cell $_DFFE_PN_ x \\\n  -cell $_DFF_PN0_ x \\\n  -cell $_DFF_PN1_ x \\\n  -cell $_DFF_PP0_ x \\\n  -cell $_DFF_PP1_ x \\\n  -cell $_DFF_NN0_ x \\\n  -cell $_DFF_NN1_ x \\\n  -cell $_DFF_NP0_ x \\\n  -cell $_DFF_NP1_ x\n\
 techmap -D NO_LUT -map {}\n\
 opt\n\
 wreduce\n\
@@ -197,15 +188,38 @@ fn configure_test_yosys_runtime_env(command: &mut Command, yosys_bin: &Path) {
     }
 }
 
+fn test_resource_paths() -> toolchain::ImplementationResourcePaths {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(FDE_RESOURCE_DIR);
+    toolchain::ImplementationResourcePaths {
+        dc_cell: root.join(FDE_DC_CELL_FILE),
+        pack_cell: root.join(FDE_PACK_CELL_FILE),
+        pack_dcp_lib: root.join(FDE_PACK_DCP_LIB_FILE),
+        pack_config: root.join(FDE_PACK_CONFIG_FILE),
+        arch: root.join(FDE_ARCH_FILE),
+        delay: root.join(FDE_DELAY_FILE),
+        cil: root.join(FDE_CIL_FILE),
+    }
+}
+
 #[test]
-fn place_mode_argument_matches_rust_cli_modes() {
+fn cargo_manifest_uses_semver_rust_fde_dependency() {
+    let cargo_toml =
+        fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml")).unwrap();
+    assert!(
+        cargo_toml.contains("fde = \"1.0\""),
+        "Aspen should depend on crates.io fde via a semver-compatible 1.0 requirement"
+    );
+}
+
+#[test]
+fn place_mode_matches_rust_library_modes() {
     assert_eq!(
-        place_mode_argument(ImplementationPlaceModeV1::TimingDriven),
-        "timing"
+        stages::place_mode(ImplementationPlaceModeV1::TimingDriven),
+        PlaceMode::TimingDriven
     );
     assert_eq!(
-        place_mode_argument(ImplementationPlaceModeV1::BoundingBox),
-        "bounding"
+        stages::place_mode(ImplementationPlaceModeV1::BoundingBox),
+        PlaceMode::BoundingBox
     );
 }
 
@@ -215,133 +229,42 @@ fn path_argument_keeps_absolute_paths_outside_workdir() {
     let local = workdir.join("local.xml");
     let external = Path::new("/tmp/aspen-output/result.bit");
 
-    assert_eq!(path_argument(&local, workdir).unwrap(), "local.xml");
     assert_eq!(
-        path_argument(external, workdir).unwrap(),
+        artifacts::path_argument(&local, workdir).unwrap(),
+        "local.xml"
+    );
+    assert_eq!(
+        artifacts::path_argument(external, workdir).unwrap(),
         "/tmp/aspen-output/result.bit"
     );
 }
 
 #[test]
-fn latest_fde_stage_plans_match_current_cli_contract() {
-    let workdir = env::temp_dir().join(format!(
-        "aspen-fde-cli-contract-{}-{}",
-        std::process::id(),
-        now_millis().unwrap()
-    ));
-    fs::create_dir_all(&workdir).unwrap();
+fn render_stage_log_includes_messages_warnings_metrics_and_artifacts() {
+    let mut report = fde::StageReport::new("route");
+    report.push("routed design".to_string());
+    report.warn("route warning".to_string());
+    report.metric("pips", 42);
+    report.artifact("design", "/tmp/top_route.xml");
 
-    let request = ImplementationRequestV1 {
-        op_id: "impl-cli-contract".to_string(),
-        project_name: "smoke".to_string(),
-        project_dir: None,
-        top_module: "top".to_string(),
-        target_device_id: "FDP3P7".to_string(),
-        constraint_xml: "<design name=\"top\"/>".to_string(),
-        place_mode: ImplementationPlaceModeV1::TimingDriven,
-        route_mode: ImplementationRouteModeV1::BreadthFirst,
-        files: vec![SynthesisSourceFileV1 {
-            path: "top.v".to_string(),
-            content: "module top; endmodule\n".to_string(),
-        }],
-        synthesized_edif_path: Some(workdir.join("top.edf").to_string_lossy().to_string()),
-    };
-
-    let artifacts = plan_artifacts(&workdir, &request).unwrap();
-    let toolchain = toolchain::ImplementationToolchainPaths {
-        fde_bin_dir: PathBuf::from("/tmp/fde/bin"),
-        fde_lib_dir: None,
-        dc_cell: PathBuf::from("/tmp/hw_lib/dc_cell.xml"),
-        pack_cell: PathBuf::from("/tmp/hw_lib/fdp3_cell.xml"),
-        pack_dcp_lib: PathBuf::from("/tmp/hw_lib/fdp3_dcplib.xml"),
-        pack_config: PathBuf::from("/tmp/hw_lib/fdp3_config.xml"),
-        sta_iclib: PathBuf::from("/tmp/hw_lib/fdp3_con.xml"),
-        arch: PathBuf::from("/tmp/hw_lib/fdp3p7_arch.xml"),
-        delay: PathBuf::from("/tmp/hw_lib/fdp3p7_dly.xml"),
-        cil: PathBuf::from("/tmp/hw_lib/fdp3p7_cil.xml"),
-    };
-
-    let plans = build_stage_plans(&toolchain, &workdir, &request, &artifacts).unwrap();
-    let route_plan = plans
-        .iter()
-        .find(|plan| plan.stage == ImplementationStageKindV1::Route)
-        .unwrap();
-    let bitgen_plan = plans
-        .iter()
-        .find(|plan| plan.stage == ImplementationStageKindV1::Bitgen)
-        .unwrap();
-
-    assert!(
-        !route_plan.args.iter().any(|arg| arg == "--mode"),
-        "latest Rust fde route CLI no longer accepts --mode"
-    );
-    assert!(
-        route_plan.args.iter().any(|arg| arg == "--cil"),
-        "latest Rust fde route stage should pass the bundled CIL resource"
-    );
-    assert!(
-        bitgen_plan.args.iter().any(|arg| arg == "--emit-sidecar"),
-        "bitgen sidecar emission should be explicit"
-    );
-    assert!(bitgen_plan.args.iter().any(|arg| arg == "--sidecar"));
-    assert!(artifacts
-        .bitstream_sidecar_path
-        .ends_with("smoke_top_bit.sidecar.txt"));
-
-    let _ = fs::remove_dir_all(&workdir);
+    let log = report::render_stage_log(&report);
+    assert!(log.contains("stage: route"));
+    assert!(log.contains("messages:"));
+    assert!(log.contains("warnings:"));
+    assert!(log.contains("pips = 42"));
+    assert!(log.contains("design = /tmp/top_route.xml"));
 }
 
 #[test]
-fn implementation_smoke_test_runs_when_bundled_toolchains_are_available() {
-    let fde_bin_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join(BUNDLED_FDE_DIR)
-        .join("bin");
-    let fde_binary = fde_bin_dir.join(fde_executable_name("fde"));
-    if !fde_binary.is_file() {
-        return;
-    }
-
-    let toolchain = toolchain::ImplementationToolchainPaths {
-        fde_lib_dir: {
-            let candidate = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join(BUNDLED_FDE_DIR)
-                .join("lib");
-            candidate.is_dir().then_some(candidate)
-        },
-        dc_cell: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join(FDE_RESOURCE_DIR)
-            .join(FDE_DC_CELL_FILE),
-        pack_cell: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join(FDE_RESOURCE_DIR)
-            .join(FDE_PACK_CELL_FILE),
-        pack_dcp_lib: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join(FDE_RESOURCE_DIR)
-            .join(FDE_PACK_DCP_LIB_FILE),
-        pack_config: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join(FDE_RESOURCE_DIR)
-            .join(FDE_PACK_CONFIG_FILE),
-        sta_iclib: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join(FDE_RESOURCE_DIR)
-            .join(FDE_STA_ICLIB_FILE),
-        arch: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join(FDE_RESOURCE_DIR)
-            .join(FDE_ARCH_FILE),
-        delay: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join(FDE_RESOURCE_DIR)
-            .join(FDE_DELAY_FILE),
-        cil: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join(FDE_RESOURCE_DIR)
-            .join(FDE_CIL_FILE),
-        fde_bin_dir,
-    };
-    if !toolchain.dc_cell.is_file()
-        || !toolchain.pack_cell.is_file()
-        || !toolchain.pack_dcp_lib.is_file()
-        || !toolchain.pack_config.is_file()
-        || !toolchain.sta_iclib.is_file()
-        || !toolchain.arch.is_file()
-        || !toolchain.delay.is_file()
-        || !toolchain.cil.is_file()
+fn implementation_smoke_test_runs_with_in_process_rust_fde_when_yosys_is_available() {
+    let resources = test_resource_paths();
+    if !resources.dc_cell.is_file()
+        || !resources.pack_cell.is_file()
+        || !resources.pack_dcp_lib.is_file()
+        || !resources.pack_config.is_file()
+        || !resources.arch.is_file()
+        || !resources.delay.is_file()
+        || !resources.cil.is_file()
     {
         return;
     }
@@ -364,7 +287,6 @@ fn implementation_smoke_test_runs_when_bundled_toolchains_are_available() {
             ]
             .join("\n"),
             place_mode: ImplementationPlaceModeV1::TimingDriven,
-            route_mode: ImplementationRouteModeV1::TimingDriven,
             files: vec![SynthesisSourceFileV1 {
                 path: "top.v".to_string(),
                 content: [
@@ -404,7 +326,6 @@ fn implementation_smoke_test_runs_when_bundled_toolchains_are_available() {
         ]
         .join("\n"),
         place_mode: ImplementationPlaceModeV1::TimingDriven,
-        route_mode: ImplementationRouteModeV1::TimingDriven,
         files: vec![SynthesisSourceFileV1 {
             path: "top.v".to_string(),
             content: [
@@ -422,7 +343,7 @@ fn implementation_smoke_test_runs_when_bundled_toolchains_are_available() {
     };
 
     let report = run_fde_implementation_in_workdir(
-        &toolchain,
+        &resources,
         &workdir,
         &request,
         generated_at_ms,
@@ -433,6 +354,8 @@ fn implementation_smoke_test_runs_when_bundled_toolchains_are_available() {
 
     assert!(report.success, "{}", report.log);
     assert!(report.timing_success, "{}", report.log);
+    assert!(report.log.contains(">>> starting map"));
+    assert!(report.log.contains("stage: bitgen"));
     assert!(report
         .artifacts
         .bitstream_path

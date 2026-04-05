@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import type { SynthesisSourceFileV1 } from '@/lib/hardware-client'
 
-import { Check, Copy } from 'lucide-vue-next'
-import { computed, nextTick, ref, watch } from 'vue'
+import { ArrowRight } from 'lucide-vue-next'
+import { computed, ref, watch } from 'vue'
 
+import TextReportDialog from '@/components/flow/TextReportDialog.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { copyTextToClipboard } from '@/lib/clipboard'
 import { useI18n } from '@/lib/i18n'
 import { getProjectRootDirectory } from '@/lib/project-layout'
 import { resolveSynthesisLog } from '@/lib/synthesis-log'
@@ -24,9 +24,7 @@ const isBusy = hardwareStore.synthesisRunning
 const synthesisMessage = hardwareStore.synthesisMessage
 const synthesisReport = hardwareStore.synthesisReport
 const synthesisLiveLog = hardwareStore.synthesisLiveLog
-const synthesisLogViewportRef = ref<HTMLDivElement | null>(null)
-const synthesisLogCopied = ref(false)
-let synthesisLogCopiedTimer: ReturnType<typeof setTimeout> | null = null
+const reportDialogOpen = ref(false)
 
 const synthesisSources = computed<SynthesisSourceFileV1[]>(() => {
   return designContextStore.hardwareSources.value.map((source) => ({
@@ -150,35 +148,6 @@ function projectDirectory() {
   return getProjectRootDirectory(projectStore.projectPath)
 }
 
-async function scrollSynthesisLogToBottom() {
-  await nextTick()
-  const viewport = synthesisLogViewportRef.value
-  if (!viewport) {
-    return
-  }
-  viewport.scrollTop = viewport.scrollHeight
-}
-
-async function copySynthesisLog() {
-  if (synthesisLog.value.trim().length === 0) {
-    return
-  }
-
-  try {
-    await copyTextToClipboard(synthesisLog.value)
-    synthesisLogCopied.value = true
-    if (synthesisLogCopiedTimer) {
-      clearTimeout(synthesisLogCopiedTimer)
-    }
-    synthesisLogCopiedTimer = setTimeout(() => {
-      synthesisLogCopied.value = false
-      synthesisLogCopiedTimer = null
-    }, 1500)
-  } catch {
-    // Clipboard failures should not interrupt the flow page.
-  }
-}
-
 watch(
   [
     topModule,
@@ -191,18 +160,19 @@ watch(
     hardwareStore.resetSynthesisState()
   },
 )
-
-watch(
-  () => synthesisLog.value,
-  () => {
-    void scrollSynthesisLogToBottom()
-  },
-  { flush: 'post', immediate: true },
-)
 </script>
 
 <template>
-  <div class="p-8 space-y-8 h-full flex flex-col animate-in fade-in duration-500">
+  <TextReportDialog
+    :open="reportDialogOpen"
+    :title="t('synthesisLog')"
+    :description="synthesisReport ? formatDuration(synthesisReport.elapsed_ms) : activeFileName"
+    :content="synthesisLog"
+    :empty-text="t('noLogAvailable')"
+    @update:open="reportDialogOpen = $event"
+  />
+
+  <div class="p-8 space-y-6 h-full flex flex-col animate-in fade-in duration-500">
     <div class="flex items-center justify-between shrink-0 gap-4">
       <div>
         <h2 class="text-3xl font-bold tracking-tight">{{ t('synthesis') }}</h2>
@@ -216,14 +186,15 @@ watch(
           }}
         </p>
       </div>
-      <div class="flex gap-2 items-center">
+      <div class="flex gap-2 items-center flex-wrap justify-end">
         <Badge variant="outline">{{ t('topModuleHint', { name: topModule }) }}</Badge>
+        <Badge variant="outline">{{ t('sourceFiles') }} · {{ synthesisSources.length }}</Badge>
         <Badge
           variant="outline"
           :class="
-            synthesisStatus === 'Completed'
+            synthesisStatus === t('completed')
               ? 'bg-green-500/10 text-green-500 border-green-500/20'
-              : synthesisStatus === 'Failed'
+              : synthesisStatus === t('failed')
                 ? 'bg-red-500/10 text-red-500 border-red-500/20'
                 : ''
           "
@@ -233,103 +204,93 @@ watch(
         <span class="text-sm text-muted-foreground">
           {{ synthesisReport ? formatDuration(synthesisReport.elapsed_ms) : activeFileName }}
         </span>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          :disabled="synthesisLog.trim().length === 0"
+          @click="reportDialogOpen = true"
+        >
+          {{ t('viewLog') }}
+        </Button>
         <Button type="button" size="sm" :disabled="!canRunSynthesis" @click="runSynthesis">
           {{ isBusy ? t('runningEllipsis') : t('runSynthesis') }}
+          <ArrowRight class="ml-2 h-4 w-4" />
         </Button>
       </div>
     </div>
 
     <div
       v-if="synthesisErrorMessage"
-      class="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+      class="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive"
     >
       {{ synthesisErrorMessage }}
     </div>
 
     <div
       v-else-if="zeroCellExplanation"
-      class="rounded-xl border border-border/60 bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
+      class="rounded-lg border border-border/60 bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
     >
       {{ zeroCellExplanation }}
     </div>
 
-    <div class="grid gap-4 md:grid-cols-4 shrink-0">
-      <Card v-for="card in summaryCards" :key="card.title">
-        <CardHeader class="pb-2">
-          <CardTitle class="text-sm font-medium">{{ card.title }}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div class="text-2xl font-bold">{{ card.value }}</div>
-          <p class="text-xs text-muted-foreground">{{ card.hint }}</p>
-        </CardContent>
-      </Card>
+    <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4 shrink-0">
+      <article
+        v-for="card in summaryCards"
+        :key="card.title"
+        class="rounded-lg border border-border bg-card text-card-foreground"
+      >
+        <div class="border-b border-border px-4 py-3">
+          <div class="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+            {{ card.title }}
+          </div>
+        </div>
+        <div class="px-4 py-4">
+          <div class="text-2xl font-semibold tracking-tight">{{ card.value }}</div>
+          <p class="mt-1 text-xs text-muted-foreground">{{ card.hint }}</p>
+        </div>
+      </article>
     </div>
 
-    <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] flex-1 min-h-0">
-      <Card class="min-h-0 flex flex-col">
-        <CardHeader class="flex-row items-center justify-between space-y-0">
-          <CardTitle>{{ t('synthesisLog') }}</CardTitle>
-          <div class="flex items-center gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              :disabled="synthesisLog.trim().length === 0"
-              class="h-7 gap-1.5 px-2 text-xs"
-              @click="copySynthesisLog"
-            >
-              <Check v-if="synthesisLogCopied" class="h-3.5 w-3.5" />
-              <Copy v-else class="h-3.5 w-3.5" />
-              {{ synthesisLogCopied ? t('copied') : t('copyLog') }}
-            </Button>
-            <div class="flex items-center gap-2 text-xs text-muted-foreground">
-              <span v-if="synthesisReport">
-                {{ t('warningCount', { count: synthesisReport.warnings }) }}
-              </span>
-              <span v-if="synthesisReport">
-                {{ t('errorCount', { count: synthesisReport.errors }) }}
-              </span>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent class="flex-1 min-h-0 p-0">
-          <div
-            ref="synthesisLogViewportRef"
-            class="allow-text-select h-full w-full overflow-auto bg-muted/40 p-4 font-mono text-xs text-foreground"
-          >
-            <pre class="whitespace-pre-wrap">{{ synthesisLog }}</pre>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card class="min-h-0 flex flex-col">
-        <CardHeader>
+    <Card class="min-h-0 flex flex-col">
+      <CardHeader class="flex-row items-center justify-between space-y-0">
+        <div>
           <CardTitle>{{ t('cellBreakdown') }}</CardTitle>
-        </CardHeader>
-        <CardContent class="flex-1 min-h-0 p-0">
-          <ScrollArea class="h-full w-full px-4 pb-4">
-            <div v-if="!synthesisReport" class="py-4 text-sm text-muted-foreground">
-              {{ t('runSynthesisToInspect') }}
-            </div>
+          <p class="mt-1 text-sm text-muted-foreground">
+            {{
+              synthesisReport
+                ? t('warningCount', { count: synthesisReport.warnings })
+                : t('runSynthesisToInspect')
+            }}
+            <template v-if="synthesisReport">
+              · {{ t('errorCount', { count: synthesisReport.errors }) }}
+            </template>
+          </p>
+        </div>
+      </CardHeader>
+      <CardContent class="flex-1 min-h-0 p-0">
+        <ScrollArea class="h-full w-full px-4 pb-4">
+          <div v-if="!synthesisReport" class="py-4 text-sm text-muted-foreground">
+            {{ t('runSynthesisToInspect') }}
+          </div>
+          <div
+            v-else-if="synthesisReport.stats.cell_type_counts.length === 0"
+            class="py-4 text-sm text-muted-foreground"
+          >
+            {{ zeroCellExplanation || t('noSynthesizedCells') }}
+          </div>
+          <div v-else class="space-y-2">
             <div
-              v-else-if="synthesisReport.stats.cell_type_counts.length === 0"
-              class="py-4 text-sm text-muted-foreground"
+              v-for="entry in synthesisReport.stats.cell_type_counts"
+              :key="entry.cell_type"
+              class="flex items-center justify-between rounded-lg border border-border/60 px-3 py-2 text-sm"
             >
-              {{ zeroCellExplanation || t('noSynthesizedCells') }}
+              <span class="font-mono text-xs">{{ entry.cell_type }}</span>
+              <span class="font-medium">{{ entry.count }}</span>
             </div>
-            <div v-else class="space-y-2">
-              <div
-                v-for="entry in synthesisReport.stats.cell_type_counts"
-                :key="entry.cell_type"
-                class="flex items-center justify-between rounded-lg border border-border/60 px-3 py-2 text-sm"
-              >
-                <span class="font-mono text-xs">{{ entry.cell_type }}</span>
-                <span class="font-medium">{{ entry.count }}</span>
-              </div>
-            </div>
-          </ScrollArea>
-        </CardContent>
-      </Card>
-    </div>
+          </div>
+        </ScrollArea>
+      </CardContent>
+    </Card>
   </div>
 </template>

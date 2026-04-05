@@ -67,7 +67,7 @@ function handleThemeAccentInput(value: string) {
 
       <div class="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
         <div class="grid gap-6">
-          <Card class="border-border/70 shadow-sm">
+          <Card class="border-border/70">
             <CardHeader>
               <div class="flex items-center gap-3">
                 <div class="rounded-2xl border border-border bg-muted p-2">
@@ -167,7 +167,7 @@ function handleThemeAccentInput(value: string) {
             </CardContent>
           </Card>
 
-          <Card class="border-border/70 shadow-sm">
+          <Card class="border-border/70">
             <CardHeader>
               <div class="flex items-center gap-3">
                 <div class="rounded-2xl border border-border bg-muted p-2">
@@ -212,7 +212,7 @@ function handleThemeAccentInput(value: string) {
           </Card>
         </div>
 
-        <Card class="border-border/70 shadow-sm">
+        <Card class="border-border/70">
           <CardHeader>
             <div class="flex items-center gap-3">
               <div class="rounded-2xl border border-border bg-muted p-2">

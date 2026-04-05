@@ -14,6 +14,33 @@ export default defineConfig(async () => ({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('monaco-editor')) {
+            return 'monaco'
+          }
+
+          if (id.includes('/node_modules/vue/') || id.includes('/node_modules/vue-router/')) {
+            return 'vue-vendor'
+          }
+
+          if (id.includes('/node_modules/@tauri-apps/')) {
+            return 'tauri-vendor'
+          }
+
+          if (
+            id.includes('/node_modules/reka-ui/') ||
+            id.includes('/node_modules/lucide-vue-next/') ||
+            id.includes('/node_modules/@tanstack/')
+          ) {
+            return 'ui-vendor'
+          }
+        },
+      },
+    },
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

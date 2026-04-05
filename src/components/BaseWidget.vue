@@ -1,6 +1,6 @@
 <template>
   <div
-    class="h-full transition shadow-sm hover:shadow-[0_8px_24px_rgba(0,0,0,0.12)] dark:hover:shadow-[0_8px_24px_rgba(0,0,0,0.6)] flex flex-col rounded-2xl border border-zinc-200/60 bg-white/90 dark:border-zinc-700/60 dark:bg-zinc-900/80"
+    class="flex h-full flex-col rounded-2xl border border-zinc-200/60 bg-white/90 transition dark:border-zinc-700/60 dark:bg-zinc-900/80"
   >
     <div class="shrink-0 h-9 px-2 flex items-center justify-between widget-drag-handle cursor-move">
       <div class="text-sm font-medium truncate text-zinc-900 dark:text-zinc-100 ml-1 select-none">

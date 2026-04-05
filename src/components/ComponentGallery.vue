@@ -128,7 +128,6 @@ const items = computed<GalleryItem[]>(() => [
   user-select: none;
   background: var(--card);
   color: var(--card-foreground);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
 }
 
 .cg-card:active {

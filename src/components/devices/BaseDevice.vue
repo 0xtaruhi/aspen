@@ -239,7 +239,7 @@ onUnmounted(() => {
         ></div>
 
         <div
-          class="relative flex h-full min-h-0 flex-col rounded-md border border-border bg-card shadow-sm overflow-hidden"
+          class="relative flex h-full min-h-0 flex-col overflow-hidden rounded-md border border-border bg-card"
           :class="props.preview ? 'border-primary/60 ring-1 ring-primary/30' : ''"
         >
           <button

@@ -499,17 +499,6 @@ pub enum ImplementationPlaceModeV1 {
     BoundingBox,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum ImplementationRouteModeV1 {
-    #[serde(alias = "timing-driven")]
-    TimingDriven,
-    #[serde(alias = "direct-search")]
-    DirectSearch,
-    #[serde(alias = "breadth-first")]
-    BreadthFirst,
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ImplementationRequestV1 {
     pub op_id: String,
@@ -519,7 +508,6 @@ pub struct ImplementationRequestV1 {
     pub target_device_id: String,
     pub constraint_xml: String,
     pub place_mode: ImplementationPlaceModeV1,
-    pub route_mode: ImplementationRouteModeV1,
     pub synthesized_edif_path: Option<String>,
     pub files: Vec<SynthesisSourceFileV1>,
 }

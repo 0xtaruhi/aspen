@@ -18,7 +18,7 @@ function handleOpenRecentProject(path: string) {
   <section class="rounded-xl border border-border/70 bg-muted/20 p-3">
     <div class="mb-3 flex items-center gap-2">
       <div
-        class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-background text-muted-foreground shadow-sm ring-1 ring-border/70"
+        class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-background text-muted-foreground ring-1 ring-border/70"
       >
         <History class="h-4 w-4" />
       </div>

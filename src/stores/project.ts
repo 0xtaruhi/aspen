@@ -15,7 +15,6 @@ import {
   cloneImplementationSettings,
   defaultImplementationSettings,
   type ImplementationPlaceMode,
-  type ImplementationRouteMode,
 } from '../lib/implementation-settings'
 import {
   buildFileSignatureMap,
@@ -145,6 +144,13 @@ export const projectStore = reactive({
     const nextTopFileId = this.findNode(parsed.topFileId, nextFiles)
       ? parsed.topFileId
       : resolveTopFileId(nextFiles)
+    const nextPinConstraints = cloneProjectConstraintSnapshot(parsed.pinConstraints)
+    const resolvedConstraintTarget = nextPinConstraints.topFileId
+      ? this.findNode(nextPinConstraints.topFileId, nextFiles)
+      : null
+    if ((!resolvedConstraintTarget || resolvedConstraintTarget.type !== 'file') && nextTopFileId) {
+      nextPinConstraints.topFileId = nextTopFileId
+    }
 
     this.files = nextFiles
     this.activeFileId = nextActiveFileId
@@ -153,7 +159,7 @@ export const projectStore = reactive({
     this.topModuleName = parsed.topFileId === nextTopFileId ? parsed.topModuleName : ''
     this.targetDeviceId = parsed.targetDeviceId
     this.targetBoardId = parsed.targetBoardId
-    this.pinConstraints = cloneProjectConstraintSnapshot(parsed.pinConstraints)
+    this.pinConstraints = nextPinConstraints
     this.implementationSettings = cloneImplementationSettings(parsed.implementationSettings)
     this.synthesisCache = cloneProjectSynthesisCacheSnapshot(parsed.synthesisCache)
     this.implementationCache = cloneProjectImplementationCacheSnapshot(parsed.implementationCache)
@@ -208,13 +214,6 @@ export const projectStore = reactive({
     this.implementationSettings = {
       ...this.implementationSettings,
       placeMode: mode,
-    }
-  },
-
-  setImplementationRouteMode(mode: ImplementationRouteMode) {
-    this.implementationSettings = {
-      ...this.implementationSettings,
-      routeMode: mode,
     }
   },
 

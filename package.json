@@ -12,7 +12,6 @@
     "generate:zh-tw-locale": "node scripts/generate-zh-tw-locale.mjs",
     "generate:icons": "bash scripts/generate-app-icon.sh",
     "prepare:yosys-bundle": "node scripts/prepare-yosys-bundle.mjs",
-    "prepare:fde-bundle": "node scripts/prepare-fde-bundle.mjs",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
     "preview": "vite preview",

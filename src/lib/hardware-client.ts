@@ -113,8 +113,6 @@ export type ImplementationStageKindV1 =
 
 export type ImplementationPlaceModeV1 = 'timing_driven' | 'bounding_box'
 
-export type ImplementationRouteModeV1 = 'timing_driven' | 'direct_search' | 'breadth_first'
-
 export interface ImplementationRequestV1 {
   op_id: string
   project_name: string
@@ -123,7 +121,6 @@ export interface ImplementationRequestV1 {
   target_device_id: string
   constraint_xml: string
   place_mode: ImplementationPlaceModeV1
-  route_mode: ImplementationRouteModeV1
   synthesized_edif_path?: string | null
   files: SynthesisSourceFileV1[]
 }

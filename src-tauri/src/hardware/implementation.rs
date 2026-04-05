@@ -1,5 +1,7 @@
 mod artifacts;
 mod process;
+mod report;
+mod stages;
 #[cfg(test)]
 mod tests;
 mod toolchain;
@@ -7,34 +9,38 @@ mod toolchain;
 use std::{
     fs,
     path::Path,
+    sync::Arc,
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
+use fde::{load_arch, load_cil, load_constraints, load_delay_model};
 use tauri::AppHandle;
 
 use self::{
-    artifacts::{path_argument, plan_artifacts, resolve_workdir, PlannedArtifacts},
-    process::{emit_log_chunk, run_stage, StagePlan},
-    toolchain::{fde_executable_name, resolve_toolchain_paths, spawn_fde_process},
+    artifacts::{plan_artifacts, resolve_workdir, PlannedArtifacts},
+    process::emit_log_chunk,
+    report::{
+        build_failure_report, finish_failed_stage, finish_success_stage, start_stage, StageLogSink,
+    },
+    stages::{
+        run_bitgen_stage, run_map_stage, run_pack_stage, run_place_stage, run_route_stage,
+        run_sta_stage,
+    },
+    toolchain::{resolve_resource_paths, ImplementationResourcePaths},
 };
 use super::types::{
-    ImplementationLogChunkV1, ImplementationPlaceModeV1, ImplementationReportV1,
-    ImplementationRequestV1, ImplementationStageKindV1, ImplementationStageResultV1,
+    ImplementationReportV1, ImplementationRequestV1, ImplementationStageKindV1,
+    ImplementationStageResultV1,
 };
 
-const BUNDLED_FDE_DIR: &str = "vendor/fde";
 const FDE_RESOURCE_DIR: &str = "resource/fde/hw_lib";
 const FDE_DC_CELL_FILE: &str = "dc_cell.xml";
 const FDE_PACK_CELL_FILE: &str = "fdp3_cell.xml";
 const FDE_PACK_DCP_LIB_FILE: &str = "fdp3_dcplib.xml";
 const FDE_PACK_CONFIG_FILE: &str = "fdp3_config.xml";
-const FDE_STA_ICLIB_FILE: &str = "fdp3_con.xml";
 const FDE_ARCH_FILE: &str = "fdp3p7_arch.xml";
 const FDE_DELAY_FILE: &str = "fdp3p7_dly.xml";
 const FDE_CIL_FILE: &str = "fdp3p7_cil.xml";
-const FDE_FAMILY_NAME: &str = "fdp3";
-const FDE_DEFAULT_LUT_SIZE: u8 = 4;
-const FDE_DEFAULT_PACK_CAPACITY: u8 = 4;
 
 pub fn run_fde_implementation(
     app: &AppHandle,
@@ -43,13 +49,13 @@ pub fn run_fde_implementation(
     validate_request(&request)?;
     validate_target_device(&request)?;
 
-    let toolchain = resolve_toolchain_paths(app)?;
+    let resource_paths = resolve_resource_paths(app)?;
     let generated_at_ms = now_millis()?;
     let started_at = Instant::now();
     let workdir = resolve_workdir(&request, generated_at_ms)?;
 
     run_fde_implementation_in_workdir(
-        &toolchain,
+        &resource_paths,
         &workdir,
         &request,
         generated_at_ms,
@@ -59,7 +65,7 @@ pub fn run_fde_implementation(
 }
 
 fn run_fde_implementation_in_workdir<F>(
-    toolchain: &toolchain::ImplementationToolchainPaths,
+    resource_paths: &ImplementationResourcePaths,
     workdir: &Path,
     request: &ImplementationRequestV1,
     generated_at_ms: u64,
@@ -78,6 +84,10 @@ where
     .map_err(|err| err.to_string())?;
 
     let mut combined_log = String::new();
+    let mut sink = StageLogSink {
+        on_log_chunk: &mut on_log_chunk,
+        combined_log: &mut combined_log,
+    };
     let mut stage_results = Vec::new();
     let reusable_edif_path = Path::new(
         request
@@ -102,43 +112,192 @@ where
         )
     })?;
 
-    for stage_plan in build_stage_plans(toolchain, workdir, request, &artifacts)? {
-        let stage_execution = run_stage(
-            stage_plan.stage,
-            stage_plan.optional,
-            &stage_plan.output_path,
-            stage_plan.log_path,
-            || spawn_fde_process(toolchain, &stage_plan.executable, &stage_plan.args, workdir),
-            &mut on_log_chunk,
-        )?;
-        combined_log.push_str(&stage_execution.log);
-        stage_results.push(stage_execution.result);
+    let constraints = Arc::<[_]>::from(
+        load_constraints(&artifacts.constraint_path).map_err(|err| err.to_string())?,
+    );
+    let arch = Arc::new(load_arch(&resource_paths.arch).map_err(|err| err.to_string())?);
+    let delay = Arc::new(
+        load_delay_model(Some(&resource_paths.delay))
+            .map_err(|err| err.to_string())?
+            .ok_or_else(|| {
+                format!(
+                    "Unable to load delay model from {}",
+                    resource_paths.delay.display()
+                )
+            })?,
+    );
+    let cil = load_cil(&resource_paths.cil).map_err(|err| err.to_string())?;
 
-        let failed = stage_results
-            .last()
-            .map(|result| !result.success)
-            .unwrap_or(false);
-        if failed && !stage_plan.optional {
-            let timing_report = read_optional_file(&artifacts.sta_report_path);
-            return Ok(build_failure_report(
-                request,
-                generated_at_ms,
-                started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
-                combined_log,
-                stage_results,
+    let map_result = match run_required_stage(
+        &mut ImplementationRunContext {
+            request,
+            generated_at_ms,
+            started_at,
+            artifacts: &artifacts,
+            stage_results: &mut stage_results,
+            sink: &mut sink,
+        },
+        RequiredStageSpec {
+            stage: ImplementationStageKindV1::Map,
+            log_path: &workdir.join("map.log"),
+            output_path: Some(&artifacts.map_path),
+            timing_report_on_failure: String::new(),
+        },
+        || run_map_stage(resource_paths, &artifacts),
+    ) {
+        Ok(design) => design,
+        Err(report) => return Ok(*report),
+    };
+
+    let pack_result = match run_required_stage(
+        &mut ImplementationRunContext {
+            request,
+            generated_at_ms,
+            started_at,
+            artifacts: &artifacts,
+            stage_results: &mut stage_results,
+            sink: &mut sink,
+        },
+        RequiredStageSpec {
+            stage: ImplementationStageKindV1::Pack,
+            log_path: &workdir.join("pack.log"),
+            output_path: Some(&artifacts.pack_path),
+            timing_report_on_failure: String::new(),
+        },
+        || run_pack_stage(resource_paths, map_result, &artifacts),
+    ) {
+        Ok(design) => design,
+        Err(report) => return Ok(*report),
+    };
+
+    let place_result = match run_required_stage(
+        &mut ImplementationRunContext {
+            request,
+            generated_at_ms,
+            started_at,
+            artifacts: &artifacts,
+            stage_results: &mut stage_results,
+            sink: &mut sink,
+        },
+        RequiredStageSpec {
+            stage: ImplementationStageKindV1::Place,
+            log_path: &workdir.join("place.log"),
+            output_path: Some(&artifacts.place_path),
+            timing_report_on_failure: String::new(),
+        },
+        || {
+            run_place_stage(
+                request.place_mode,
+                pack_result,
                 &artifacts,
-                timing_report,
-            ));
-        }
-    }
+                &arch,
+                &delay,
+                &constraints,
+            )
+        },
+    ) {
+        Ok(design) => design,
+        Err(report) => return Ok(*report),
+    };
 
-    let elapsed_ms = started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
-    let timing_report = read_optional_file(&artifacts.sta_report_path);
-    let timing_success = stage_results
-        .iter()
-        .find(|stage| stage.stage == ImplementationStageKindV1::Sta)
-        .map(|stage| stage.success)
-        .unwrap_or(false);
+    let (routed_design, device_design, route_image) = match run_required_stage(
+        &mut ImplementationRunContext {
+            request,
+            generated_at_ms,
+            started_at,
+            artifacts: &artifacts,
+            stage_results: &mut stage_results,
+            sink: &mut sink,
+        },
+        RequiredStageSpec {
+            stage: ImplementationStageKindV1::Route,
+            log_path: &workdir.join("route.log"),
+            output_path: Some(&artifacts.route_path),
+            timing_report_on_failure: String::new(),
+        },
+        || {
+            run_route_stage(
+                place_result,
+                &artifacts,
+                resource_paths,
+                &arch,
+                &constraints,
+                &cil,
+            )
+            .map(|(design, device_design, route_image, report)| {
+                ((design, device_design, route_image), report)
+            })
+        },
+    ) {
+        Ok(routed) => routed,
+        Err(report) => return Ok(*report),
+    };
+
+    let (design_for_bitgen, timing_report, timing_success) = {
+        let stage = ImplementationStageKindV1::Sta;
+        let log_path = workdir.join("sta.log");
+        start_stage(stage, &mut sink);
+        let stage_started = Instant::now();
+        match run_sta_stage(routed_design.clone(), &artifacts, &arch, &delay) {
+            Ok((artifact, report)) => {
+                let result = finish_success_stage(
+                    stage,
+                    true,
+                    stage_started,
+                    &log_path,
+                    Some(&artifacts.sta_report_path),
+                    &report,
+                    &mut sink,
+                )?;
+                stage_results.push(result);
+                (artifact.design, artifact.report_text, true)
+            }
+            Err(err) => {
+                let result = finish_failed_stage(
+                    stage,
+                    true,
+                    stage_started,
+                    &log_path,
+                    Some(&artifacts.sta_report_path),
+                    &err,
+                    &mut sink,
+                )?;
+                stage_results.push(result);
+                (routed_design.clone(), err, false)
+            }
+        }
+    };
+
+    if let Err(report) = run_required_stage(
+        &mut ImplementationRunContext {
+            request,
+            generated_at_ms,
+            started_at,
+            artifacts: &artifacts,
+            stage_results: &mut stage_results,
+            sink: &mut sink,
+        },
+        RequiredStageSpec {
+            stage: ImplementationStageKindV1::Bitgen,
+            log_path: &workdir.join("bitgen.log"),
+            output_path: Some(&artifacts.bitstream_path),
+            timing_report_on_failure: timing_report.clone(),
+        },
+        || {
+            run_bitgen_stage(
+                design_for_bitgen,
+                &artifacts,
+                resource_paths,
+                arch.as_ref().name.as_str(),
+                &cil,
+                device_design,
+                route_image,
+            )
+            .map(|report| ((), report))
+        },
+    ) {
+        return Ok(*report);
+    }
 
     Ok(ImplementationReportV1 {
         version: 1,
@@ -147,150 +306,13 @@ where
         timing_success,
         top_module: request.top_module.clone(),
         source_count: request.files.len().min(usize::from(u16::MAX)) as u16,
-        elapsed_ms,
-        log: combined_log,
+        elapsed_ms: started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
+        log: std::mem::take(sink.combined_log),
         stages: stage_results,
         artifacts: artifacts.to_snapshot(),
         timing_report,
         generated_at_ms,
     })
-}
-
-fn build_stage_plans(
-    toolchain: &toolchain::ImplementationToolchainPaths,
-    workdir: &Path,
-    request: &ImplementationRequestV1,
-    artifacts: &PlannedArtifacts,
-) -> Result<Vec<StagePlan>, String> {
-    Ok(vec![
-        StagePlan {
-            stage: ImplementationStageKindV1::Map,
-            optional: false,
-            log_path: workdir.join("map.log"),
-            output_path: artifacts.map_path.clone(),
-            executable: fde_executable_name("fde"),
-            args: vec![
-                "map".to_string(),
-                "--input".to_string(),
-                path_argument(&artifacts.edif_path, workdir)?,
-                "--output".to_string(),
-                path_argument(&artifacts.map_path, workdir)?,
-                "--cell-library".to_string(),
-                toolchain.dc_cell.to_string_lossy().to_string(),
-                "--lut-size".to_string(),
-                FDE_DEFAULT_LUT_SIZE.to_string(),
-            ],
-        },
-        StagePlan {
-            stage: ImplementationStageKindV1::Pack,
-            optional: false,
-            log_path: workdir.join("pack.log"),
-            output_path: artifacts.pack_path.clone(),
-            executable: fde_executable_name("fde"),
-            args: vec![
-                "pack".to_string(),
-                "--input".to_string(),
-                path_argument(&artifacts.map_path, workdir)?,
-                "--output".to_string(),
-                path_argument(&artifacts.pack_path, workdir)?,
-                "--family".to_string(),
-                FDE_FAMILY_NAME.to_string(),
-                "--capacity".to_string(),
-                FDE_DEFAULT_PACK_CAPACITY.to_string(),
-                "--cell-library".to_string(),
-                toolchain.pack_cell.to_string_lossy().to_string(),
-                "--dcp-library".to_string(),
-                toolchain.pack_dcp_lib.to_string_lossy().to_string(),
-                "--config".to_string(),
-                toolchain.pack_config.to_string_lossy().to_string(),
-            ],
-        },
-        StagePlan {
-            stage: ImplementationStageKindV1::Place,
-            optional: false,
-            log_path: workdir.join("place.log"),
-            output_path: artifacts.place_path.clone(),
-            executable: fde_executable_name("fde"),
-            args: vec![
-                "place".to_string(),
-                "--input".to_string(),
-                path_argument(&artifacts.pack_path, workdir)?,
-                "--output".to_string(),
-                path_argument(&artifacts.place_path, workdir)?,
-                "--arch".to_string(),
-                toolchain.arch.to_string_lossy().to_string(),
-                "--delay".to_string(),
-                toolchain.delay.to_string_lossy().to_string(),
-                "--constraints".to_string(),
-                path_argument(&artifacts.constraint_path, workdir)?,
-                "--mode".to_string(),
-                place_mode_argument(request.place_mode).to_string(),
-            ],
-        },
-        StagePlan {
-            stage: ImplementationStageKindV1::Route,
-            optional: false,
-            log_path: workdir.join("route.log"),
-            output_path: artifacts.route_path.clone(),
-            executable: fde_executable_name("fde"),
-            args: vec![
-                "route".to_string(),
-                "--input".to_string(),
-                path_argument(&artifacts.place_path, workdir)?,
-                "--output".to_string(),
-                path_argument(&artifacts.route_path, workdir)?,
-                "--arch".to_string(),
-                toolchain.arch.to_string_lossy().to_string(),
-                "--cil".to_string(),
-                toolchain.cil.to_string_lossy().to_string(),
-                "--constraints".to_string(),
-                path_argument(&artifacts.constraint_path, workdir)?,
-            ],
-        },
-        StagePlan {
-            stage: ImplementationStageKindV1::Sta,
-            optional: true,
-            log_path: workdir.join("sta.log"),
-            output_path: artifacts.sta_report_path.clone(),
-            executable: fde_executable_name("fde"),
-            args: vec![
-                "sta".to_string(),
-                "--input".to_string(),
-                path_argument(&artifacts.route_path, workdir)?,
-                "--output".to_string(),
-                path_argument(&artifacts.sta_output_path, workdir)?,
-                "--report".to_string(),
-                path_argument(&artifacts.sta_report_path, workdir)?,
-                "--arch".to_string(),
-                toolchain.arch.to_string_lossy().to_string(),
-                "--delay".to_string(),
-                toolchain.delay.to_string_lossy().to_string(),
-                "--timing-library".to_string(),
-                toolchain.sta_iclib.to_string_lossy().to_string(),
-            ],
-        },
-        StagePlan {
-            stage: ImplementationStageKindV1::Bitgen,
-            optional: false,
-            log_path: workdir.join("bitgen.log"),
-            output_path: artifacts.bitstream_path.clone(),
-            executable: fde_executable_name("fde"),
-            args: vec![
-                "bitgen".to_string(),
-                "--input".to_string(),
-                path_argument(&artifacts.sta_output_path, workdir)?,
-                "--output".to_string(),
-                path_argument(&artifacts.bitstream_path, workdir)?,
-                "--arch".to_string(),
-                toolchain.arch.to_string_lossy().to_string(),
-                "--cil".to_string(),
-                toolchain.cil.to_string_lossy().to_string(),
-                "--emit-sidecar".to_string(),
-                "--sidecar".to_string(),
-                path_argument(&artifacts.bitstream_sidecar_path, workdir)?,
-            ],
-        },
-    ])
 }
 
 fn validate_request(request: &ImplementationRequestV1) -> Result<(), String> {
@@ -323,13 +345,6 @@ fn validate_request(request: &ImplementationRequestV1) -> Result<(), String> {
     Ok(())
 }
 
-fn place_mode_argument(mode: ImplementationPlaceModeV1) -> &'static str {
-    match mode {
-        ImplementationPlaceModeV1::TimingDriven => "timing",
-        ImplementationPlaceModeV1::BoundingBox => "bounding",
-    }
-}
-
 fn validate_target_device(request: &ImplementationRequestV1) -> Result<(), String> {
     if request.target_device_id.eq_ignore_ascii_case("FDP3P7") {
         return Ok(());
@@ -349,37 +364,92 @@ fn now_millis() -> Result<u64, String> {
         .min(u128::from(u64::MAX)) as u64)
 }
 
-fn build_failure_report(
-    request: &ImplementationRequestV1,
+struct ImplementationRunContext<'a, 'sink, F> {
+    request: &'a ImplementationRequestV1,
     generated_at_ms: u64,
-    elapsed_ms: u64,
-    log: String,
-    stages: Vec<ImplementationStageResultV1>,
-    artifacts: &PlannedArtifacts,
-    timing_report: String,
-) -> ImplementationReportV1 {
-    let timing_success = stages
-        .iter()
-        .find(|stage| stage.stage == ImplementationStageKindV1::Sta)
-        .map(|stage| stage.success)
-        .unwrap_or(false);
+    started_at: Instant,
+    artifacts: &'a PlannedArtifacts,
+    stage_results: &'a mut Vec<ImplementationStageResultV1>,
+    sink: &'a mut StageLogSink<'sink, F>,
+}
 
-    ImplementationReportV1 {
-        version: 1,
-        op_id: request.op_id.clone(),
-        success: false,
-        timing_success,
-        top_module: request.top_module.clone(),
-        source_count: request.files.len().min(usize::from(u16::MAX)) as u16,
-        elapsed_ms,
-        log,
-        stages,
-        artifacts: artifacts.to_snapshot(),
-        timing_report,
-        generated_at_ms,
+impl<F> ImplementationRunContext<'_, '_, F>
+where
+    F: FnMut(ImplementationStageKindV1, String),
+{
+    fn failure_report(
+        &mut self,
+        timing_report: String,
+        extra_log: Option<String>,
+    ) -> Box<ImplementationReportV1> {
+        let mut log = std::mem::take(self.sink.combined_log);
+        if let Some(extra_log) = extra_log {
+            log.push_str(&extra_log);
+        }
+
+        Box::new(build_failure_report(
+            self.request,
+            self.generated_at_ms,
+            self.started_at
+                .elapsed()
+                .as_millis()
+                .min(u128::from(u64::MAX)) as u64,
+            log,
+            std::mem::take(self.stage_results),
+            self.artifacts,
+            timing_report,
+        ))
     }
 }
 
-fn read_optional_file(path: &Path) -> String {
-    fs::read_to_string(path).unwrap_or_default()
+struct RequiredStageSpec<'a> {
+    stage: ImplementationStageKindV1,
+    log_path: &'a Path,
+    output_path: Option<&'a Path>,
+    timing_report_on_failure: String,
+}
+
+fn run_required_stage<F, T, Run>(
+    ctx: &mut ImplementationRunContext<'_, '_, F>,
+    spec: RequiredStageSpec<'_>,
+    run: Run,
+) -> Result<T, Box<ImplementationReportV1>>
+where
+    F: FnMut(ImplementationStageKindV1, String),
+    Run: FnOnce() -> Result<(T, fde::StageReport), String>,
+{
+    start_stage(spec.stage, ctx.sink);
+    let stage_started = Instant::now();
+    match run() {
+        Ok((value, report)) => {
+            let result = finish_success_stage(
+                spec.stage,
+                false,
+                stage_started,
+                spec.log_path,
+                spec.output_path,
+                &report,
+                ctx.sink,
+            )
+            .map_err(|err| ctx.failure_report(spec.timing_report_on_failure.clone(), Some(err)))?;
+            ctx.stage_results.push(result);
+            Ok(value)
+        }
+        Err(err) => {
+            let result = finish_failed_stage(
+                spec.stage,
+                false,
+                stage_started,
+                spec.log_path,
+                spec.output_path,
+                &err,
+                ctx.sink,
+            )
+            .map_err(|io_err| {
+                ctx.failure_report(spec.timing_report_on_failure.clone(), Some(io_err))
+            })?;
+            ctx.stage_results.push(result);
+            Err(ctx.failure_report(spec.timing_report_on_failure, None))
+        }
+    }
 }

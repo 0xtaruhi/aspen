@@ -1,21 +1,18 @@
 <script setup lang="ts">
+import { invoke } from '@tauri-apps/api/core'
 import type { ImplementationRequestV1, SynthesisSourceFileV1 } from '@/lib/hardware-client'
-import type {
-  ImplementationPlaceMode,
-  ImplementationRouteMode,
-} from '@/lib/implementation-settings'
 
-import { Check, Copy, SlidersHorizontal } from 'lucide-vue-next'
-import { computed, nextTick, ref, watch } from 'vue'
+import { ArrowRight, CheckCircle2, TriangleAlert } from 'lucide-vue-next'
+import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
-import RightDrawer from '@/components/RightDrawer.vue'
+import TextReportDialog from '@/components/flow/TextReportDialog.vue'
+import ImplementationSummaryCards from '@/components/implementation/ImplementationSummaryCards.vue'
 import NewProjectDialog from '@/components/project/NewProjectDialog.vue'
 import RecentProjectsPanel from '@/components/project/RecentProjectsPanel.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { copyTextToClipboard } from '@/lib/clipboard'
 import { useI18n } from '@/lib/i18n'
 import { getProjectRootDirectory } from '@/lib/project-layout'
 import { buildConstraintXml, resolveCurrentProjectPinConstraints } from '@/lib/project-constraints'
@@ -30,15 +27,15 @@ const router = useRouter()
 const { t } = useI18n()
 
 const showNewProjectDialog = ref(false)
-const showSettingsDrawer = ref(false)
-const implementationLogViewportRef = ref<HTMLDivElement | null>(null)
-const implementationLogCopied = ref(false)
-let implementationLogCopiedTimer: ReturnType<typeof setTimeout> | null = null
+const reportDialogOpen = ref(false)
+const reportDialogTitle = ref('')
+const reportDialogDescription = ref('')
+const reportDialogContent = ref('')
+const reportDialogEmptyText = ref('')
 
 const isBusy = hardwareStore.implementationRunning
 const implementationReport = hardwareStore.implementationReport
 const implementationMessage = hardwareStore.implementationMessage
-const implementationLiveLog = hardwareStore.implementationLiveLog
 const projectName = computed(() => projectStore.toSnapshot().name)
 
 const synthesisReport = signalCatalogStore.currentSynthesisReport
@@ -158,89 +155,73 @@ const stageCards = computed(() => {
   })
 })
 
-const implementationLog = computed(() => {
-  const live = implementationLiveLog.value.trim()
-  if (isBusy.value && live.length > 0) {
-    return live
-  }
-
-  if (implementationReport.value?.log.trim()) {
-    return implementationReport.value.log
-  }
-
-  if (live.length > 0) {
-    return live
-  }
-
-  return implementationMessage.value
-})
-
-const placeModeOptions = computed<
-  Array<{
-    value: ImplementationPlaceMode
-    label: string
-    description: string
-    tone: string
-  }>
->(() => [
+const readinessChecklist = computed(() => [
   {
-    value: 'timing_driven',
-    label: t('implementationPlaceModeTimingDriven'),
-    description: t('implementationPlaceModeTimingDrivenDescription'),
-    tone: t('implementationModeBalanced'),
+    key: 'sources',
+    label: t('sourceFiles'),
+    ready: projectStore.hasProject && hasDesignSource.value,
   },
   {
-    value: 'bounding_box',
-    label: t('implementationPlaceModeBoundingBox'),
-    description: t('implementationPlaceModeBoundingBoxDescription'),
-    tone: t('implementationModeFast'),
+    key: 'synthesis',
+    label: t('implementationRequiresSynthesis'),
+    ready: hasCurrentSynthesis.value && hasReusableSynthesisArtifact.value,
+  },
+  {
+    key: 'pins',
+    label: t('pinPlanning'),
+    ready: fullyMapped.value,
   },
 ])
 
-const routeModeOptions = computed<
-  Array<{
-    value: ImplementationRouteMode
-    label: string
-    description: string
-    tone: string
-  }>
->(() => [
-  {
-    value: 'timing_driven',
-    label: t('implementationRouteModeTimingDriven'),
-    description: t('implementationRouteModeTimingDrivenDescription'),
-    tone: t('implementationModeBalanced'),
-  },
-  {
-    value: 'direct_search',
-    label: t('implementationRouteModeDirectSearch'),
-    description: t('implementationRouteModeDirectSearchDescription'),
-    tone: t('implementationModeFast'),
-  },
-  {
-    value: 'breadth_first',
-    label: t('implementationRouteModeBreadthFirst'),
-    description: t('implementationRouteModeBreadthFirstDescription'),
-    tone: t('implementationModeFastest'),
-  },
-])
-
-const artifactRows = computed(() => {
-  const artifacts = implementationReport.value?.artifacts
-  if (!artifacts) {
-    return []
+const blockingState = computed(() => {
+  if (!projectStore.hasProject) {
+    return {
+      title: t('noProjectLoaded'),
+      description: t('noProjectLoadedDescription'),
+      actions: [
+        {
+          label: t('createProject'),
+          onClick: () => (showNewProjectDialog.value = true),
+          variant: 'default' as const,
+        },
+        { label: t('openProject'), onClick: openProject, variant: 'outline' as const },
+      ],
+      showRecentProjects: true,
+    }
   }
 
-  return [
-    { label: t('constraintXml'), value: artifacts.constraint_path },
-    { label: t('synthesizedEdif'), value: artifacts.edif_path },
-    { label: t('mappedNetlist'), value: artifacts.map_path },
-    { label: t('packedNetlist'), value: artifacts.pack_path },
-    { label: t('placedNetlist'), value: artifacts.place_path },
-    { label: t('routedNetlist'), value: artifacts.route_path },
-    { label: t('staReportFile'), value: artifacts.sta_report_path },
-    { label: t('bitstreamFile'), value: artifacts.bitstream_path },
-  ].filter((entry) => Boolean(entry.value))
+  if (!hasDesignSource.value) {
+    return {
+      title: t('noDesignSourceLoaded'),
+      description: t('noDesignSourceLoadedDescription'),
+      actions: [
+        { label: t('importFiles'), onClick: importProjectFiles, variant: 'outline' as const },
+      ],
+      showRecentProjects: false,
+    }
+  }
+
+  if (!hasCurrentSynthesis.value || !hasReusableSynthesisArtifact.value) {
+    return {
+      title: t('implementationRequiresSynthesis'),
+      description: hasCurrentSynthesis.value
+        ? t('implementationRequiresFreshSynthesisDescription')
+        : t('implementationRequiresSynthesisDescription'),
+      actions: [{ label: t('runSynthesis'), onClick: goToSynthesis, variant: 'default' as const }],
+      showRecentProjects: false,
+    }
+  }
+
+  if (!fullyMapped.value) {
+    return {
+      title: t('implementationRequiresPinPlanning'),
+      description: t('implementationRequiresPinPlanningDescription'),
+      actions: [{ label: t('pinPlanning'), onClick: openPinPlanning, variant: 'default' as const }],
+      showRecentProjects: false,
+    }
+  }
+
+  return null
 })
 
 function projectDirectory() {
@@ -257,19 +238,6 @@ function formatDuration(elapsedMs: number) {
   }
 
   return `${(elapsedMs / 1000).toFixed(2).replace(/\.?0+$/, '')} s`
-}
-
-function stageBadgeClass(stage: { result: (typeof stageCards.value)[number]['result'] }) {
-  if (!stage.result) {
-    return 'border-border/60 text-muted-foreground'
-  }
-  if (stage.result.success) {
-    return 'border-green-500/20 bg-green-500/10 text-green-600'
-  }
-  if (stage.result.optional) {
-    return 'border-amber-500/20 bg-amber-500/10 text-amber-600'
-  }
-  return 'border-destructive/20 bg-destructive/10 text-destructive'
 }
 
 const implementationStatusBadgeClass = computed(() => {
@@ -294,12 +262,17 @@ const implementationHeaderMeta = computed(() => {
     : designContextStore.sourceName.value || t('implementationFlowIdle')
 })
 
-const summaryStageCards = computed(() => {
-  const summaryOrder = ['map', 'place', 'route', 'bitgen'] as const
-  const stageMap = new Map(stageCards.value.map((stage) => [stage.stage, stage]))
-  return summaryOrder
-    .map((stage) => stageMap.get(stage))
-    .filter((stage): stage is (typeof stageCards.value)[number] => Boolean(stage))
+const summaryStageCardRows = computed(() => {
+  return stageCards.value.map((stage) => ({
+    stage: stage.stage,
+    title: stage.title,
+    statusLabel: stageStatusLabel(stage),
+    statusDotClass: stageStatusDotClass(stage),
+    durationText: stage.result ? formatDuration(stage.result.elapsed_ms) : t('notRunYet'),
+    canViewLog: Boolean(stage.result?.log_path),
+    canViewTiming:
+      stage.stage === 'sta' && Boolean(implementationReport.value?.timing_report.trim().length),
+  }))
 })
 
 function stageStatusLabel(stage: (typeof stageCards.value)[number]) {
@@ -343,7 +316,6 @@ async function runImplementation() {
     target_device_id: projectStore.targetDeviceId,
     constraint_xml: implementationConstraintXml.value,
     place_mode: projectStore.implementationSettings.placeMode,
-    route_mode: projectStore.implementationSettings.routeMode,
     synthesized_edif_path: reusableSynthesizedEdifPath.value,
     files: implementationSources.value,
   }
@@ -363,41 +335,43 @@ function goToSynthesis() {
   void router.push({ name: 'fpga-flow-synthesis' })
 }
 
-function setPlaceMode(mode: ImplementationPlaceMode) {
-  projectStore.setImplementationPlaceMode(mode)
-}
-
-function setRouteMode(mode: ImplementationRouteMode) {
-  projectStore.setImplementationRouteMode(mode)
-}
-
-async function scrollImplementationLogToBottom() {
-  await nextTick()
-  const viewport = implementationLogViewportRef.value
-  if (!viewport) {
+async function openStageLog(stageKind: string) {
+  const stage = stageCards.value.find((entry) => entry.stage === stageKind)
+  if (!stage) {
     return
   }
-  viewport.scrollTop = viewport.scrollHeight
-}
 
-async function copyImplementationLog() {
-  if (implementationLog.value.trim().length === 0) {
+  reportDialogTitle.value = `${stage.title} · ${t('viewLog')}`
+  reportDialogDescription.value = stage.result
+    ? `${stageStatusLabel(stage)} · ${formatDuration(stage.result.elapsed_ms)}`
+    : t('notRunYet')
+  reportDialogEmptyText.value = t('noLogAvailable')
+
+  if (!stage.result?.log_path) {
+    reportDialogContent.value = ''
+    reportDialogOpen.value = true
     return
   }
 
   try {
-    await copyTextToClipboard(implementationLog.value)
-    implementationLogCopied.value = true
-    if (implementationLogCopiedTimer) {
-      clearTimeout(implementationLogCopiedTimer)
-    }
-    implementationLogCopiedTimer = setTimeout(() => {
-      implementationLogCopied.value = false
-      implementationLogCopiedTimer = null
-    }, 1500)
-  } catch {
-    // Clipboard failures should not interrupt the flow page.
+    reportDialogContent.value = await invoke<string>('read_project_file', {
+      path: stage.result.log_path,
+    })
+  } catch (error) {
+    reportDialogContent.value = String(error instanceof Error ? error.message : (error ?? ''))
   }
+
+  reportDialogOpen.value = true
+}
+
+function openTimingReport() {
+  reportDialogTitle.value = t('timingReport')
+  reportDialogDescription.value = implementationReport.value?.timing_success
+    ? t('completed')
+    : t('warnings')
+  reportDialogContent.value = implementationReport.value?.timing_report ?? ''
+  reportDialogEmptyText.value = t('noTimingReportAvailable')
+  reportDialogOpen.value = true
 }
 
 watch(
@@ -410,123 +384,39 @@ watch(
     () => implementationConstraintXml.value,
     () => projectStore.targetDeviceId,
     () => projectStore.implementationSettings.placeMode,
-    () => projectStore.implementationSettings.routeMode,
   ],
   () => {
     hardwareStore.resetImplementationState()
   },
 )
-
-watch(
-  () => implementationLog.value,
-  () => {
-    void scrollImplementationLogToBottom()
-  },
-  { flush: 'post', immediate: true },
-)
 </script>
 
 <template>
   <NewProjectDialog v-model:open="showNewProjectDialog" />
-  <div class="p-8 space-y-8 h-full flex flex-col animate-in fade-in duration-500">
+  <TextReportDialog
+    :open="reportDialogOpen"
+    :title="reportDialogTitle"
+    :description="reportDialogDescription"
+    :content="reportDialogContent"
+    :empty-text="reportDialogEmptyText"
+    @update:open="reportDialogOpen = $event"
+  />
+
+  <div class="p-8 space-y-6 h-full flex flex-col animate-in fade-in duration-500">
     <div class="flex items-center justify-between shrink-0 gap-4">
-      <div class="space-y-2">
+      <div>
         <h2 class="text-3xl font-bold tracking-tight">{{ t('implementation') }}</h2>
-        <p class="max-w-3xl text-sm text-muted-foreground">
+        <p class="text-muted-foreground">
           {{ t('implementationDescription', { name: designContextStore.sourceName.value }) }}
         </p>
       </div>
-      <div class="flex flex-wrap items-center justify-end gap-2">
+      <div class="flex gap-2 items-center flex-wrap justify-end">
         <Badge variant="outline" :class="implementationStatusBadgeClass">
           {{ implementationStatus }}
         </Badge>
         <span class="text-sm text-muted-foreground">
           {{ implementationHeaderMeta }}
         </span>
-        <RightDrawer
-          v-model="showSettingsDrawer"
-          :title="t('implementationFlowSettings')"
-          :width="420"
-        >
-          <template #trigger>
-            <Button type="button" size="sm" variant="outline" class="gap-2">
-              <SlidersHorizontal class="h-4 w-4" />
-              {{ t('flowSettings') }}
-            </Button>
-          </template>
-
-          <div class="space-y-6">
-            <section class="space-y-3">
-              <div class="space-y-1">
-                <div class="text-sm font-semibold">{{ t('implementationPlaceEngine') }}</div>
-                <p class="text-xs leading-5 text-muted-foreground">
-                  {{ t('implementationPlaceEngineDescription') }}
-                </p>
-              </div>
-              <div class="space-y-2">
-                <button
-                  v-for="option in placeModeOptions"
-                  :key="option.value"
-                  type="button"
-                  class="w-full rounded-2xl border px-4 py-3 text-left transition-colors"
-                  :class="
-                    projectStore.implementationSettings.placeMode === option.value
-                      ? 'border-foreground/20 bg-foreground/[0.06]'
-                      : 'border-border/70 bg-background hover:border-foreground/15 hover:bg-muted/40'
-                  "
-                  @click="setPlaceMode(option.value)"
-                >
-                  <div class="flex items-start justify-between gap-4">
-                    <div class="space-y-1">
-                      <div class="text-sm font-medium">{{ option.label }}</div>
-                      <div class="text-xs leading-5 text-muted-foreground">
-                        {{ option.description }}
-                      </div>
-                    </div>
-                    <Badge variant="outline" class="shrink-0">
-                      {{ option.tone }}
-                    </Badge>
-                  </div>
-                </button>
-              </div>
-            </section>
-
-            <section class="space-y-3">
-              <div class="space-y-1">
-                <div class="text-sm font-semibold">{{ t('implementationRouteEngine') }}</div>
-                <p class="text-xs leading-5 text-muted-foreground">
-                  {{ t('implementationRouteEngineDescription') }}
-                </p>
-              </div>
-              <div class="space-y-2">
-                <button
-                  v-for="option in routeModeOptions"
-                  :key="option.value"
-                  type="button"
-                  class="w-full rounded-2xl border px-4 py-3 text-left transition-colors"
-                  :class="
-                    projectStore.implementationSettings.routeMode === option.value
-                      ? 'border-foreground/20 bg-foreground/[0.06]'
-                      : 'border-border/70 bg-background hover:border-foreground/15 hover:bg-muted/40'
-                  "
-                  @click="setRouteMode(option.value)"
-                >
-                  <div class="flex items-start justify-between gap-4">
-                    <div class="space-y-1">
-                      <div class="text-sm font-medium">{{ option.label }}</div>
-                      <div class="text-xs leading-5 text-muted-foreground">
-                        {{ option.description }}
-                      </div>
-                    </div>
-                    <Badge variant="outline" class="shrink-0">
-                      {{ option.tone }}
-                    </Badge>
-                  </div>
-                </button>
-              </div>
-            </section>
-          </div>
-        </RightDrawer>
         <Button
           type="button"
           size="sm"
@@ -534,210 +424,87 @@ watch(
           @click="runImplementation"
         >
           {{ isBusy ? t('runningEllipsis') : t('runImplementation') }}
+          <ArrowRight class="ml-2 h-4 w-4" />
         </Button>
       </div>
     </div>
 
-    <Card v-if="!projectStore.hasProject || !hasDesignSource" class="max-w-3xl">
-      <CardHeader>
-        <CardTitle>
-          {{ projectStore.hasProject ? t('noDesignSourceLoaded') : t('noProjectLoaded') }}
-        </CardTitle>
-      </CardHeader>
-      <CardContent class="space-y-4">
-        <p class="text-sm text-muted-foreground">
-          {{
-            projectStore.hasProject
-              ? t('noDesignSourceLoadedDescription')
-              : t('noProjectLoadedDescription')
-          }}
-        </p>
-        <div class="flex flex-wrap gap-3">
-          <template v-if="projectStore.hasProject">
-            <Button type="button" variant="outline" @click="importProjectFiles">
-              {{ t('importFiles') }}
-            </Button>
-          </template>
-          <template v-else>
-            <Button type="button" @click="showNewProjectDialog = true">
-              {{ t('createProject') }}
-            </Button>
-            <Button type="button" variant="outline" @click="openProject">
-              {{ t('openProject') }}
-            </Button>
-            <div class="w-full pt-1">
-              <RecentProjectsPanel />
-            </div>
-          </template>
-        </div>
-      </CardContent>
-    </Card>
+    <div
+      v-if="implementationErrorMessage"
+      class="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+    >
+      {{ implementationErrorMessage }}
+    </div>
 
-    <Card v-else-if="!hasCurrentSynthesis || !hasReusableSynthesisArtifact" class="max-w-3xl">
-      <CardHeader>
-        <CardTitle>{{ t('implementationRequiresSynthesis') }}</CardTitle>
-      </CardHeader>
-      <CardContent class="space-y-4">
-        <p class="text-sm text-muted-foreground">
-          {{
-            hasCurrentSynthesis
-              ? t('implementationRequiresFreshSynthesisDescription')
-              : t('implementationRequiresSynthesisDescription')
-          }}
-        </p>
-        <div class="flex flex-wrap gap-3">
-          <Button type="button" @click="goToSynthesis">
-            {{ t('runSynthesis') }}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+    <div v-if="blockingState" class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <Card>
+        <CardHeader>
+          <CardTitle>{{ blockingState.title }}</CardTitle>
+        </CardHeader>
+        <CardContent class="space-y-4">
+          <div class="flex items-start gap-3 text-sm text-muted-foreground">
+            <TriangleAlert class="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            <p>{{ blockingState.description }}</p>
+          </div>
 
-    <Card v-else-if="!fullyMapped" class="max-w-3xl">
-      <CardHeader>
-        <CardTitle>{{ t('implementationRequiresPinPlanning') }}</CardTitle>
-      </CardHeader>
-      <CardContent class="space-y-4">
-        <p class="text-sm text-muted-foreground">
-          {{ t('implementationRequiresPinPlanningDescription') }}
-        </p>
-        <div class="flex flex-wrap gap-3">
-          <Button type="button" @click="openPinPlanning">
-            {{ t('pinPlanning') }}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-
-    <template v-else>
-      <div
-        v-if="implementationErrorMessage"
-        class="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive"
-      >
-        {{ implementationErrorMessage }}
-      </div>
-
-      <div class="grid gap-4 md:grid-cols-4 shrink-0">
-        <Card v-for="stage in summaryStageCards" :key="stage.stage">
-          <CardHeader class="pb-2">
-            <div class="flex items-center justify-between gap-3">
-              <CardTitle class="text-sm font-medium">{{ stage.title }}</CardTitle>
-              <span class="h-2 w-2 rounded-full" :class="stageStatusDotClass(stage)" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div class="text-2xl font-bold">{{ stageStatusLabel(stage) }}</div>
-            <p class="text-xs text-muted-foreground">
-              {{ stage.result ? formatDuration(stage.result.elapsed_ms) : t('notRunYet') }}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px] flex-1 min-h-0">
-        <Card class="min-h-0 flex flex-col">
-          <CardHeader class="flex-row items-center justify-between space-y-0">
-            <CardTitle>{{ t('implementationLog') }}</CardTitle>
-            <div class="flex items-center gap-2">
-              <span class="text-xs text-muted-foreground">
-                {{ designContextStore.sourceName.value }}
-              </span>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                :disabled="implementationLog.trim().length === 0"
-                class="h-7 gap-1.5 px-2 text-xs"
-                @click="copyImplementationLog"
-              >
-                <Check v-if="implementationLogCopied" class="h-3.5 w-3.5" />
-                <Copy v-else class="h-3.5 w-3.5" />
-                {{ implementationLogCopied ? t('copied') : t('copyLog') }}
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent class="flex-1 min-h-0 p-0">
-            <div
-              ref="implementationLogViewportRef"
-              class="allow-text-select h-full w-full overflow-auto bg-muted/40 p-4 font-mono text-xs text-foreground"
+          <div class="flex flex-wrap gap-3">
+            <Button
+              v-for="action in blockingState.actions"
+              :key="action.label"
+              type="button"
+              :variant="action.variant"
+              @click="action.onClick()"
             >
-              <pre class="whitespace-pre-wrap">{{ implementationLog }}</pre>
-            </div>
-          </CardContent>
-        </Card>
+              {{ action.label }}
+            </Button>
+          </div>
 
-        <Card class="min-h-0 flex flex-col">
-          <CardHeader>
-            <CardTitle>{{ t('implementationArtifacts') }}</CardTitle>
-          </CardHeader>
-          <CardContent class="min-h-0 flex-1 space-y-6 overflow-auto">
-            <div class="space-y-2">
-              <div class="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                {{ t('status') }}
-              </div>
-              <div class="space-y-2">
-                <div
-                  v-for="stage in stageCards"
-                  :key="stage.stage"
-                  class="flex items-center justify-between gap-3 rounded-xl border border-border/60 px-3 py-2"
-                >
-                  <span class="text-sm">{{ stage.title }}</span>
-                  <div class="flex items-center gap-3">
-                    <span class="text-xs text-muted-foreground">
-                      {{ stage.result ? formatDuration(stage.result.elapsed_ms) : t('notRunYet') }}
-                    </span>
-                    <Badge variant="outline" :class="stageBadgeClass(stage)">
-                      {{
-                        !stage.result
-                          ? t('pending')
-                          : stage.result.success
-                            ? t('completed')
-                            : stage.result.optional
-                              ? t('warnings')
-                              : t('failed')
-                      }}
-                    </Badge>
-                  </div>
+          <div v-if="blockingState.showRecentProjects" class="border-t border-border pt-4">
+            <RecentProjectsPanel />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{{ t('implementation') }}</CardTitle>
+        </CardHeader>
+        <CardContent class="space-y-2">
+          <div
+            v-for="item in readinessChecklist"
+            :key="item.key"
+            class="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-3"
+          >
+            <div class="flex items-center gap-3">
+              <CheckCircle2 v-if="item.ready" class="h-4 w-4 text-emerald-600" />
+              <TriangleAlert v-else class="h-4 w-4 text-amber-600" />
+              <div>
+                <div class="text-sm font-medium">{{ item.label }}</div>
+                <div class="text-xs text-muted-foreground">
+                  {{ item.ready ? t('completed') : t('pending') }}
                 </div>
               </div>
             </div>
+            <Badge
+              variant="outline"
+              :class="
+                item.ready
+                  ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600'
+                  : 'border-amber-500/20 bg-amber-500/10 text-amber-600'
+              "
+            >
+              {{ item.ready ? t('ready') : t('pending') }}
+            </Badge>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
 
-            <div class="space-y-2">
-              <div class="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                {{ t('implementationArtifacts') }}
-              </div>
-              <div v-if="artifactRows.length === 0" class="text-sm text-muted-foreground">
-                {{ t('runImplementationToGenerateArtifacts') }}
-              </div>
-              <div v-else class="space-y-2">
-                <div
-                  v-for="artifact in artifactRows"
-                  :key="artifact.label"
-                  class="rounded-xl border border-border/60 px-3 py-2"
-                >
-                  <div class="text-xs text-muted-foreground">{{ artifact.label }}</div>
-                  <div class="allow-text-select break-all font-mono text-xs">
-                    {{ artifact.value }}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="space-y-2">
-              <div class="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                {{ t('timingReport') }}
-              </div>
-              <div
-                class="allow-text-select rounded-xl border border-border/60 bg-muted/30 p-3 font-mono text-xs"
-              >
-                <pre class="whitespace-pre-wrap">{{
-                  implementationReport?.timing_report || t('noTimingReportAvailable')
-                }}</pre>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </template>
+    <ImplementationSummaryCards
+      v-else
+      :cards="summaryStageCardRows"
+      @view-log="openStageLog"
+      @view-timing="openTimingReport"
+    />
   </div>
 </template>

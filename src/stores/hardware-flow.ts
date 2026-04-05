@@ -262,7 +262,6 @@ async function runImplementation(
     request.target_device_id,
     request.constraint_xml,
     request.place_mode,
-    request.route_mode,
     request.files,
   )
 

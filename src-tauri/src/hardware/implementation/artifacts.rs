@@ -145,6 +145,7 @@ fn sanitize_file_stem(value: &str) -> String {
     }
 }
 
+#[cfg(test)]
 pub(super) fn path_argument(path: &Path, workdir: &Path) -> Result<String, String> {
     if let Ok(relative) = path.strip_prefix(workdir) {
         let rendered = relative.to_string_lossy().replace('\\', "/");

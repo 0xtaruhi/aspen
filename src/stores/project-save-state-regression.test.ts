@@ -4,6 +4,7 @@ import { defaultFpgaBoardId } from '../lib/fpga-board-catalog'
 import { createCanvasDeviceSnapshot } from '../lib/canvas-devices'
 import { defaultFpgaDeviceId } from '../lib/fpga-device-catalog'
 import { defaultImplementationSettings } from '../lib/implementation-settings'
+import { resolveCurrentProjectPinConstraints } from '../lib/project-constraints'
 
 import { projectStore } from './project'
 import { virtualDeviceStore } from './virtual-device'
@@ -89,7 +90,6 @@ describe('project save-state regression', () => {
     expect(projectStore.toSnapshot().implementationSettings).toEqual({
       version: 1,
       placeMode: 'bounding_box',
-      routeMode: 'direct_search',
     })
     expect(projectStore.pinConstraints.assignments).toEqual([
       {
@@ -119,6 +119,54 @@ describe('project save-state regression', () => {
     expect(projectStore.targetDeviceId).toBe(defaultFpgaDeviceId)
     expect(projectStore.topModuleName).toBe('')
     expect(projectStore.implementationSettings).toEqual(defaultImplementationSettings)
+  })
+
+  it('retargets persisted pin constraints when the saved top-file id is stale', () => {
+    projectStore.createNewProject('ConstraintRecoveryProject', 'blinky')
+
+    const snapshot = projectStore.toSnapshot()
+    const currentTopFileId = snapshot.topFileId
+
+    projectStore.loadFromSnapshot({
+      ...snapshot,
+      pinConstraints: {
+        version: 1,
+        topFileId: 'missing-top-file',
+        assignments: [
+          {
+            portName: 'clk',
+            pinId: 'P77',
+            boardFunction: 'CLK',
+          },
+        ],
+      },
+    })
+
+    expect(projectStore.topFileId).toBe(currentTopFileId)
+    expect(projectStore.pinConstraints.topFileId).toBe(currentTopFileId)
+    expect(
+      resolveCurrentProjectPinConstraints(projectStore.pinConstraints, projectStore.topFileId, [
+        {
+          name: 'clk',
+          direction: 'input',
+          width: '',
+          bitName: 'clk',
+          baseName: 'clk',
+          bitIndex: null,
+        },
+      ]),
+    ).toEqual([
+      {
+        portName: 'clk',
+        pinId: 'P77',
+        ioStandard: null,
+        pull: null,
+        drive: null,
+        slew: null,
+        clockPeriodNs: null,
+        boardFunction: 'CLK',
+      },
+    ])
   })
 
   it('persists synthesis cache snapshots with the project', () => {
