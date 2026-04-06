@@ -2,7 +2,7 @@ import type { UnlistenFn } from '@tauri-apps/api/event'
 
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import { ref } from 'vue'
+import { markRaw, ref } from 'vue'
 
 import {
   type HardwareActionV1,
@@ -48,6 +48,8 @@ type DeviceTelemetrySnapshot = HardwareCanvasDeviceTelemetryEntryV1 & {
 
 const DATA_DEFAULT_MIN_BATCH_CYCLES = 128
 const DATA_DEFAULT_MAX_WAIT_US = 2000
+const DATA_DEFAULT_CLOCK_HIGH_DELAY = 11
+const DATA_DEFAULT_CLOCK_LOW_DELAY = 11
 
 const initialRuntimeState: RuntimeState = {
   version: 1,
@@ -78,6 +80,8 @@ const dataStreamStatus = ref<HardwareDataStreamStatusV1>({
   words_per_cycle: 4,
   min_batch_cycles: DATA_DEFAULT_MIN_BATCH_CYCLES,
   max_wait_us: DATA_DEFAULT_MAX_WAIT_US,
+  vericomm_clock_high_delay: DATA_DEFAULT_CLOCK_HIGH_DELAY,
+  vericomm_clock_low_delay: DATA_DEFAULT_CLOCK_LOW_DELAY,
   configured_signal_count: 0,
   last_error: null,
 })
@@ -227,10 +231,13 @@ function onDataCatalog(catalog: HardwareDataSignalCatalogV1) {
 
 function onDeviceSnapshot(snapshot: HardwareCanvasDeviceTelemetryV1) {
   for (const device of snapshot.devices) {
-    pendingDeviceTelemetry.set(device.device_id, {
-      ...device,
-      updated_at_ms: snapshot.generated_at_ms,
-    })
+    pendingDeviceTelemetry.set(
+      device.device_id,
+      markRaw({
+        ...device,
+        updated_at_ms: snapshot.generated_at_ms,
+      }),
+    )
   }
 
   scheduleTelemetryFlush()
@@ -541,8 +548,13 @@ export async function stop() {
 export async function configureDataStream(
   inputSignalOrder: readonly string[],
   outputSignalOrder: readonly string[],
-  wordsPerCycle = dataStreamStatus.value.words_per_cycle || 4,
+  options?: {
+    wordsPerCycle?: number
+    vericommClockHighDelay?: number
+    vericommClockLowDelay?: number
+  },
 ) {
+  const wordsPerCycle = options?.wordsPerCycle ?? dataStreamStatus.value.words_per_cycle ?? 4
   const nextConfig: HardwareDataStreamConfigV1 = {
     target_hz: dataStreamStatus.value.target_hz || 1,
     input_signal_order: configuredSignalOrder(inputSignalOrder),
@@ -550,6 +562,14 @@ export async function configureDataStream(
     words_per_cycle: Math.max(1, Math.floor(wordsPerCycle)),
     min_batch_cycles: dataStreamStatus.value.min_batch_cycles || DATA_DEFAULT_MIN_BATCH_CYCLES,
     max_wait_us: dataStreamStatus.value.max_wait_us || DATA_DEFAULT_MAX_WAIT_US,
+    vericomm_clock_high_delay:
+      options?.vericommClockHighDelay ??
+      dataStreamStatus.value.vericomm_clock_high_delay ??
+      DATA_DEFAULT_CLOCK_HIGH_DELAY,
+    vericomm_clock_low_delay:
+      options?.vericommClockLowDelay ??
+      dataStreamStatus.value.vericomm_clock_low_delay ??
+      DATA_DEFAULT_CLOCK_LOW_DELAY,
   }
 
   try {
@@ -564,6 +584,8 @@ export async function configureDataStream(
         words_per_cycle: nextConfig.words_per_cycle,
         min_batch_cycles: nextConfig.min_batch_cycles,
         max_wait_us: nextConfig.max_wait_us,
+        vericomm_clock_high_delay: nextConfig.vericomm_clock_high_delay,
+        vericomm_clock_low_delay: nextConfig.vericomm_clock_low_delay,
         configured_signal_count:
           nextConfig.input_signal_order.filter(Boolean).length +
           nextConfig.output_signal_order.filter(Boolean).length,

@@ -4,6 +4,7 @@ import type {
   CanvasDeviceSnapshot,
   CanvasDeviceStateSnapshot,
   CanvasDeviceType,
+  CanvasVgaColorMode,
 } from './hardware-client'
 import { alignShellSize, measureMatrixShellSize } from './device-shell-metrics'
 import { translate } from './i18n'
@@ -30,6 +31,12 @@ export type CanvasSegmentDisplayConfig = {
 
 export type CanvasButtonConfig = {
   activeLow: boolean
+}
+
+export type CanvasVgaDisplayConfig = {
+  columns: number
+  rows: number
+  colorMode: CanvasVgaColorMode
 }
 
 export type CanvasDeviceShellSize = {
@@ -105,6 +112,19 @@ function createLedMatrixConfig(rows: number, columns: number): CanvasDeviceConfi
   }
 }
 
+function createVgaDisplayConfig(
+  columns: number,
+  rows: number,
+  colorMode: CanvasVgaColorMode,
+): CanvasDeviceConfigSnapshot {
+  return {
+    kind: 'vga_display',
+    columns,
+    rows,
+    color_mode: colorMode,
+  }
+}
+
 function defaultState(
   overrides: Partial<CanvasDeviceStateSnapshot> = {},
 ): CanvasDeviceStateSnapshot {
@@ -151,6 +171,44 @@ function matrixBindingSlots(rows: number, columns: number): CanvasDeviceBindingS
   ]
 }
 
+export function vgaColorModeBitCounts(colorMode: CanvasVgaColorMode) {
+  switch (colorMode) {
+    case 'mono':
+      return { redBits: 0, greenBits: 0, blueBits: 1 }
+    case 'rgb111':
+      return { redBits: 1, greenBits: 1, blueBits: 1 }
+    case 'rgb444':
+      return { redBits: 4, greenBits: 4, blueBits: 4 }
+    case 'rgb565':
+      return { redBits: 5, greenBits: 6, blueBits: 5 }
+    case 'rgb888':
+      return { redBits: 8, greenBits: 8, blueBits: 8 }
+    case 'rgb332':
+    default:
+      return { redBits: 3, greenBits: 3, blueBits: 2 }
+  }
+}
+
+function vgaBindingSlots(colorMode: CanvasVgaColorMode): CanvasDeviceBindingSlot[] {
+  const { redBits, greenBits, blueBits } = vgaColorModeBitCounts(colorMode)
+  return [
+    { key: 'hsync', label: 'HSYNC' },
+    { key: 'vsync', label: 'VSYNC' },
+    ...Array.from({ length: redBits }, (_, index) => ({
+      key: `r${index}`,
+      label: `R${index}`,
+    })),
+    ...Array.from({ length: greenBits }, (_, index) => ({
+      key: `g${index}`,
+      label: `G${index}`,
+    })),
+    ...Array.from({ length: blueBits }, (_, index) => ({
+      key: `b${index}`,
+      label: `B${index}`,
+    })),
+  ]
+}
+
 function normalizeMatrixDimension(value: number | null | undefined, fallback: number) {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return fallback
@@ -169,6 +227,40 @@ function defaultSegmentDisplayConfig(): CanvasSegmentDisplayConfig {
 
 function defaultButtonConfig(): CanvasButtonConfig {
   return { activeLow: false }
+}
+
+export const VGA_DISPLAY_RESOLUTION_PRESETS = [
+  { columns: 160, rows: 120, key: 'qqvga' },
+  { columns: 320, rows: 240, key: 'qvga' },
+  { columns: 640, rows: 480, key: 'vga' },
+  { columns: 800, rows: 600, key: 'svga' },
+] as const
+
+function defaultVgaDisplayConfig(): CanvasVgaDisplayConfig {
+  return { columns: 320, rows: 240, colorMode: 'rgb332' }
+}
+
+function normalizeVgaResolutionDimension(value: number | null | undefined, fallback: number) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback
+  }
+
+  return Math.max(1, Math.round(value))
+}
+
+function normalizeVgaColorMode(value: string | null | undefined, fallback: CanvasVgaColorMode) {
+  if (
+    value === 'mono' ||
+    value === 'rgb111' ||
+    value === 'rgb332' ||
+    value === 'rgb444' ||
+    value === 'rgb565' ||
+    value === 'rgb888'
+  ) {
+    return value
+  }
+
+  return fallback
 }
 
 function normalizeSegmentDigitCount(value: number | null | undefined, fallback: number) {
@@ -239,6 +331,25 @@ export function getCanvasButtonConfig(
 
   return {
     activeLow: device.state.config.active_low ?? defaults.activeLow,
+  }
+}
+
+export function getCanvasVgaDisplayConfig(
+  device: Pick<CanvasDeviceSnapshot, 'type' | 'state'>,
+): CanvasVgaDisplayConfig | null {
+  if (device.type !== 'vga_display') {
+    return null
+  }
+
+  const defaults = defaultVgaDisplayConfig()
+  if (device.state.config.kind !== 'vga_display') {
+    return defaults
+  }
+
+  return {
+    columns: normalizeVgaResolutionDimension(device.state.config.columns, defaults.columns),
+    rows: normalizeVgaResolutionDimension(device.state.config.rows, defaults.rows),
+    colorMode: normalizeVgaColorMode(device.state.config.color_mode, defaults.colorMode),
   }
 }
 
@@ -406,6 +517,40 @@ function createSegmentDisplayDefinition(): CanvasDeviceDefinition {
     getBindingSlots: (device) => {
       const config = getCanvasSegmentDisplayConfig(device) ?? defaults
       return segmentBindingSlots(config.digits)
+    },
+  }
+}
+
+function createVgaDisplayDefinition(): CanvasDeviceDefinition {
+  const defaults = defaultVgaDisplayConfig()
+
+  return {
+    title: translate('vgaDisplay'),
+    dropAliases: ['vga_display', 'vgadisplay', 'vga', 'monitor'],
+    defaultState: () =>
+      defaultState({
+        binding: createSlotBindings(
+          Array.from({ length: vgaBindingSlots(defaults.colorMode).length }, () => null),
+        ),
+        config: createVgaDisplayConfig(defaults.columns, defaults.rows, defaults.colorMode),
+      }),
+    toRendererProps: (device) => ({
+      isOn: device.state.is_on,
+      columns: getCanvasVgaDisplayConfig(device)?.columns ?? defaults.columns,
+      rows: getCanvasVgaDisplayConfig(device)?.rows ?? defaults.rows,
+    }),
+    getShellSize: () => ({
+      width: alignShellSize(420),
+      height: alignShellSize(320),
+    }),
+    emitsToggle: false,
+    capabilities: {
+      drivesSignal: false,
+      receivesSignal: true,
+    },
+    getBindingSlots: (device) => {
+      const config = getCanvasVgaDisplayConfig(device) ?? defaults
+      return vgaBindingSlots(config.colorMode)
     },
   }
 }
@@ -589,6 +734,7 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
       receivesSignal: true,
     },
   },
+  vga_display: createVgaDisplayDefinition(),
   segment_display: createSegmentDisplayDefinition(),
   led_matrix: createMatrixDeviceDefinition(translate('matrix'), [
     'led_matrix',

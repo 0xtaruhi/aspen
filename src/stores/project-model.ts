@@ -121,6 +121,7 @@ function isCanvasDeviceType(value: unknown): value is CanvasDeviceType {
     value === 'ps2_keyboard' ||
     value === 'text_lcd' ||
     value === 'graphic_lcd' ||
+    value === 'vga_display' ||
     value === 'segment_display' ||
     value === 'led_matrix'
   )
@@ -172,6 +173,21 @@ function isCanvasDeviceConfigSnapshot(value: unknown): value is CanvasDeviceConf
       Number.isFinite(value.rows) &&
       typeof value.columns === 'number' &&
       Number.isFinite(value.columns)
+    )
+  }
+
+  if (value.kind === 'vga_display') {
+    return (
+      typeof value.rows === 'number' &&
+      Number.isFinite(value.rows) &&
+      typeof value.columns === 'number' &&
+      Number.isFinite(value.columns) &&
+      (value.color_mode === 'mono' ||
+        value.color_mode === 'rgb111' ||
+        value.color_mode === 'rgb332' ||
+        value.color_mode === 'rgb444' ||
+        value.color_mode === 'rgb565' ||
+        value.color_mode === 'rgb888')
     )
   }
 
@@ -239,6 +255,15 @@ function cloneCanvasDeviceConfigSnapshot(
       kind: 'led_matrix',
       rows: config.rows,
       columns: config.columns,
+    }
+  }
+
+  if (config.kind === 'vga_display') {
+    return {
+      kind: 'vga_display',
+      rows: config.rows,
+      columns: config.columns,
+      color_mode: config.color_mode,
     }
   }
 

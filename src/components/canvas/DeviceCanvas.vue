@@ -16,6 +16,7 @@ import LedDevice from '../devices/LedDevice.vue'
 import LedMatrixDevice from '../devices/LedMatrixDevice.vue'
 import SegmentDisplayDevice from '../devices/SegmentDisplayDevice.vue'
 import SwitchDevice from '../devices/SwitchDevice.vue'
+import VgaDisplayDevice from '../devices/VgaDisplayDevice.vue'
 import WireLayer from './WireLayer.vue'
 import type { CanvasDeviceSnapshot, CanvasDeviceType } from '@/lib/hardware-client'
 import {
@@ -36,6 +37,7 @@ import {
   getCanvasDeviceShellSize,
   getCanvasMatrixDimensions,
   getCanvasSegmentDisplayConfig,
+  getCanvasVgaDisplayConfig,
   isCanvasMatrixDevice,
   isCanvasSegmentDisplayDevice,
 } from '@/lib/canvas-devices'
@@ -111,6 +113,7 @@ const deviceRendererByType: Record<CanvasDeviceType, Component> = {
   ps2_keyboard: GenericPanelDevice,
   text_lcd: GenericPanelDevice,
   graphic_lcd: GenericPanelDevice,
+  vga_display: VgaDisplayDevice,
   segment_display: SegmentDisplayDevice,
   led_matrix: LedMatrixDevice,
 }
@@ -649,6 +652,18 @@ function rendererProps(device: CanvasDeviceSnapshot) {
           }))
         : Array.from({ length: digits }, () => 0),
       segmentMask: streamRunning.value ? (telemetry?.segment_mask ?? 0) : 0,
+    }
+  }
+
+  if (device.type === 'vga_display') {
+    const config = getCanvasVgaDisplayConfig(resolvedDevice)
+    const baseProps = getCanvasDeviceRendererProps(resolvedDevice)
+    return {
+      ...baseProps,
+      isOn: streamRunning.value ? Boolean(telemetry?.latest) : false,
+      columns: telemetry?.pixel_columns || config?.columns || 320,
+      rows: telemetry?.pixel_rows || config?.rows || 240,
+      pixels: streamRunning.value ? (telemetry?.pixels ?? []) : [],
     }
   }
 

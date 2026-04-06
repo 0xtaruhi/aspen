@@ -5,7 +5,7 @@ use crate::hardware::types::{CanvasDeviceSnapshot, CanvasDeviceType};
 use super::input::{compile_single_bit_input, InputDeviceEncoder};
 use super::output::{
     compile_led_matrix_output, compile_led_output, compile_segment_display_output,
-    OutputDeviceDecoder,
+    compile_vga_display_output, OutputDeviceDecoder,
 };
 
 #[derive(Clone, Copy, Default)]
@@ -33,7 +33,7 @@ struct DeviceRegistration {
     output_compiler: Option<OutputCompiler>,
 }
 
-const DEVICE_REGISTRATIONS: [DeviceRegistration; 11] = [
+const DEVICE_REGISTRATIONS: [DeviceRegistration; 12] = [
     DeviceRegistration {
         device_type: CanvasDeviceType::Led,
         capabilities: DeviceCapabilities {
@@ -114,6 +114,15 @@ const DEVICE_REGISTRATIONS: [DeviceRegistration; 11] = [
         },
         input_compiler: None,
         output_compiler: None,
+    },
+    DeviceRegistration {
+        device_type: CanvasDeviceType::VgaDisplay,
+        capabilities: DeviceCapabilities {
+            drives_signal: false,
+            receives_signal: true,
+        },
+        input_compiler: None,
+        output_compiler: Some(compile_vga_display_output),
     },
     DeviceRegistration {
         device_type: CanvasDeviceType::SegmentDisplay,

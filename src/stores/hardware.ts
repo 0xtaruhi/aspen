@@ -154,9 +154,13 @@ async function stop() {
 async function configureDataStream(
   inputSignalOrder: readonly string[],
   outputSignalOrder: readonly string[],
-  wordsPerCycle?: number,
+  options?: {
+    wordsPerCycle?: number
+    vericommClockHighDelay?: number
+    vericommClockLowDelay?: number
+  },
 ) {
-  return configureRuntimeDataStream(inputSignalOrder, outputSignalOrder, wordsPerCycle)
+  return configureRuntimeDataStream(inputSignalOrder, outputSignalOrder, options)
 }
 
 async function setDataStreamRate(rateHz: number) {

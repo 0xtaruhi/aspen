@@ -28,6 +28,7 @@ impl SignalCatalog {
 impl HardwareDataAggregate {
     pub(super) fn new() -> Self {
         Self {
+            first: None,
             latest: false,
             high_count: 0,
             total_count: 0,
@@ -37,6 +38,10 @@ impl HardwareDataAggregate {
     }
 
     pub(super) fn ingest(&mut self, value: bool) {
+        if self.first.is_none() {
+            self.first = Some(value);
+        }
+
         if let Some(previous) = self.previous {
             if previous != value {
                 self.edge_count = self.edge_count.saturating_add(1);
@@ -49,6 +54,29 @@ impl HardwareDataAggregate {
             self.high_count += 1;
         }
         self.total_count += 1;
+    }
+
+    pub(super) fn merge(&mut self, next: &Self) {
+        if next.total_count == 0 {
+            return;
+        }
+
+        if self.total_count == 0 {
+            *self = next.clone();
+            return;
+        }
+
+        if let (Some(previous), Some(first)) = (self.previous, next.first) {
+            if previous != first {
+                self.edge_count = self.edge_count.saturating_add(1);
+            }
+        }
+
+        self.latest = next.latest;
+        self.high_count = self.high_count.saturating_add(next.high_count);
+        self.total_count = self.total_count.saturating_add(next.total_count);
+        self.edge_count = self.edge_count.saturating_add(next.edge_count);
+        self.previous = next.previous;
     }
 
     pub(super) fn into_signal(self, signal_id: u16) -> HardwareSignalAggregateByIdV1 {
@@ -68,11 +96,11 @@ impl HardwareDataAggregate {
 }
 
 impl HardwareRuntime {
-    pub(super) fn aggregate_read_buffer(
+    pub(super) fn aggregate_read_buffer_windows(
         read_buffer: &[u16],
         signal_ids: &[u16],
         words_per_cycle: usize,
-    ) -> Vec<HardwareSignalAggregateByIdV1> {
+    ) -> Vec<(u16, HardwareDataAggregate)> {
         let signal_count = signal_ids.len().min(words_per_cycle * 16);
         if signal_count == 0 {
             return Vec::new();
@@ -103,7 +131,7 @@ impl HardwareRuntime {
                     return None;
                 }
 
-                Some(aggregate.into_signal(signal_id))
+                Some((signal_id, aggregate))
             })
             .collect::<Vec<_>>();
 
@@ -112,6 +140,18 @@ impl HardwareRuntime {
         }
 
         updates
+    }
+
+    #[cfg(test)]
+    pub(super) fn aggregate_read_buffer(
+        read_buffer: &[u16],
+        signal_ids: &[u16],
+        words_per_cycle: usize,
+    ) -> Vec<HardwareSignalAggregateByIdV1> {
+        Self::aggregate_read_buffer_windows(read_buffer, signal_ids, words_per_cycle)
+            .into_iter()
+            .map(|(signal_id, aggregate)| aggregate.into_signal(signal_id))
+            .collect()
     }
 
     pub(super) fn filter_changed_updates(
@@ -155,5 +195,46 @@ impl HardwareRuntime {
         }
 
         payload
+    }
+
+    pub(super) fn emit_pending_signal_updates(
+        app: &AppHandle,
+        last_latest_by_signal: &mut HashMap<u16, bool>,
+        pending_meta: &mut PendingSignalBatchMeta,
+        pending_updates: &mut HashMap<u16, HardwareDataAggregate>,
+    ) {
+        if pending_updates.is_empty() {
+            *pending_meta = PendingSignalBatchMeta::default();
+            return;
+        }
+
+        let mut updates = pending_updates
+            .drain()
+            .map(|(signal_id, aggregate)| aggregate.into_signal(signal_id))
+            .collect::<Vec<_>>();
+        updates.sort_unstable_by_key(|update| update.signal_id);
+        let updates = Self::filter_changed_updates(updates, last_latest_by_signal);
+        if updates.is_empty() {
+            *pending_meta = PendingSignalBatchMeta::default();
+            return;
+        }
+
+        let payload = Self::encode_binary_batch(
+            pending_meta.sequence,
+            pending_meta.generated_at_ms,
+            pending_meta.dropped_samples,
+            pending_meta.queue_fill,
+            pending_meta.queue_capacity,
+            pending_meta.batch_cycles.min(u32::from(u16::MAX)) as u16,
+            &updates,
+        );
+        let _ = app.emit(
+            "hardware:data_batch_bin",
+            crate::hardware::types::HardwareDataBatchBinaryV1 {
+                version: 1,
+                payload,
+            },
+        );
+        *pending_meta = PendingSignalBatchMeta::default();
     }
 }
