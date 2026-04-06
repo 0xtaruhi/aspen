@@ -457,6 +457,12 @@ pub struct SynthesisArtifactsV1 {
     pub netlist_json_path: Option<String>,
     pub edif_path: Option<String>,
     #[serde(default)]
+    pub netlist_graph_cache_dir: Option<String>,
+    #[serde(default)]
+    pub netlist_graph_overview_path: Option<String>,
+    #[serde(default)]
+    pub netlist_graph_format: Option<String>,
+    #[serde(default)]
     pub flow_revision: Option<String>,
 }
 
@@ -476,6 +482,141 @@ pub struct SynthesisReportV1 {
     pub top_ports: Vec<SynthesisTopPortV1>,
     pub artifacts: Option<SynthesisArtifactsV1>,
     pub generated_at_ms: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SynthesisNetlistGraphPrepareRequestV1 {
+    pub top_module: String,
+    pub netlist_json_path: String,
+    pub work_dir: Option<String>,
+    pub cache_dir: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SynthesisNetlistGraphChunkRequestV1 {
+    pub cache_dir: String,
+    pub chunk_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SynthesisNetlistGraphSearchRequestV1 {
+    pub cache_dir: String,
+    pub query: String,
+    #[serde(default)]
+    pub limit: u16,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct SynthesisNetlistGraphChunkSummaryV1 {
+    pub chunk_id: String,
+    pub node_count: u32,
+    pub edge_count: u32,
+    pub external_edge_count: u32,
+    pub port_count: u32,
+    pub cell_count: u32,
+    pub max_fanout: u32,
+    pub prominent_labels: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct SynthesisNetlistGraphInterconnectV1 {
+    pub source_chunk_id: String,
+    pub target_chunk_id: String,
+    pub edge_count: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct SynthesisNetlistGraphPortViewV1 {
+    pub name: String,
+    pub direction: String,
+    pub width: String,
+    pub chunk_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct SynthesisNetlistGraphOverviewV1 {
+    pub version: u8,
+    pub top_module: String,
+    pub cache_dir: String,
+    pub graph_format: String,
+    pub node_count: u32,
+    pub edge_count: u32,
+    pub named_signal_count: u32,
+    pub chunk_target_node_count: u32,
+    pub chunks: Vec<SynthesisNetlistGraphChunkSummaryV1>,
+    pub interconnects: Vec<SynthesisNetlistGraphInterconnectV1>,
+    pub top_ports: Vec<SynthesisTopPortV1>,
+    #[serde(default)]
+    pub top_port_views: Vec<SynthesisNetlistGraphPortViewV1>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct SynthesisNetlistGraphNodePropertyV1 {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct SynthesisNetlistGraphNodeV1 {
+    pub id: String,
+    pub label: String,
+    pub kind: String,
+    pub cell_type: Option<String>,
+    pub direction: Option<String>,
+    pub degree: u32,
+    pub fanin: u32,
+    pub fanout: u32,
+    pub external_connection_count: u32,
+    #[serde(default)]
+    pub properties: Vec<SynthesisNetlistGraphNodePropertyV1>,
+    #[serde(default)]
+    pub truth_table: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct SynthesisNetlistGraphEdgeV1 {
+    pub id: String,
+    pub source_id: String,
+    pub target_id: String,
+    pub signal: String,
+    pub bit_width: u16,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct SynthesisNetlistGraphLinkedChunkV1 {
+    pub chunk_id: String,
+    pub edge_count: u32,
+    pub prominent_signals: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct SynthesisNetlistGraphChunkV1 {
+    pub version: u8,
+    pub top_module: String,
+    pub cache_dir: String,
+    pub graph_format: String,
+    pub chunk_id: String,
+    pub node_count: u32,
+    pub edge_count: u32,
+    pub nodes: Vec<SynthesisNetlistGraphNodeV1>,
+    pub edges: Vec<SynthesisNetlistGraphEdgeV1>,
+    pub linked_chunks: Vec<SynthesisNetlistGraphLinkedChunkV1>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct SynthesisNetlistGraphSearchMatchV1 {
+    pub kind: String,
+    pub label: String,
+    pub detail: String,
+    pub chunk_id: String,
+    pub node_id: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct SynthesisNetlistGraphSearchResultV1 {
+    pub version: u8,
+    pub query: String,
+    pub matches: Vec<SynthesisNetlistGraphSearchMatchV1>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]

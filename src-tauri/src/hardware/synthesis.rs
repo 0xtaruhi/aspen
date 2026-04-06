@@ -4,6 +4,7 @@ mod process;
 #[cfg(test)]
 mod tests;
 mod toolchain;
+mod visualization;
 
 use std::{
     fs,
@@ -21,8 +22,16 @@ use self::{
         resolve_fde_support_file, resolve_yosys_binary, spawn_yosys_process,
         SynthesisToolchainPaths,
     },
+    visualization::{
+        build_or_load_netlist_graph_cache, load_netlist_graph_chunk, search_netlist_graph,
+    },
 };
-use super::types::{SynthesisLogChunkV1, SynthesisReportV1, SynthesisRequestV1, SynthesisStatsV1};
+use super::types::{
+    SynthesisLogChunkV1, SynthesisNetlistGraphChunkRequestV1, SynthesisNetlistGraphChunkV1,
+    SynthesisNetlistGraphOverviewV1, SynthesisNetlistGraphPrepareRequestV1,
+    SynthesisNetlistGraphSearchRequestV1, SynthesisNetlistGraphSearchResultV1, SynthesisReportV1,
+    SynthesisRequestV1, SynthesisStatsV1,
+};
 
 const BUNDLED_YOSYS_DIR: &str = "vendor/yosys";
 const FDE_RESOURCE_DIR: &str = "resource/yosys-fde";
@@ -63,6 +72,51 @@ pub fn run_yosys_synthesis(
         let _ = fs::remove_dir_all(&workdir);
     }
     result
+}
+
+pub fn prepare_netlist_graph(
+    request: SynthesisNetlistGraphPrepareRequestV1,
+) -> Result<SynthesisNetlistGraphOverviewV1, String> {
+    let top_module = request.top_module.trim();
+    if top_module.is_empty() {
+        return Err("Top module is required for netlist visualization".to_string());
+    }
+
+    let netlist_path = Path::new(request.netlist_json_path.trim());
+    if !netlist_path.is_file() {
+        return Err(format!(
+            "Synthesized netlist JSON not found at '{}'",
+            netlist_path.display()
+        ));
+    }
+
+    let cache_dir =
+        resolve_graph_cache_dir(request.cache_dir.as_deref(), request.work_dir.as_deref());
+    let parsed_netlist = parse_synthesized_netlist(netlist_path, top_module)?;
+    build_or_load_netlist_graph_cache(
+        top_module,
+        netlist_path,
+        &cache_dir,
+        &parsed_netlist.top_ports,
+    )
+}
+
+pub fn read_netlist_graph_chunk(
+    request: SynthesisNetlistGraphChunkRequestV1,
+) -> Result<SynthesisNetlistGraphChunkV1, String> {
+    let cache_dir = Path::new(request.cache_dir.trim());
+    if request.chunk_id.trim().is_empty() {
+        return Err("Netlist graph chunk id is required".to_string());
+    }
+
+    load_netlist_graph_chunk(cache_dir, request.chunk_id.trim())
+}
+
+pub fn search_prepared_netlist_graph(
+    request: SynthesisNetlistGraphSearchRequestV1,
+) -> Result<SynthesisNetlistGraphSearchResultV1, String> {
+    let cache_dir = Path::new(request.cache_dir.trim());
+    search_netlist_graph(cache_dir, request.query.trim(), usize::from(request.limit))
 }
 
 fn run_yosys_in_workdir<F>(
@@ -160,6 +214,12 @@ where
     }
 
     let parsed_netlist = parse_synthesized_netlist(&artifacts.netlist_path, &request.top_module)?;
+    let _ = build_or_load_netlist_graph_cache(
+        &request.top_module,
+        &artifacts.netlist_path,
+        &artifacts.netlist_graph_cache_dir,
+        &parsed_netlist.top_ports,
+    );
     Ok(SynthesisReportV1 {
         version: 1,
         op_id: request.op_id.clone(),
@@ -176,6 +236,26 @@ where
         artifacts: Some(artifacts.to_snapshot()),
         generated_at_ms,
     })
+}
+
+fn resolve_graph_cache_dir(cache_dir: Option<&str>, work_dir: Option<&str>) -> std::path::PathBuf {
+    if let Some(path) = cache_dir
+        .map(str::trim)
+        .filter(|path| !path.is_empty())
+        .map(std::path::PathBuf::from)
+    {
+        return path;
+    }
+
+    if let Some(path) = work_dir
+        .map(str::trim)
+        .filter(|path| !path.is_empty())
+        .map(std::path::PathBuf::from)
+    {
+        return path.join("netlist-graph");
+    }
+
+    std::env::temp_dir().join("aspen-netlist-graph")
 }
 
 fn validate_request(request: &SynthesisRequestV1) -> Result<(), String> {

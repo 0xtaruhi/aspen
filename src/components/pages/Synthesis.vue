@@ -3,6 +3,7 @@ import type { SynthesisSourceFileV1 } from '@/lib/hardware-client'
 
 import { Check, Copy } from 'lucide-vue-next'
 import { computed, nextTick, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -19,6 +20,7 @@ import { projectStore } from '@/stores/project'
 const activeFileName = designContextStore.sourceName
 const topModule = designContextStore.primaryModule
 const { t } = useI18n()
+const router = useRouter()
 
 const isBusy = hardwareStore.synthesisRunning
 const synthesisMessage = hardwareStore.synthesisMessage
@@ -146,6 +148,10 @@ async function runSynthesis() {
   }
 }
 
+function openNetlistBrowser() {
+  void router.push({ name: 'fpga-flow-netlist-browser' })
+}
+
 function projectDirectory() {
   return getProjectRootDirectory(projectStore.projectPath)
 }
@@ -268,8 +274,22 @@ watch(
     <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] flex-1 min-h-0">
       <Card class="min-h-0 flex flex-col">
         <CardHeader class="flex-row items-center justify-between space-y-0">
-          <CardTitle>{{ t('synthesisLog') }}</CardTitle>
+          <div class="space-y-1">
+            <CardTitle>{{ t('synthesisLog') }}</CardTitle>
+            <p class="text-xs text-muted-foreground">
+              {{ t('netlistBrowserDescription') }}
+            </p>
+          </div>
           <div class="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              :disabled="!synthesisReport?.artifacts?.netlist_json_path"
+              @click="openNetlistBrowser"
+            >
+              {{ t('netlistBrowser') }}
+            </Button>
             <Button
               type="button"
               size="sm"

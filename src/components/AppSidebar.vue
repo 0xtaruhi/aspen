@@ -90,6 +90,13 @@ const data = computed(() => ({
           isRunning: isSynthesisRunning.value,
         },
         {
+          title: 'Netlist Browser',
+          label: t('netlistBrowser'),
+          url: '/fpga-flow/netlist-browser',
+          action: () => navigate('/fpga-flow/netlist-browser'),
+          isActive: activeRouteName.value === 'fpga-flow-netlist-browser',
+        },
+        {
           title: 'Pin Planning',
           label: t('pinPlanning'),
           url: '/fpga-flow/pin-planning',

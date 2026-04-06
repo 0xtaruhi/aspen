@@ -1,4 +1,5 @@
 use super::*;
+use crate::hardware::process_output::decode_output_chunk;
 use crate::hardware::types::SynthesisSourceFileV1;
 use std::{
     env, fs,
@@ -166,8 +167,8 @@ if errorlevel 1 exit /b %errorlevel%\r\n\
     if !output.status.success() || !edif_path.is_file() {
         return Err(format!(
             "{}{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
+            decode_output_chunk(&output.stdout),
+            decode_output_chunk(&output.stderr)
         ));
     }
 

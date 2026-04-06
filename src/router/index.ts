@@ -11,6 +11,7 @@ export type Page =
   | 'project-editor'
   | 'project-dashboard'
   | 'synthesis'
+  | 'netlist-browser'
   | 'pin-planning'
   | 'implementation'
   | 'hardware'
@@ -23,6 +24,7 @@ export type AppRouteName =
   | 'project-management-dashboard'
   | 'fpga-flow'
   | 'fpga-flow-synthesis'
+  | 'fpga-flow-netlist-browser'
   | 'fpga-flow-pin-planning'
   | 'fpga-flow-implementation'
   | 'hardware-manager'
@@ -43,6 +45,7 @@ export const routeLabelMap: Record<AppRouteName, string> = {
   'project-management-dashboard': 'Dashboard',
   'fpga-flow': 'Synthesis',
   'fpga-flow-synthesis': 'Synthesis',
+  'fpga-flow-netlist-browser': 'Netlist Browser',
   'fpga-flow-pin-planning': 'Pin Planning',
   'fpga-flow-implementation': 'Implementation',
   'hardware-manager': 'Hardware Manager',
@@ -56,6 +59,7 @@ export const routeModuleMap: Record<AppRouteName, AppModule> = {
   'project-management-dashboard': 'project-management',
   'fpga-flow': 'fpga-flow',
   'fpga-flow-synthesis': 'fpga-flow',
+  'fpga-flow-netlist-browser': 'fpga-flow',
   'fpga-flow-pin-planning': 'fpga-flow',
   'fpga-flow-implementation': 'fpga-flow',
   'hardware-manager': 'hardware-manager',
@@ -69,6 +73,7 @@ export const routePageMap: Partial<Record<AppRouteName, Page>> = {
   'project-management-dashboard': 'project-dashboard',
   'fpga-flow': 'synthesis',
   'fpga-flow-synthesis': 'synthesis',
+  'fpga-flow-netlist-browser': 'netlist-browser',
   'fpga-flow-pin-planning': 'pin-planning',
   'fpga-flow-implementation': 'implementation',
   'hardware-manager': 'hardware',
@@ -80,6 +85,7 @@ export const pageRouteNameMap: Record<Page, AppRouteName> = {
   'project-editor': 'project-management-editor',
   'project-dashboard': 'project-management-dashboard',
   synthesis: 'fpga-flow-synthesis',
+  'netlist-browser': 'fpga-flow-netlist-browser',
   'pin-planning': 'fpga-flow-pin-planning',
   implementation: 'fpga-flow-implementation',
   hardware: 'hardware-manager',
@@ -132,6 +138,11 @@ const routes: RouteRecordRaw[] = [
     path: '/fpga-flow/synthesis',
     name: 'fpga-flow-synthesis',
     component: () => import('@/components/pages/Synthesis.vue'),
+  },
+  {
+    path: '/fpga-flow/netlist-browser',
+    name: 'fpga-flow-netlist-browser',
+    component: () => import('@/components/pages/NetlistBrowser.vue'),
   },
   {
     path: '/fpga-flow/pin-planning',

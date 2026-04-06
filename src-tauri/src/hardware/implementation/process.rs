@@ -1,6 +1,5 @@
 use std::{
     fs,
-    io::{BufRead, BufReader},
     path::{Path, PathBuf},
     sync::mpsc,
     thread,
@@ -12,6 +11,7 @@ use tauri::{AppHandle, Emitter};
 use super::{
     now_millis, ImplementationLogChunkV1, ImplementationStageKindV1, ImplementationStageResultV1,
 };
+use crate::hardware::process_output::stream_output;
 
 pub(super) struct StagePlan {
     pub stage: ImplementationStageKindV1,
@@ -95,20 +95,6 @@ where
         },
         log,
     })
-}
-
-fn stream_output<R: std::io::Read>(reader: R, tx: mpsc::Sender<String>) {
-    let mut reader = BufReader::new(reader);
-    let mut buffer = Vec::new();
-    loop {
-        buffer.clear();
-        let read = reader.read_until(b'\n', &mut buffer).unwrap_or(0);
-        if read == 0 {
-            break;
-        }
-        let chunk = String::from_utf8_lossy(&buffer).into_owned();
-        let _ = tx.send(chunk);
-    }
 }
 
 pub(super) fn emit_log_chunk(

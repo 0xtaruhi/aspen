@@ -1,12 +1,9 @@
-use std::{
-    io::{BufRead, BufReader},
-    path::{Path, PathBuf},
-    sync::mpsc,
-};
+use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Emitter};
 
 use super::{artifacts::quote_yosys_path, now_millis, SynthesisLogChunkV1, FDE_LUT_WIDTH};
+pub(super) use crate::hardware::process_output::stream_output;
 
 pub(super) fn build_yosys_script(
     fde_simlib: &Path,
@@ -70,22 +67,6 @@ write_json {}\n",
         quote_yosys_path(edif_path),
         quote_yosys_path(netlist_path)
     )
-}
-
-pub(super) fn stream_output<R: std::io::Read>(reader: R, tx: mpsc::Sender<String>) {
-    let mut reader = BufReader::new(reader);
-    let mut buffer = Vec::new();
-
-    loop {
-        buffer.clear();
-        let read = reader.read_until(b'\n', &mut buffer).unwrap_or(0);
-        if read == 0 {
-            break;
-        }
-
-        let chunk = String::from_utf8_lossy(&buffer).into_owned();
-        let _ = tx.send(chunk);
-    }
 }
 
 pub(super) fn emit_log_chunk(

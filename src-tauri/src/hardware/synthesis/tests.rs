@@ -2,7 +2,10 @@ use super::*;
 use serde_json::json;
 use std::{fs, path::PathBuf, time::Instant};
 
-use crate::hardware::types::{SynthesisRequestV1, SynthesisSourceFileV1};
+use crate::hardware::types::{
+    SynthesisNetlistGraphChunkRequestV1, SynthesisNetlistGraphPrepareRequestV1,
+    SynthesisNetlistGraphSearchRequestV1, SynthesisRequestV1, SynthesisSourceFileV1,
+};
 
 #[test]
 fn sanitize_source_path_discards_parent_components() {
@@ -208,4 +211,215 @@ fn parse_synthesized_netlist_filters_internal_yosys_cells_and_extracts_ports() {
     assert_eq!(parsed.top_ports[0].name, "clk");
     assert_eq!(parsed.top_ports[1].name, "led");
     assert_eq!(parsed.top_ports[1].width, "[3:0]");
+}
+
+#[test]
+fn prepare_netlist_graph_builds_chunk_cache_and_search_index() {
+    let request = SynthesisRequestV1 {
+        op_id: "graph".to_string(),
+        project_name: Some("graph-demo".to_string()),
+        project_dir: None,
+        top_module: "top".to_string(),
+        files: Vec::new(),
+    };
+    let generated_at_ms = now_millis().unwrap();
+    let (workdir, _) = resolve_workdir(&request, generated_at_ms).unwrap();
+    let netlist_path = workdir.join("netlist.json");
+    let netlist = json!({
+        "modules": {
+            "top": {
+                "ports": {
+                    "clk": {
+                        "direction": "input",
+                        "bits": [1]
+                    },
+                    "rst_n": {
+                        "direction": "input",
+                        "bits": [2]
+                    },
+                    "led": {
+                        "direction": "output",
+                        "bits": [6]
+                    }
+                },
+                "netnames": {
+                    "clk": { "bits": [1] },
+                    "rst_n": { "bits": [2] },
+                    "toggle": { "bits": [5] },
+                    "led": { "bits": [6] }
+                },
+                "memories": {},
+                "cells": {
+                    "ff0": {
+                        "type": "DFFRHQ",
+                        "parameters": {
+                            "INIT": "0"
+                        },
+                        "port_directions": {
+                            "CLK": "input",
+                            "D": "input",
+                            "Q": "output",
+                            "RN": "input"
+                        },
+                        "connections": {
+                            "CLK": [1],
+                            "D": [5],
+                            "Q": [6],
+                            "RN": [2]
+                        }
+                    },
+                    "lut0": {
+                        "type": "LUT4",
+                        "parameters": {
+                            "INIT": "1001011000001111"
+                        },
+                        "port_directions": {
+                            "A": "input",
+                            "Y": "output"
+                        },
+                        "connections": {
+                            "A": [6],
+                            "Y": [5]
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    fs::write(&netlist_path, serde_json::to_vec(&netlist).unwrap()).unwrap();
+
+    let overview = prepare_netlist_graph(SynthesisNetlistGraphPrepareRequestV1 {
+        top_module: "top".to_string(),
+        netlist_json_path: netlist_path.to_string_lossy().to_string(),
+        work_dir: Some(workdir.to_string_lossy().to_string()),
+        cache_dir: None,
+    })
+    .unwrap();
+
+    assert!(!overview.chunks.is_empty());
+    assert_eq!(overview.top_port_views.len(), 3);
+    assert!(overview
+        .top_port_views
+        .iter()
+        .any(|port| port.name == "clk" && !port.chunk_id.is_empty()));
+    assert!(PathBuf::from(&overview.cache_dir)
+        .join("overview.msgpack")
+        .is_file());
+
+    let chunk = read_netlist_graph_chunk(SynthesisNetlistGraphChunkRequestV1 {
+        cache_dir: overview.cache_dir.clone(),
+        chunk_id: overview.chunks[0].chunk_id.clone(),
+    })
+    .unwrap();
+    assert!(!chunk.nodes.is_empty());
+    let lut_node = chunk
+        .nodes
+        .iter()
+        .find(|node| node.label == "lut0")
+        .expect("expected lut0 node");
+    assert_eq!(lut_node.properties.len(), 1);
+    assert_eq!(lut_node.properties[0].key, "INIT");
+    assert_eq!(lut_node.properties[0].value, "1001011000001111");
+    assert_eq!(
+        lut_node.truth_table.as_deref(),
+        Some("0b1001_0110_0000_1111 / 0x960F")
+    );
+
+    let search = search_prepared_netlist_graph(SynthesisNetlistGraphSearchRequestV1 {
+        cache_dir: overview.cache_dir.clone(),
+        query: "led".to_string(),
+        limit: 8,
+    })
+    .unwrap();
+    let _ = fs::remove_dir_all(&workdir);
+
+    assert!(!search.matches.is_empty());
+    assert!(search.matches.iter().any(|entry| entry.label == "led"));
+}
+
+#[test]
+fn prepare_netlist_graph_search_resolves_hierarchical_and_internal_cell_aliases() {
+    let request = SynthesisRequestV1 {
+        op_id: "graph-alias".to_string(),
+        project_name: Some("graph-alias-demo".to_string()),
+        project_dir: None,
+        top_module: "top".to_string(),
+        files: Vec::new(),
+    };
+    let generated_at_ms = now_millis().unwrap();
+    let (workdir, _) = resolve_workdir(&request, generated_at_ms).unwrap();
+    let netlist_path = workdir.join("netlist.json");
+    let netlist = json!({
+        "modules": {
+            "top": {
+                "ports": {
+                    "clk": { "direction": "input", "bits": [1] },
+                    "led": { "direction": "output", "bits": [2] }
+                },
+                "netnames": {
+                    "clk": { "bits": [1] },
+                    "led": { "bits": [2] }
+                },
+                "memories": {},
+                "cells": {
+                    "top/u_ff0": {
+                        "type": "DFFRHQ",
+                        "port_directions": {
+                            "CLK": "input",
+                            "Q": "output"
+                        },
+                        "connections": {
+                            "CLK": [1],
+                            "Q": [2]
+                        }
+                    },
+                    "$auto$ff$1": {
+                        "type": "DFFRHQ",
+                        "port_directions": {
+                            "CLK": "input",
+                            "Q": "output"
+                        },
+                        "connections": {
+                            "CLK": [1],
+                            "Q": [2]
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    fs::write(&netlist_path, serde_json::to_vec(&netlist).unwrap()).unwrap();
+
+    let overview = prepare_netlist_graph(SynthesisNetlistGraphPrepareRequestV1 {
+        top_module: "top".to_string(),
+        netlist_json_path: netlist_path.to_string_lossy().to_string(),
+        work_dir: Some(workdir.to_string_lossy().to_string()),
+        cache_dir: None,
+    })
+    .unwrap();
+
+    let hierarchical_search = search_prepared_netlist_graph(SynthesisNetlistGraphSearchRequestV1 {
+        cache_dir: overview.cache_dir.clone(),
+        query: "u_ff0".to_string(),
+        limit: 8,
+    })
+    .unwrap();
+    let internal_search = search_prepared_netlist_graph(SynthesisNetlistGraphSearchRequestV1 {
+        cache_dir: overview.cache_dir.clone(),
+        query: "$auto$ff$1".to_string(),
+        limit: 8,
+    })
+    .unwrap();
+    let _ = fs::remove_dir_all(&workdir);
+
+    assert!(hierarchical_search
+        .matches
+        .iter()
+        .any(|entry| entry.node_id.as_deref() == Some("cell:top/u_ff0")));
+    assert!(internal_search
+        .matches
+        .iter()
+        .any(|entry| entry.node_id.as_deref() == Some("cell:$auto$ff$1")));
 }

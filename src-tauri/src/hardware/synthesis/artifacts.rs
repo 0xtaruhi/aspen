@@ -15,6 +15,8 @@ pub(super) struct PlannedSynthesisArtifacts {
     pub script_path: PathBuf,
     pub netlist_path: PathBuf,
     pub edif_path: PathBuf,
+    pub netlist_graph_cache_dir: PathBuf,
+    pub netlist_graph_overview_path: PathBuf,
 }
 
 pub(super) fn write_source_file(
@@ -71,6 +73,8 @@ pub(super) fn plan_synthesis_artifacts(
         script_path: workdir.join(format!("{}_synth.ys", base_name)),
         netlist_path: workdir.join(format!("{}_netlist.json", base_name)),
         edif_path: workdir.join(format!("{}_syn.edf", base_name)),
+        netlist_graph_cache_dir: workdir.join("netlist-graph"),
+        netlist_graph_overview_path: workdir.join("netlist-graph").join("overview.msgpack"),
     }
 }
 
@@ -90,6 +94,19 @@ impl PlannedSynthesisArtifacts {
                 .edif_path
                 .is_file()
                 .then(|| self.edif_path.to_string_lossy().to_string()),
+            netlist_graph_cache_dir: self
+                .netlist_graph_cache_dir
+                .is_dir()
+                .then(|| self.netlist_graph_cache_dir.to_string_lossy().to_string()),
+            netlist_graph_overview_path: self.netlist_graph_overview_path.is_file().then(|| {
+                self.netlist_graph_overview_path
+                    .to_string_lossy()
+                    .to_string()
+            }),
+            netlist_graph_format: self
+                .netlist_graph_overview_path
+                .is_file()
+                .then(|| "msgpack-v1".to_string()),
             flow_revision: Some(SYNTHESIS_ARTIFACT_FLOW_REVISION.to_string()),
         }
     }

@@ -82,6 +82,9 @@ export interface SynthesisArtifactsV1 {
   script_path: string | null
   netlist_json_path: string | null
   edif_path: string | null
+  netlist_graph_cache_dir?: string | null
+  netlist_graph_overview_path?: string | null
+  netlist_graph_format?: string | null
   flow_revision?: string | null
 }
 
@@ -100,6 +103,123 @@ export interface SynthesisReportV1 {
   top_ports: SynthesisTopPortV1[]
   artifacts?: SynthesisArtifactsV1 | null
   generated_at_ms: number
+}
+
+export interface SynthesisNetlistGraphPrepareRequestV1 {
+  top_module: string
+  netlist_json_path: string
+  work_dir?: string | null
+  cache_dir?: string | null
+}
+
+export interface SynthesisNetlistGraphChunkRequestV1 {
+  cache_dir: string
+  chunk_id: string
+}
+
+export interface SynthesisNetlistGraphSearchRequestV1 {
+  cache_dir: string
+  query: string
+  limit?: number
+}
+
+export interface SynthesisNetlistGraphChunkSummaryV1 {
+  chunk_id: string
+  node_count: number
+  edge_count: number
+  external_edge_count: number
+  port_count: number
+  cell_count: number
+  max_fanout: number
+  prominent_labels: string[]
+}
+
+export interface SynthesisNetlistGraphInterconnectV1 {
+  source_chunk_id: string
+  target_chunk_id: string
+  edge_count: number
+}
+
+export interface SynthesisNetlistGraphPortViewV1 {
+  name: string
+  direction: 'input' | 'output' | 'inout' | string
+  width: string
+  chunk_id: string
+}
+
+export interface SynthesisNetlistGraphOverviewV1 {
+  version: 1
+  top_module: string
+  cache_dir: string
+  graph_format: string
+  node_count: number
+  edge_count: number
+  named_signal_count: number
+  chunk_target_node_count: number
+  chunks: SynthesisNetlistGraphChunkSummaryV1[]
+  interconnects: SynthesisNetlistGraphInterconnectV1[]
+  top_ports: SynthesisTopPortV1[]
+  top_port_views: SynthesisNetlistGraphPortViewV1[]
+}
+
+export interface SynthesisNetlistGraphNodePropertyV1 {
+  key: string
+  value: string
+}
+
+export interface SynthesisNetlistGraphNodeV1 {
+  id: string
+  label: string
+  kind: 'port' | 'cell' | string
+  cell_type: string | null
+  direction: 'input' | 'output' | 'inout' | string | null
+  degree: number
+  fanin: number
+  fanout: number
+  external_connection_count: number
+  properties: SynthesisNetlistGraphNodePropertyV1[]
+  truth_table: string | null
+}
+
+export interface SynthesisNetlistGraphEdgeV1 {
+  id: string
+  source_id: string
+  target_id: string
+  signal: string
+  bit_width: number
+}
+
+export interface SynthesisNetlistGraphLinkedChunkV1 {
+  chunk_id: string
+  edge_count: number
+  prominent_signals: string[]
+}
+
+export interface SynthesisNetlistGraphChunkV1 {
+  version: 1
+  top_module: string
+  cache_dir: string
+  graph_format: string
+  chunk_id: string
+  node_count: number
+  edge_count: number
+  nodes: SynthesisNetlistGraphNodeV1[]
+  edges: SynthesisNetlistGraphEdgeV1[]
+  linked_chunks: SynthesisNetlistGraphLinkedChunkV1[]
+}
+
+export interface SynthesisNetlistGraphSearchMatchV1 {
+  kind: 'port' | 'cell' | 'signal' | string
+  label: string
+  detail: string
+  chunk_id: string
+  node_id: string | null
+}
+
+export interface SynthesisNetlistGraphSearchResultV1 {
+  version: 1
+  query: string
+  matches: SynthesisNetlistGraphSearchMatchV1[]
 }
 
 export type ImplementationStageKindV1 =
@@ -394,6 +514,26 @@ export async function runHardwareImplementation(
   request: ImplementationRequestV1,
 ): Promise<ImplementationReportV1> {
   return invoke<ImplementationReportV1>('run_fde_implementation', { request })
+}
+
+export async function prepareSynthesisNetlistGraph(
+  request: SynthesisNetlistGraphPrepareRequestV1,
+): Promise<SynthesisNetlistGraphOverviewV1> {
+  return invoke<SynthesisNetlistGraphOverviewV1>('prepare_synthesis_netlist_graph', { request })
+}
+
+export async function loadSynthesisNetlistGraphChunk(
+  request: SynthesisNetlistGraphChunkRequestV1,
+): Promise<SynthesisNetlistGraphChunkV1> {
+  return invoke<SynthesisNetlistGraphChunkV1>('load_synthesis_netlist_graph_chunk', { request })
+}
+
+export async function searchSynthesisNetlistGraph(
+  request: SynthesisNetlistGraphSearchRequestV1,
+): Promise<SynthesisNetlistGraphSearchResultV1> {
+  return invoke<SynthesisNetlistGraphSearchResultV1>('search_synthesis_netlist_graph', {
+    request,
+  })
 }
 
 export async function listenHardwareSynthesisLog(

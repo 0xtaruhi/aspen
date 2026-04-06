@@ -11,7 +11,10 @@ use std::{
 use hardware::{
     BitstreamGenerationResult, HardwareActionV1, HardwareDataStreamConfigV1,
     HardwareDataStreamStatusV1, HardwareEventReason, HardwareRuntime, HardwareStateV1,
-    HardwareStatus, ImplementationReportV1, ImplementationRequestV1, SynthesisReportV1,
+    HardwareStatus, ImplementationReportV1, ImplementationRequestV1,
+    SynthesisNetlistGraphChunkRequestV1, SynthesisNetlistGraphChunkV1,
+    SynthesisNetlistGraphOverviewV1, SynthesisNetlistGraphPrepareRequestV1,
+    SynthesisNetlistGraphSearchRequestV1, SynthesisNetlistGraphSearchResultV1, SynthesisReportV1,
     SynthesisRequestV1,
 };
 use serde::Deserialize;
@@ -174,6 +177,33 @@ async fn run_fde_implementation(
     request: ImplementationRequestV1,
 ) -> Result<ImplementationReportV1, String> {
     tauri::async_runtime::spawn_blocking(move || hardware::run_fde_implementation(&app, request))
+        .await
+        .map_err(|err| err.to_string())?
+}
+
+#[tauri::command]
+async fn prepare_synthesis_netlist_graph(
+    request: SynthesisNetlistGraphPrepareRequestV1,
+) -> Result<SynthesisNetlistGraphOverviewV1, String> {
+    tauri::async_runtime::spawn_blocking(move || hardware::prepare_netlist_graph(request))
+        .await
+        .map_err(|err| err.to_string())?
+}
+
+#[tauri::command]
+async fn load_synthesis_netlist_graph_chunk(
+    request: SynthesisNetlistGraphChunkRequestV1,
+) -> Result<SynthesisNetlistGraphChunkV1, String> {
+    tauri::async_runtime::spawn_blocking(move || hardware::read_netlist_graph_chunk(request))
+        .await
+        .map_err(|err| err.to_string())?
+}
+
+#[tauri::command]
+async fn search_synthesis_netlist_graph(
+    request: SynthesisNetlistGraphSearchRequestV1,
+) -> Result<SynthesisNetlistGraphSearchResultV1, String> {
+    tauri::async_runtime::spawn_blocking(move || hardware::search_prepared_netlist_graph(request))
         .await
         .map_err(|err| err.to_string())?
 }
@@ -389,6 +419,9 @@ pub fn run() {
             generate_bitstream,
             run_yosys_synthesis,
             run_fde_implementation,
+            prepare_synthesis_netlist_graph,
+            load_synthesis_netlist_graph_chunk,
+            search_synthesis_netlist_graph,
             read_project_file,
             write_project_file,
             write_project_bundle,

@@ -48,6 +48,7 @@ const routeLabelKeyMap = {
   'project-management-dashboard': 'dashboard',
   'fpga-flow': 'synthesis',
   'fpga-flow-synthesis': 'synthesis',
+  'fpga-flow-netlist-browser': 'netlistBrowser',
   'fpga-flow-pin-planning': 'pinPlanning',
   'fpga-flow-implementation': 'implementation',
   'hardware-manager': 'hardwareManager',
