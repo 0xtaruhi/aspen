@@ -282,10 +282,42 @@ describe('project save-state regression', () => {
       signals: ['row0', 'row1', 'col0', 'col1'],
     }
 
-    virtualDeviceStore.setCanvasDevices([led, matrix])
+    const vga = createCanvasDeviceSnapshot('vga_display', 'vga-1', 360, 180, 1)
+    vga.label = 'Workbench VGA'
+    vga.state.config = {
+      kind: 'vga_display',
+      rows: 240,
+      columns: 320,
+      color_mode: 'rgb565',
+    }
+    vga.state.binding = {
+      kind: 'slots',
+      signals: [
+        'hsync',
+        'vsync',
+        'r0',
+        'r1',
+        'r2',
+        'r3',
+        'r4',
+        'g0',
+        'g1',
+        'g2',
+        'g3',
+        'g4',
+        'g5',
+        'b0',
+        'b1',
+        'b2',
+        'b3',
+        'b4',
+      ],
+    }
+
+    virtualDeviceStore.setCanvasDevices([led, matrix, vga])
 
     const snapshot = projectStore.toSnapshot()
-    expect(snapshot.canvasDevices).toHaveLength(2)
+    expect(snapshot.canvasDevices).toHaveLength(3)
     expect(snapshot.canvasDevices[0]?.label).toBe('Status LED')
     expect(snapshot.canvasDevices[0]?.state.is_on).toBe(false)
     expect(snapshot.canvasDevices[1]?.state.config).toEqual({
@@ -293,11 +325,17 @@ describe('project save-state regression', () => {
       rows: 8,
       columns: 8,
     })
+    expect(snapshot.canvasDevices[2]?.state.config).toEqual({
+      kind: 'vga_display',
+      rows: 240,
+      columns: 320,
+      color_mode: 'rgb565',
+    })
 
     virtualDeviceStore.setCanvasDevices([])
     projectStore.loadFromSnapshot(snapshot)
 
-    expect(virtualDeviceStore.canvasDevices.value).toHaveLength(2)
+    expect(virtualDeviceStore.canvasDevices.value).toHaveLength(3)
     expect(virtualDeviceStore.canvasDevices.value[0]?.label).toBe('Status LED')
     expect(virtualDeviceStore.canvasDevices.value[0]?.state.binding).toEqual({
       kind: 'single',
@@ -305,5 +343,11 @@ describe('project save-state regression', () => {
     })
     expect(virtualDeviceStore.canvasDevices.value[0]?.state.is_on).toBe(false)
     expect(virtualDeviceStore.canvasDevices.value[1]?.state.color).toBe('#eab308')
+    expect(virtualDeviceStore.canvasDevices.value[2]?.state.config).toEqual({
+      kind: 'vga_display',
+      rows: 240,
+      columns: 320,
+      color_mode: 'rgb565',
+    })
   })
 })

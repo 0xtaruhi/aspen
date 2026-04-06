@@ -5,7 +5,8 @@ use std::{
 
 use crate::hardware::types::{
     CanvasDeviceBindingSnapshot, CanvasDeviceConfigSnapshot, CanvasDeviceSnapshot,
-    CanvasDeviceStateSnapshot, CanvasDeviceType, HardwareSignalAggregateByIdV1,
+    CanvasDeviceStateSnapshot, CanvasDeviceType, CanvasVgaColorMode, HardwareDataStreamConfigV1,
+    HardwareSignalAggregateByIdV1,
 };
 
 use super::*;
@@ -37,6 +38,25 @@ fn no_config() -> CanvasDeviceConfigSnapshot {
 
 fn button_config(active_low: bool) -> CanvasDeviceConfigSnapshot {
     CanvasDeviceConfigSnapshot::Button { active_low }
+}
+
+fn vga_display_config(
+    columns: u16,
+    rows: u16,
+    color_mode: CanvasVgaColorMode,
+) -> CanvasDeviceConfigSnapshot {
+    CanvasDeviceConfigSnapshot::VgaDisplay {
+        columns,
+        rows,
+        color_mode,
+    }
+}
+
+fn packed_cycle(active_signal_indices: &[usize]) -> u16 {
+    active_signal_indices
+        .iter()
+        .copied()
+        .fold(0_u16, |word, signal_index| word | (1_u16 << signal_index))
 }
 
 #[test]
@@ -238,6 +258,116 @@ fn expected_cycles_reanchor_after_rate_change() {
     );
 
     assert_eq!(lowered_expected.saturating_sub(completed_cycles), 20);
+}
+
+#[test]
+fn aggregate_read_buffer_windows_merge_batch_boundaries() {
+    let first_batch = HardwareRuntime::aggregate_read_buffer_windows(&[0u16, 0u16], &[1], 1);
+    let second_batch = HardwareRuntime::aggregate_read_buffer_windows(&[1u16, 1u16], &[1], 1);
+    let mut merged = HardwareDataAggregate::new();
+
+    merged.merge(&first_batch[0].1);
+    merged.merge(&second_batch[0].1);
+
+    let signal = merged.into_signal(1);
+    assert!(signal.latest);
+    assert!((signal.high_ratio - 0.5).abs() < 0.0001);
+    assert_eq!(signal.edge_count, 1);
+}
+
+#[test]
+fn configure_data_stream_propagates_vericomm_clock_delays() {
+    let runtime = HardwareRuntime::default();
+    let status = runtime
+        .configure_data_stream(HardwareDataStreamConfigV1 {
+            vericomm_clock_high_delay: 7,
+            vericomm_clock_low_delay: 13,
+            ..HardwareDataStreamConfigV1::default()
+        })
+        .expect("stream config should succeed");
+
+    assert_eq!(status.vericomm_clock_high_delay, 7);
+    assert_eq!(status.vericomm_clock_low_delay, 13);
+    assert_eq!(
+        runtime
+            .data_stream_status()
+            .expect("status snapshot should succeed")
+            .vericomm_clock_high_delay,
+        7
+    );
+    assert_eq!(
+        runtime
+            .data_stream_status()
+            .expect("status snapshot should succeed")
+            .vericomm_clock_low_delay,
+        13
+    );
+}
+
+#[test]
+fn device_snapshot_interval_scales_with_vga_resolution() {
+    let low_res = HardwareStateV1 {
+        canvas_devices: vec![CanvasDeviceSnapshot {
+            id: "vga-low".to_string(),
+            r#type: CanvasDeviceType::VgaDisplay,
+            x: 0.0,
+            y: 0.0,
+            label: "VGA Low".to_string(),
+            state: CanvasDeviceStateSnapshot {
+                is_on: false,
+                color: None,
+                binding: slot_bindings(&[]),
+                config: vga_display_config(160, 120, CanvasVgaColorMode::Rgb332),
+            },
+        }],
+        ..HardwareStateV1::default()
+    };
+    assert_eq!(
+        HardwareRuntime::device_snapshot_interval_for_state(&low_res),
+        DEVICE_SNAPSHOT_INTERVAL
+    );
+
+    let medium_res = HardwareStateV1 {
+        canvas_devices: vec![CanvasDeviceSnapshot {
+            id: "vga-medium".to_string(),
+            r#type: CanvasDeviceType::VgaDisplay,
+            x: 0.0,
+            y: 0.0,
+            label: "VGA Medium".to_string(),
+            state: CanvasDeviceStateSnapshot {
+                is_on: false,
+                color: None,
+                binding: slot_bindings(&[]),
+                config: vga_display_config(320, 240, CanvasVgaColorMode::Rgb332),
+            },
+        }],
+        ..HardwareStateV1::default()
+    };
+    assert_eq!(
+        HardwareRuntime::device_snapshot_interval_for_state(&medium_res),
+        DEVICE_SNAPSHOT_INTERVAL_MEDIUM
+    );
+
+    let high_res = HardwareStateV1 {
+        canvas_devices: vec![CanvasDeviceSnapshot {
+            id: "vga-high".to_string(),
+            r#type: CanvasDeviceType::VgaDisplay,
+            x: 0.0,
+            y: 0.0,
+            label: "VGA High".to_string(),
+            state: CanvasDeviceStateSnapshot {
+                is_on: false,
+                color: None,
+                binding: slot_bindings(&[]),
+                config: vga_display_config(640, 480, CanvasVgaColorMode::Rgb332),
+            },
+        }],
+        ..HardwareStateV1::default()
+    };
+    assert_eq!(
+        HardwareRuntime::device_snapshot_interval_for_state(&high_res),
+        DEVICE_SNAPSHOT_INTERVAL_SLOW
+    );
 }
 
 #[test]
@@ -447,4 +577,186 @@ fn matrix_decoder_normalizes_scanned_pixels_by_row_activity() {
     assert_eq!(matrix.pixel_rows, 2);
     assert_eq!(matrix.pixels, vec![128, 128, 128, 128]);
     assert!(matrix.latest);
+}
+
+#[test]
+fn vga_display_decoder_rasterizes_rgb332_frame() {
+    let mut state = HardwareStateV1 {
+        canvas_devices: vec![CanvasDeviceSnapshot {
+            id: "vga0".to_string(),
+            r#type: CanvasDeviceType::VgaDisplay,
+            x: 0.0,
+            y: 0.0,
+            label: "VGA".to_string(),
+            state: CanvasDeviceStateSnapshot {
+                is_on: false,
+                color: None,
+                binding: slot_bindings(&[
+                    Some("hsync"),
+                    Some("vsync"),
+                    Some("r0"),
+                    Some("r1"),
+                    Some("r2"),
+                    Some("g0"),
+                    Some("g1"),
+                    Some("g2"),
+                    Some("b0"),
+                    Some("b1"),
+                ]),
+                config: vga_display_config(160, 120, CanvasVgaColorMode::Rgb332),
+            },
+        }],
+        ..HardwareStateV1::default()
+    };
+    state.canvas_devices.truncate(1);
+
+    let signal_order = vec![
+        "hsync".to_string(),
+        "vsync".to_string(),
+        "r0".to_string(),
+        "r1".to_string(),
+        "r2".to_string(),
+        "g0".to_string(),
+        "g1".to_string(),
+        "g2".to_string(),
+        "b0".to_string(),
+        "b1".to_string(),
+    ];
+    let mut decoders = HardwareRuntime::compile_output_decoders(&state, &signal_order);
+    let read_buffer = vec![
+        packed_cycle(&[0]),
+        packed_cycle(&[0, 1, 2, 3, 4]),
+        packed_cycle(&[0, 1, 5, 6, 7]),
+        packed_cycle(&[1]),
+        packed_cycle(&[0, 1, 8, 9]),
+        packed_cycle(&[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
+        packed_cycle(&[1]),
+        packed_cycle(&[0]),
+    ];
+
+    HardwareRuntime::ingest_output_batch(&read_buffer, 1, &mut decoders);
+    let snapshot = HardwareRuntime::flush_output_decoders(&mut decoders, 1);
+
+    assert_eq!(snapshot.devices.len(), 1);
+    let display = &snapshot.devices[0];
+    assert_eq!(display.pixel_columns, 160);
+    assert_eq!(display.pixel_rows, 120);
+    assert!(display.latest);
+
+    let sample = |x: usize, y: usize| -> u8 { display.pixels[y * 160 + x] };
+    assert_eq!(sample(20, 20), 0b1110_0000);
+    assert_eq!(sample(120, 20), 0b0001_1100);
+    assert_eq!(sample(20, 90), 0b0000_0011);
+    assert_eq!(sample(120, 90), 0b1111_1111);
+}
+
+#[test]
+fn vga_display_decoder_honors_resolution_and_mono_mode() {
+    let mut state = HardwareStateV1 {
+        canvas_devices: vec![CanvasDeviceSnapshot {
+            id: "vga-mono".to_string(),
+            r#type: CanvasDeviceType::VgaDisplay,
+            x: 0.0,
+            y: 0.0,
+            label: "VGA Mono".to_string(),
+            state: CanvasDeviceStateSnapshot {
+                is_on: false,
+                color: None,
+                binding: slot_bindings(&[Some("hsync"), Some("vsync"), Some("mono")]),
+                config: vga_display_config(2, 2, CanvasVgaColorMode::Mono),
+            },
+        }],
+        ..HardwareStateV1::default()
+    };
+    state.canvas_devices.truncate(1);
+
+    let signal_order = vec!["hsync".to_string(), "vsync".to_string(), "mono".to_string()];
+    let mut decoders = HardwareRuntime::compile_output_decoders(&state, &signal_order);
+    let read_buffer = vec![
+        packed_cycle(&[0]),
+        packed_cycle(&[0, 1, 2]),
+        packed_cycle(&[0, 1]),
+        packed_cycle(&[1]),
+        packed_cycle(&[0, 1]),
+        packed_cycle(&[0, 1, 2]),
+        packed_cycle(&[1]),
+        packed_cycle(&[0]),
+    ];
+
+    HardwareRuntime::ingest_output_batch(&read_buffer, 1, &mut decoders);
+    let snapshot = HardwareRuntime::flush_output_decoders(&mut decoders, 1);
+
+    let display = &snapshot.devices[0];
+    assert_eq!(display.pixel_columns, 2);
+    assert_eq!(display.pixel_rows, 2);
+    assert_eq!(display.pixels, vec![255, 0, 0, 255]);
+}
+
+#[test]
+fn vga_display_decoder_prefers_active_window_over_blanking() {
+    let mut state = HardwareStateV1 {
+        canvas_devices: vec![CanvasDeviceSnapshot {
+            id: "vga-crop".to_string(),
+            r#type: CanvasDeviceType::VgaDisplay,
+            x: 0.0,
+            y: 0.0,
+            label: "VGA Crop".to_string(),
+            state: CanvasDeviceStateSnapshot {
+                is_on: false,
+                color: None,
+                binding: slot_bindings(&[
+                    Some("hsync"),
+                    Some("vsync"),
+                    Some("r0"),
+                    Some("g0"),
+                    Some("b0"),
+                ]),
+                config: vga_display_config(2, 2, CanvasVgaColorMode::Rgb111),
+            },
+        }],
+        ..HardwareStateV1::default()
+    };
+    state.canvas_devices.truncate(1);
+
+    let signal_order = vec![
+        "hsync".to_string(),
+        "vsync".to_string(),
+        "r0".to_string(),
+        "g0".to_string(),
+        "b0".to_string(),
+    ];
+    let mut decoders = HardwareRuntime::compile_output_decoders(&state, &signal_order);
+    let read_buffer = vec![
+        packed_cycle(&[0, 1]),
+        packed_cycle(&[0, 1]),
+        packed_cycle(&[0, 1]),
+        packed_cycle(&[0, 1]),
+        packed_cycle(&[1]),
+        packed_cycle(&[0, 1]),
+        packed_cycle(&[0, 1, 2]),
+        packed_cycle(&[0, 1, 3]),
+        packed_cycle(&[0, 1]),
+        packed_cycle(&[1]),
+        packed_cycle(&[0, 1]),
+        packed_cycle(&[0, 1, 4]),
+        packed_cycle(&[0, 1, 2, 3, 4]),
+        packed_cycle(&[0, 1]),
+        packed_cycle(&[1]),
+        packed_cycle(&[0, 1]),
+        packed_cycle(&[0, 1]),
+        packed_cycle(&[0, 1]),
+        packed_cycle(&[0, 1]),
+        packed_cycle(&[0]),
+    ];
+
+    HardwareRuntime::ingest_output_batch(&read_buffer, 1, &mut decoders);
+    let snapshot = HardwareRuntime::flush_output_decoders(&mut decoders, 1);
+
+    let display = &snapshot.devices[0];
+    assert_eq!(display.pixel_columns, 2);
+    assert_eq!(display.pixel_rows, 2);
+    assert_eq!(
+        display.pixels,
+        vec![0b1110_0000, 0b0001_1100, 0b0000_0011, 0b1111_1111]
+    );
 }

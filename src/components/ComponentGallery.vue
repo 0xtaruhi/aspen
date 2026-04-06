@@ -36,6 +36,7 @@ import {
   RotateCw,
   Square,
   ToggleLeft,
+  Tv,
   Type,
 } from 'lucide-vue-next'
 
@@ -57,6 +58,7 @@ const items = computed<GalleryItem[]>(() => [
   { type: 'ps2_keyboard', title: t('ps2Keyboard'), icon: Keyboard },
   { type: 'text_lcd', title: t('textLcd'), icon: Type },
   { type: 'graphic_lcd', title: t('graphicLcd'), icon: Monitor },
+  { type: 'vga_display', title: t('vgaDisplay'), icon: Tv },
   { type: 'segment_display', title: t('segmentDisplay'), icon: Square },
   { type: 'led_matrix', title: t('matrix'), icon: Grid3X3 },
 ])

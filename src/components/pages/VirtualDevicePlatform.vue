@@ -19,6 +19,7 @@ import { settingsStore } from '@/stores/settings'
 const STREAM_WORDS_PER_CYCLE = 4
 const STREAM_SIGNAL_LIMIT = STREAM_WORDS_PER_CYCLE * 16
 const DISPLAY_UPDATE_INTERVAL_MS = 1000
+const MAX_VERICOMM_CLOCK_DELAY = 65_535
 
 const showGallery = ref(false)
 const selectedDeviceId = ref<string | null>(null)
@@ -27,7 +28,9 @@ const inspectorOpen = ref(false)
 const galleryDropBlockInset = 60
 const streamBusy = ref(false)
 const streamMessage = ref('')
-const rateInput = ref('1000')
+const rateInput = ref<string | number>('1000')
+const clockHighDelayInput = ref<string | number>('11')
+const clockLowDelayInput = ref<string | number>('11')
 const displayedActualHz = ref(0)
 let streamStatusPollTimer: ReturnType<typeof setInterval> | null = null
 let displayedHzTimer: ReturnType<typeof setInterval> | null = null
@@ -56,7 +59,7 @@ const hasCanvasDevices = computed(() => hardwareStore.state.value.canvas_devices
 const selectedDeviceCount = computed(() => selectedDeviceIds.value.length)
 const streamStatus = computed(() => hardwareStore.dataStreamStatus.value)
 const streamRunning = computed(() => streamStatus.value.running)
-const canApplyRate = computed(() => streamRunning.value && !streamBusy.value)
+const canApplySettings = computed(() => !streamBusy.value)
 const actualHzLabel = computed(() => `${formatMetric(displayedActualHz.value)} Hz`)
 const galleryTitle = computed(() => {
   return showGallery.value ? t('hideComponentGallery') : t('openComponentGallery')
@@ -154,21 +157,58 @@ function parseRequestedRate() {
   return nextRate
 }
 
-async function syncStreamConfig() {
+function parseDelayInput(value: string | number | null | undefined, label: string) {
+  const normalizedValue =
+    typeof value === 'string' ? value.trim() : value == null ? '' : String(value)
+  const nextDelay = Number(normalizedValue)
+  if (
+    normalizedValue.length === 0 ||
+    !Number.isInteger(nextDelay) ||
+    nextDelay < 0 ||
+    nextDelay > MAX_VERICOMM_CLOCK_DELAY
+  ) {
+    throw new Error(t('streamDelayInvalid', { label, max: MAX_VERICOMM_CLOCK_DELAY.toString() }))
+  }
+
+  return nextDelay
+}
+
+function parseRequestedClockDelays() {
+  return {
+    clockHighDelay: parseDelayInput(clockHighDelayInput.value, 'CH'),
+    clockLowDelay: parseDelayInput(clockLowDelayInput.value, 'CL'),
+  }
+}
+
+async function syncStreamConfig(overrides?: { clockHighDelay?: number; clockLowDelay?: number }) {
   await hardwareStore.configureDataStream(
     signalCatalogStore.streamInputSignalOrder.value,
     signalCatalogStore.streamOutputSignalOrder.value,
-    STREAM_WORDS_PER_CYCLE,
+    {
+      wordsPerCycle: STREAM_WORDS_PER_CYCLE,
+      vericommClockHighDelay: overrides?.clockHighDelay,
+      vericommClockLowDelay: overrides?.clockLowDelay,
+    },
   )
 }
 
-async function applyRate() {
+async function applyStreamSettings() {
   streamBusy.value = true
   streamMessage.value = ''
 
   try {
     const nextRate = parseRequestedRate()
+    const { clockHighDelay, clockLowDelay } = parseRequestedClockDelays()
+    const timingChanged =
+      clockHighDelay !== streamStatus.value.vericomm_clock_high_delay ||
+      clockLowDelay !== streamStatus.value.vericomm_clock_low_delay
+    await syncStreamConfig({ clockHighDelay, clockLowDelay })
     await hardwareStore.setDataStreamRate(nextRate)
+
+    if (streamRunning.value && timingChanged) {
+      await hardwareStore.stopDataStream()
+      await hardwareStore.startDataStream()
+    }
   } catch (err) {
     streamMessage.value = getErrorMessage(err)
   } finally {
@@ -181,7 +221,8 @@ async function startStream() {
   streamMessage.value = ''
 
   try {
-    await syncStreamConfig()
+    const { clockHighDelay, clockLowDelay } = parseRequestedClockDelays()
+    await syncStreamConfig({ clockHighDelay, clockLowDelay })
     await hardwareStore.setDataStreamRate(parseRequestedRate())
     await hardwareStore.startDataStream()
   } catch (err) {
@@ -331,6 +372,22 @@ watch(
   { immediate: true },
 )
 
+watch(
+  () => streamStatus.value.vericomm_clock_high_delay,
+  (nextDelay) => {
+    clockHighDelayInput.value = String(nextDelay)
+  },
+  { immediate: true },
+)
+
+watch(
+  () => streamStatus.value.vericomm_clock_low_delay,
+  (nextDelay) => {
+    clockLowDelayInput.value = String(nextDelay)
+  },
+  { immediate: true },
+)
+
 watch([streamInputSignalOrderKey, streamOutputSignalOrderKey], () => {
   if (!hardwareStore.isStarted.value) {
     return
@@ -425,15 +482,41 @@ onBeforeUnmount(() => {
             min="0.1"
             step="1"
             class="h-8 w-24 border-0 bg-transparent px-0 text-right shadow-none focus-visible:ring-0"
-            @keydown.enter.prevent="canApplyRate && applyRate()"
+            @keydown.enter.prevent="canApplySettings && applyStreamSettings()"
+          />
+        </div>
+        <div class="flex items-center gap-2 rounded-md border border-border bg-background px-2">
+          <span class="text-xs text-muted-foreground">CH</span>
+          <Input
+            v-model="clockHighDelayInput"
+            type="number"
+            min="0"
+            step="1"
+            max="65535"
+            class="h-8 w-16 border-0 bg-transparent px-0 text-right shadow-none focus-visible:ring-0"
+            :title="t('streamClockHighDelay')"
+            @keydown.enter.prevent="canApplySettings && applyStreamSettings()"
+          />
+        </div>
+        <div class="flex items-center gap-2 rounded-md border border-border bg-background px-2">
+          <span class="text-xs text-muted-foreground">CL</span>
+          <Input
+            v-model="clockLowDelayInput"
+            type="number"
+            min="0"
+            step="1"
+            max="65535"
+            class="h-8 w-16 border-0 bg-transparent px-0 text-right shadow-none focus-visible:ring-0"
+            :title="t('streamClockLowDelay')"
+            @keydown.enter.prevent="canApplySettings && applyStreamSettings()"
           />
         </div>
         <Button
           type="button"
           size="sm"
           variant="outline"
-          :disabled="!canApplyRate"
-          @click="applyRate"
+          :disabled="!canApplySettings"
+          @click="applyStreamSettings"
         >
           {{ t('apply') }}
         </Button>
@@ -456,6 +539,8 @@ onBeforeUnmount(() => {
       v-if="
         streamMessage ||
         streamStatus.last_error ||
+        streamStatus.dropped_samples > 0 ||
+        streamStatus.queue_fill > 0 ||
         streamSignalOverflow > 0 ||
         (designContextStore.selectedSource.value && !hasAnySynthesisSignals) ||
         (hasAnySynthesisSignals && !hasAuthoritativeSignals)
@@ -468,6 +553,12 @@ onBeforeUnmount(() => {
         </span>
         <span v-else-if="streamMessage" class="text-destructive">
           {{ streamMessage }}
+        </span>
+        <span v-if="streamStatus.dropped_samples > 0" class="text-amber-600">
+          {{ t('streamDroppedWarning', { count: streamStatus.dropped_samples }) }}
+        </span>
+        <span v-if="streamStatus.queue_fill > 0" class="text-amber-600">
+          {{ t('streamBacklogWarning', { count: streamStatus.queue_fill }) }}
         </span>
         <span v-if="streamSignalOverflow > 0" class="text-amber-600">
           {{ t('streamOverflowWarning', { count: streamSignalOverflow }) }}

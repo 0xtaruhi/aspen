@@ -182,8 +182,11 @@ export type CanvasDeviceType =
   | 'ps2_keyboard'
   | 'text_lcd'
   | 'graphic_lcd'
+  | 'vga_display'
   | 'segment_display'
   | 'led_matrix'
+
+export type CanvasVgaColorMode = 'mono' | 'rgb111' | 'rgb332' | 'rgb444' | 'rgb565' | 'rgb888'
 
 export type CanvasDeviceBindingSnapshot =
   | {
@@ -212,6 +215,12 @@ export type CanvasDeviceConfigSnapshot =
       kind: 'led_matrix'
       rows: number
       columns: number
+    }
+  | {
+      kind: 'vga_display'
+      columns: number
+      rows: number
+      color_mode: CanvasVgaColorMode
     }
 
 export interface CanvasDeviceStateSnapshot {
@@ -306,6 +315,8 @@ export interface HardwareDataStreamConfigV1 {
   words_per_cycle: number
   min_batch_cycles: number
   max_wait_us: number
+  vericomm_clock_high_delay: number
+  vericomm_clock_low_delay: number
 }
 
 export interface HardwareDataStreamStatusV1 {
@@ -322,6 +333,8 @@ export interface HardwareDataStreamStatusV1 {
   words_per_cycle: number
   min_batch_cycles: number
   max_wait_us: number
+  vericomm_clock_high_delay: number
+  vericomm_clock_low_delay: number
   configured_signal_count: number
   last_error: string | null
 }

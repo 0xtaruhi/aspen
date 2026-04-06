@@ -63,20 +63,27 @@ function cloneDevice(device: CanvasDeviceSnapshot): CanvasDeviceSnapshot {
               rows: device.state.config.rows,
               columns: device.state.config.columns,
             }
-          : device.state.config.kind === 'button'
+          : device.state.config.kind === 'vga_display'
             ? {
-                kind: 'button',
-                active_low: device.state.config.active_low ?? false,
+                kind: 'vga_display',
+                rows: device.state.config.rows,
+                columns: device.state.config.columns,
+                color_mode: device.state.config.color_mode,
               }
-            : device.state.config.kind === 'segment_display'
+            : device.state.config.kind === 'button'
               ? {
-                  kind: 'segment_display',
-                  digits: device.state.config.digits,
+                  kind: 'button',
                   active_low: device.state.config.active_low ?? false,
                 }
-              : {
-                  kind: 'none',
-                },
+              : device.state.config.kind === 'segment_display'
+                ? {
+                    kind: 'segment_display',
+                    digits: device.state.config.digits,
+                    active_low: device.state.config.active_low ?? false,
+                  }
+                : {
+                    kind: 'none',
+                  },
     },
   }
 }

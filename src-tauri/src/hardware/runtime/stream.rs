@@ -3,7 +3,7 @@ use std::{
     hash::{Hash, Hasher},
     sync::{
         atomic::{AtomicBool, Ordering},
-        mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TryRecvError, TrySendError},
+        mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TryRecvError},
         Arc, Mutex,
     },
     thread,
@@ -36,6 +36,13 @@ struct StreamScheduleAnchor {
 }
 
 impl HardwareRuntime {
+    fn io_settings_from_stream_config(config: &HardwareDataStreamConfigV1) -> IoSettings {
+        let mut settings = IoSettings::default();
+        settings.clock_high_delay = config.vericomm_clock_high_delay;
+        settings.clock_low_delay = config.vericomm_clock_low_delay;
+        settings
+    }
+
     pub(super) fn run_data_stream_loop(
         self: Arc<Self>,
         app: AppHandle,
@@ -75,7 +82,23 @@ impl HardwareRuntime {
             }
         };
 
-        if let Err(err) = device.enter_io_mode(&IoSettings::default()) {
+        let initial_stream_config = match data_stream_config.lock() {
+            Ok(guard) => guard.clone(),
+            Err(_) => {
+                let _ = self.update_data_stream_status(|status| {
+                    status.running = false;
+                    status.last_error =
+                        Some("failed to acquire data stream config mutex".to_string());
+                });
+                let _ = device.close();
+                let _ = decode_tx.send(StreamDecodeMessage::Shutdown);
+                let _ = decode_handle.join();
+                return;
+            }
+        };
+        if let Err(err) = device.enter_io_mode(&Self::io_settings_from_stream_config(
+            &initial_stream_config,
+        )) {
             let _ = self.update_data_stream_status(|status| {
                 status.running = false;
                 status.last_error = Some(err.to_string());
@@ -107,7 +130,7 @@ impl HardwareRuntime {
         };
         let mut write_buffer = vec![0u16; fifo_words];
         let mut cycle_words = vec![0u16; fifo_words];
-        let mut dropped_samples = 0_u64;
+        let dropped_samples = 0_u64;
         let mut input_encoders: Vec<Box<dyn InputDeviceEncoder>> = Vec::new();
 
         while !stop_flag.load(Ordering::Relaxed) {
@@ -227,6 +250,19 @@ impl HardwareRuntime {
             let next_output_decoder_signature =
                 Self::output_decoder_signature(&state_snapshot, &output_signal_order);
             if output_decoder_signature != next_output_decoder_signature {
+                let snapshot_interval = Self::device_snapshot_interval_for_state(&state_snapshot);
+                if decode_tx
+                    .send(StreamDecodeMessage::DeviceSnapshotInterval(
+                        snapshot_interval,
+                    ))
+                    .is_err()
+                {
+                    let _ = self.update_data_stream_status(|status| {
+                        status.running = false;
+                        status.last_error = Some("decode thread disconnected".to_string());
+                    });
+                    break;
+                }
                 let output_decoders =
                     Self::compile_output_decoders(&state_snapshot, &output_signal_order);
                 if decode_tx
@@ -289,14 +325,9 @@ impl HardwareRuntime {
                 batch_words,
                 read_buffer,
             };
-            match decode_tx.try_send(StreamDecodeMessage::Batch(batch_message)) {
+            match decode_tx.send(StreamDecodeMessage::Batch(batch_message)) {
                 Ok(()) => {}
-                Err(TrySendError::Full(StreamDecodeMessage::Batch(batch_message))) => {
-                    dropped_samples =
-                        dropped_samples.saturating_add(u64::from(batch_message.batch_cycles));
-                    let _ = free_buffer_tx.try_send(batch_message.read_buffer);
-                }
-                Err(TrySendError::Disconnected(StreamDecodeMessage::Batch(batch_message))) => {
+                Err(mpsc::SendError(StreamDecodeMessage::Batch(batch_message))) => {
                     let _ = free_buffer_tx.try_send(batch_message.read_buffer);
                     let _ = self.update_data_stream_status(|status| {
                         status.running = false;
@@ -346,7 +377,11 @@ impl HardwareRuntime {
     ) {
         let mut signal_ids = Vec::new();
         let mut last_latest_by_signal: HashMap<u16, bool> = HashMap::new();
+        let mut pending_signal_updates: HashMap<u16, HardwareDataAggregate> = HashMap::new();
+        let mut pending_signal_meta = PendingSignalBatchMeta::default();
+        let mut last_signal_publish_at = Instant::now();
         let mut output_decoders: Vec<Box<dyn OutputDeviceDecoder>> = Vec::new();
+        let mut device_snapshot_interval = DEVICE_SNAPSHOT_INTERVAL;
         let mut last_device_snapshot_at = Instant::now();
         let mut output_dirty = false;
 
@@ -355,20 +390,37 @@ impl HardwareRuntime {
                 Ok(StreamDecodeMessage::SignalIds(next_signal_ids)) => {
                     signal_ids = next_signal_ids;
                     last_latest_by_signal.clear();
+                    pending_signal_updates.clear();
+                    pending_signal_meta = PendingSignalBatchMeta::default();
+                    last_signal_publish_at = Instant::now();
+                }
+                Ok(StreamDecodeMessage::DeviceSnapshotInterval(next_interval)) => {
+                    device_snapshot_interval = next_interval;
                 }
                 Ok(StreamDecodeMessage::OutputDecoders(next_decoders)) => {
                     output_decoders = next_decoders;
                     output_dirty = false;
                 }
                 Ok(StreamDecodeMessage::Batch(batch)) => {
-                    let updates = Self::filter_changed_updates(
-                        Self::aggregate_read_buffer(
-                            &batch.read_buffer[..batch.batch_words],
-                            &signal_ids,
-                            batch.words_per_cycle,
-                        ),
-                        &mut last_latest_by_signal,
-                    );
+                    for (signal_id, aggregate) in Self::aggregate_read_buffer_windows(
+                        &batch.read_buffer[..batch.batch_words],
+                        &signal_ids,
+                        batch.words_per_cycle,
+                    ) {
+                        pending_signal_updates
+                            .entry(signal_id)
+                            .or_insert_with(HardwareDataAggregate::new)
+                            .merge(&aggregate);
+                    }
+                    pending_signal_meta.sequence = batch.sequence;
+                    pending_signal_meta.generated_at_ms = batch.generated_at_ms;
+                    pending_signal_meta.dropped_samples = batch.dropped_samples;
+                    pending_signal_meta.queue_fill = batch.queue_fill;
+                    pending_signal_meta.queue_capacity = batch.queue_capacity;
+                    pending_signal_meta.batch_cycles = pending_signal_meta
+                        .batch_cycles
+                        .saturating_add(u32::from(batch.batch_cycles));
+
                     if !output_decoders.is_empty() {
                         Self::ingest_output_batch(
                             &batch.read_buffer[..batch.batch_words],
@@ -378,24 +430,17 @@ impl HardwareRuntime {
                         output_dirty = true;
                     }
 
-                    let payload = Self::encode_binary_batch(
-                        batch.sequence,
-                        batch.generated_at_ms,
-                        batch.dropped_samples,
-                        batch.queue_fill,
-                        batch.queue_capacity,
-                        batch.batch_cycles,
-                        &updates,
-                    );
-                    let _ = app.emit(
-                        "hardware:data_batch_bin",
-                        crate::hardware::types::HardwareDataBatchBinaryV1 {
-                            version: 1,
-                            payload,
-                        },
-                    );
+                    if last_signal_publish_at.elapsed() >= SIGNAL_TELEMETRY_INTERVAL {
+                        Self::emit_pending_signal_updates(
+                            &app,
+                            &mut last_latest_by_signal,
+                            &mut pending_signal_meta,
+                            &mut pending_signal_updates,
+                        );
+                        last_signal_publish_at = Instant::now();
+                    }
 
-                    if output_dirty && last_device_snapshot_at.elapsed() >= DEVICE_SNAPSHOT_INTERVAL
+                    if output_dirty && last_device_snapshot_at.elapsed() >= device_snapshot_interval
                     {
                         let snapshot = Self::flush_output_decoders(
                             &mut output_decoders,
@@ -410,11 +455,38 @@ impl HardwareRuntime {
 
                     let _ = free_buffer_tx.try_send(batch.read_buffer);
                 }
-                Ok(StreamDecodeMessage::Shutdown) => break,
+                Ok(StreamDecodeMessage::Shutdown) => {
+                    Self::emit_pending_signal_updates(
+                        &app,
+                        &mut last_latest_by_signal,
+                        &mut pending_signal_meta,
+                        &mut pending_signal_updates,
+                    );
+                    if output_dirty && !output_decoders.is_empty() {
+                        let snapshot =
+                            Self::flush_output_decoders(&mut output_decoders, Self::now_millis());
+                        if !snapshot.devices.is_empty() {
+                            let _ = app.emit("hardware:device_snapshot", snapshot);
+                        }
+                    }
+                    break;
+                }
                 Err(RecvTimeoutError::Timeout) => {
+                    if !pending_signal_updates.is_empty()
+                        && last_signal_publish_at.elapsed() >= SIGNAL_TELEMETRY_INTERVAL
+                    {
+                        Self::emit_pending_signal_updates(
+                            &app,
+                            &mut last_latest_by_signal,
+                            &mut pending_signal_meta,
+                            &mut pending_signal_updates,
+                        );
+                        last_signal_publish_at = Instant::now();
+                    }
+
                     if output_dirty
                         && !output_decoders.is_empty()
-                        && last_device_snapshot_at.elapsed() >= DEVICE_SNAPSHOT_INTERVAL
+                        && last_device_snapshot_at.elapsed() >= device_snapshot_interval
                     {
                         let snapshot =
                             Self::flush_output_decoders(&mut output_decoders, Self::now_millis());
@@ -425,6 +497,21 @@ impl HardwareRuntime {
                         output_dirty = false;
                     }
                     if stop_flag.load(Ordering::Relaxed) {
+                        Self::emit_pending_signal_updates(
+                            &app,
+                            &mut last_latest_by_signal,
+                            &mut pending_signal_meta,
+                            &mut pending_signal_updates,
+                        );
+                        if output_dirty && !output_decoders.is_empty() {
+                            let snapshot = Self::flush_output_decoders(
+                                &mut output_decoders,
+                                Self::now_millis(),
+                            );
+                            if !snapshot.devices.is_empty() {
+                                let _ = app.emit("hardware:device_snapshot", snapshot);
+                            }
+                        }
                         break;
                     }
                 }

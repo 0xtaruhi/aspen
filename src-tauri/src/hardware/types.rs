@@ -72,8 +72,20 @@ pub enum CanvasDeviceType {
     Ps2Keyboard,
     TextLcd,
     GraphicLcd,
+    VgaDisplay,
     SegmentDisplay,
     LedMatrix,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum CanvasVgaColorMode {
+    Mono,
+    Rgb111,
+    Rgb332,
+    Rgb444,
+    Rgb565,
+    Rgb888,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
@@ -104,6 +116,11 @@ pub enum CanvasDeviceConfigSnapshot {
     LedMatrix {
         rows: u16,
         columns: u16,
+    },
+    VgaDisplay {
+        columns: u16,
+        rows: u16,
+        color_mode: CanvasVgaColorMode,
     },
 }
 
@@ -182,6 +199,17 @@ impl CanvasDeviceStateSnapshot {
             CanvasDeviceConfigSnapshot::LedMatrix { rows, columns } => {
                 Some((usize::from(rows), usize::from(columns)))
             }
+            _ => None,
+        }
+    }
+
+    pub fn vga_display_config(&self) -> Option<(usize, usize, CanvasVgaColorMode)> {
+        match self.config {
+            CanvasDeviceConfigSnapshot::VgaDisplay {
+                columns,
+                rows,
+                color_mode,
+            } => Some((usize::from(columns), usize::from(rows), color_mode)),
             _ => None,
         }
     }
@@ -328,6 +356,8 @@ pub struct HardwareDataStreamStatusV1 {
     pub words_per_cycle: u16,
     pub min_batch_cycles: u16,
     pub max_wait_us: u32,
+    pub vericomm_clock_high_delay: u16,
+    pub vericomm_clock_low_delay: u16,
     pub configured_signal_count: u16,
     pub last_error: Option<String>,
 }
@@ -340,6 +370,8 @@ pub struct HardwareDataStreamConfigV1 {
     pub words_per_cycle: u16,
     pub min_batch_cycles: u16,
     pub max_wait_us: u32,
+    pub vericomm_clock_high_delay: u16,
+    pub vericomm_clock_low_delay: u16,
 }
 
 impl Default for HardwareDataStreamConfigV1 {
@@ -351,6 +383,8 @@ impl Default for HardwareDataStreamConfigV1 {
             words_per_cycle: 4,
             min_batch_cycles: 128,
             max_wait_us: 2_000,
+            vericomm_clock_high_delay: 11,
+            vericomm_clock_low_delay: 11,
         }
     }
 }

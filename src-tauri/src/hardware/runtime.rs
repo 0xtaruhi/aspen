@@ -32,6 +32,9 @@ use output::OutputDeviceDecoder;
 
 const DATA_IDLE_SLEEP: Duration = Duration::from_millis(1);
 const DEVICE_SNAPSHOT_INTERVAL: Duration = Duration::from_millis(16);
+const DEVICE_SNAPSHOT_INTERVAL_MEDIUM: Duration = Duration::from_millis(33);
+const DEVICE_SNAPSHOT_INTERVAL_SLOW: Duration = Duration::from_millis(66);
+const SIGNAL_TELEMETRY_INTERVAL: Duration = Duration::from_millis(16);
 const STREAM_DECODE_QUEUE_CAPACITY: usize = 4;
 const STREAM_BUFFER_POOL_CAPACITY: usize = 4;
 const DATA_MAX_UPDATES_PER_BATCH: usize = 256;
@@ -39,6 +42,8 @@ const DATA_DEFAULT_WORDS_PER_CYCLE: u16 = 4;
 const DATA_DEFAULT_TARGET_HZ: f64 = 1.0;
 const DATA_DEFAULT_MIN_BATCH_CYCLES: u16 = 128;
 const DATA_DEFAULT_MAX_WAIT_US: u32 = 2_000;
+const DATA_DEFAULT_CLOCK_HIGH_DELAY: u16 = 11;
+const DATA_DEFAULT_CLOCK_LOW_DELAY: u16 = 11;
 const DATA_RATE_WINDOW: Duration = Duration::from_millis(1000);
 
 struct HardwareDataStreamSession {
@@ -60,6 +65,7 @@ struct StreamDecodeBatch {
 
 enum StreamDecodeMessage {
     SignalIds(Vec<u16>),
+    DeviceSnapshotInterval(Duration),
     OutputDecoders(Vec<Box<dyn OutputDeviceDecoder>>),
     Batch(StreamDecodeBatch),
     Shutdown,
@@ -93,11 +99,22 @@ struct SignalCatalog {
 
 #[derive(Clone)]
 struct HardwareDataAggregate {
+    first: Option<bool>,
     latest: bool,
     high_count: u32,
     total_count: u32,
     edge_count: u16,
     previous: Option<bool>,
+}
+
+#[derive(Clone, Copy, Default)]
+struct PendingSignalBatchMeta {
+    sequence: u64,
+    generated_at_ms: u64,
+    dropped_samples: u64,
+    queue_fill: u16,
+    queue_capacity: u16,
+    batch_cycles: u32,
 }
 
 pub struct HardwareRuntime {
@@ -127,6 +144,8 @@ impl Default for HardwareRuntime {
                 words_per_cycle: DATA_DEFAULT_WORDS_PER_CYCLE,
                 min_batch_cycles: DATA_DEFAULT_MIN_BATCH_CYCLES,
                 max_wait_us: DATA_DEFAULT_MAX_WAIT_US,
+                vericomm_clock_high_delay: DATA_DEFAULT_CLOCK_HIGH_DELAY,
+                vericomm_clock_low_delay: DATA_DEFAULT_CLOCK_LOW_DELAY,
                 configured_signal_count: 0,
                 last_error: None,
             }),
@@ -170,6 +189,8 @@ impl HardwareRuntime {
             status.words_per_cycle = config.words_per_cycle;
             status.min_batch_cycles = config.min_batch_cycles;
             status.max_wait_us = config.max_wait_us;
+            status.vericomm_clock_high_delay = config.vericomm_clock_high_delay;
+            status.vericomm_clock_low_delay = config.vericomm_clock_low_delay;
             status.configured_signal_count = config
                 .input_signal_order
                 .iter()
@@ -271,6 +292,8 @@ impl HardwareRuntime {
             status.words_per_cycle = config.words_per_cycle;
             status.min_batch_cycles = config.min_batch_cycles;
             status.max_wait_us = config.max_wait_us;
+            status.vericomm_clock_high_delay = config.vericomm_clock_high_delay;
+            status.vericomm_clock_low_delay = config.vericomm_clock_low_delay;
             status.configured_signal_count = config
                 .input_signal_order
                 .iter()

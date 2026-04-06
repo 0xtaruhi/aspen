@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { CanvasDeviceSnapshot } from '@/lib/hardware-client'
+import type { CanvasDeviceSnapshot, CanvasVgaColorMode } from '@/lib/hardware-client'
 import type { SignalCatalogEntry } from '@/stores/signal-catalog'
 
 import { computed, ref, watch } from 'vue'
@@ -19,6 +19,7 @@ import {
 import { Separator } from '@/components/ui/separator'
 import {
   CANVAS_DEVICE_PRESET_COLORS,
+  VGA_DISPLAY_RESOLUTION_PRESETS,
   type CanvasDeviceColorOption,
   getCanvasButtonConfig,
   deviceDrivesSignal,
@@ -29,10 +30,12 @@ import {
   getCanvasDeviceBindingSlots,
   getCanvasMatrixDimensions,
   getCanvasSegmentDisplayConfig,
+  getCanvasVgaDisplayConfig,
   normalizeCanvasDeviceColor,
   resolveCanvasDeviceColor,
   isCanvasMatrixDevice,
   isCanvasSegmentDisplayDevice,
+  vgaColorModeBitCounts,
 } from '@/lib/canvas-devices'
 import { confirmAction } from '@/lib/confirm-action'
 import { useI18n } from '@/lib/i18n'
@@ -62,6 +65,14 @@ const SEGMENT_DIGITS_MIN = 1
 const SEGMENT_DIGITS_MAX = 16
 const ACTIVE_HIGH = 'high'
 const ACTIVE_LOW = 'low'
+const VGA_COLOR_MODE_OPTIONS: CanvasVgaColorMode[] = [
+  'mono',
+  'rgb111',
+  'rgb332',
+  'rgb444',
+  'rgb565',
+  'rgb888',
+]
 const DEVICE_COLOR_OPTIONS: CanvasDeviceColorOption[] = [
   'red',
   'green',
@@ -82,6 +93,13 @@ const matrixRowBusInput = ref('')
 const matrixColumnBusInput = ref('')
 const segmentBusInput = ref('')
 const segmentDigitBusInput = ref('')
+const vgaHSyncInput = ref('')
+const vgaVSyncInput = ref('')
+const vgaRedBusInput = ref('')
+const vgaGreenBusInput = ref('')
+const vgaBlueBusInput = ref('')
+const vgaResolutionInput = ref('')
+const vgaColorModeInput = ref<CanvasVgaColorMode>('rgb332')
 const { t } = useI18n()
 
 const capabilityLabel = computed(() => {
@@ -223,6 +241,27 @@ const isSegmentDisplayDevice = computed(() => {
   return props.device ? isCanvasSegmentDisplayDevice(props.device.type) : false
 })
 
+const isVgaDisplayDevice = computed(() => props.device?.type === 'vga_display')
+
+const vgaDisplayConfig = computed(() => {
+  if (!props.device) {
+    return null
+  }
+
+  return getCanvasVgaDisplayConfig(props.device)
+})
+
+const vgaBitCounts = computed(() => {
+  return vgaColorModeBitCounts(vgaDisplayConfig.value?.colorMode ?? 'rgb332')
+})
+
+const vgaResolutionOptions = computed(() => {
+  return VGA_DISPLAY_RESOLUTION_PRESETS.map((preset) => ({
+    value: `${preset.columns}x${preset.rows}`,
+    label: `${preset.columns} × ${preset.rows}`,
+  }))
+})
+
 const boundSignalCount = computed(() => {
   if (!props.device) {
     return 0
@@ -248,6 +287,18 @@ const segmentBusOptions = computed(() => {
 const segmentDigitBusOptions = computed(() => {
   const digits = segmentDisplayConfig.value?.digits ?? 0
   return indexedCompatibleBuses.value.filter((bus) => bus.width >= digits)
+})
+
+const vgaRedBusOptions = computed(() => {
+  return indexedCompatibleBuses.value.filter((bus) => bus.width >= vgaBitCounts.value.redBits)
+})
+
+const vgaGreenBusOptions = computed(() => {
+  return indexedCompatibleBuses.value.filter((bus) => bus.width >= vgaBitCounts.value.greenBits)
+})
+
+const vgaBlueBusOptions = computed(() => {
+  return indexedCompatibleBuses.value.filter((bus) => bus.width >= vgaBitCounts.value.blueBits)
 })
 
 const streamRunning = computed(() => hardwareStore.dataStreamStatus.value.running)
@@ -316,6 +367,9 @@ watch(
       rows: matrixDimensions.value?.rows ?? null,
       columns: matrixDimensions.value?.columns ?? null,
       digits: segmentDisplayConfig.value?.digits ?? null,
+      vgaColumns: vgaDisplayConfig.value?.columns ?? null,
+      vgaRows: vgaDisplayConfig.value?.rows ?? null,
+      vgaColorMode: vgaDisplayConfig.value?.colorMode ?? null,
       indexedBuses: indexedCompatibleBuses.value
         .map((bus) => `${bus.baseName}:${bus.width}`)
         .join('|'),
@@ -347,6 +401,34 @@ watch(
     } else {
       segmentBusInput.value = ''
       segmentDigitBusInput.value = ''
+    }
+
+    if (isVgaDisplayDevice.value) {
+      vgaResolutionInput.value = vgaDisplayConfig.value
+        ? `${vgaDisplayConfig.value.columns}x${vgaDisplayConfig.value.rows}`
+        : ''
+      vgaColorModeInput.value = vgaDisplayConfig.value?.colorMode ?? 'rgb332'
+      vgaHSyncInput.value = guessSignal(['hsync', 'h_sync', 'vga_hs', 'hs'])
+      vgaVSyncInput.value = guessSignal(['vsync', 'v_sync', 'vga_vs', 'vs'])
+      vgaRedBusInput.value = guessIndexedBus(vgaBitCounts.value.redBits, ['vga_r', 'red'])
+      vgaGreenBusInput.value = guessIndexedBus(
+        vgaBitCounts.value.greenBits,
+        ['vga_g', 'green'],
+        vgaRedBusInput.value,
+      )
+      vgaBlueBusInput.value = guessIndexedBus(
+        vgaBitCounts.value.blueBits,
+        ['vga_b', 'blue', 'mono', 'pixel', 'video'],
+        vgaRedBusInput.value || vgaGreenBusInput.value,
+      )
+    } else {
+      vgaResolutionInput.value = ''
+      vgaColorModeInput.value = 'rgb332'
+      vgaHSyncInput.value = ''
+      vgaVSyncInput.value = ''
+      vgaRedBusInput.value = ''
+      vgaGreenBusInput.value = ''
+      vgaBlueBusInput.value = ''
     }
   },
   { immediate: true },
@@ -480,6 +562,23 @@ function guessIndexedBus(
   return narrowed[0]?.baseName ?? ''
 }
 
+function guessSignal(keywords: readonly string[]) {
+  const loweredSignals = compatibleSignals.value.map((signal) => ({
+    name: signal.name,
+    loweredName: signal.name.toLowerCase(),
+  }))
+
+  for (const keyword of keywords) {
+    const loweredKeyword = keyword.toLowerCase()
+    const match = loweredSignals.find((signal) => signal.loweredName.includes(loweredKeyword))
+    if (match) {
+      return match.name
+    }
+  }
+
+  return ''
+}
+
 async function applyMatrixBusBindings() {
   if (!props.device || !matrixDimensions.value) {
     return
@@ -555,6 +654,52 @@ async function applySegmentBusBindings() {
   await Promise.all(operations)
 }
 
+async function applyVgaBusBindings() {
+  if (!props.device || !vgaDisplayConfig.value) {
+    return
+  }
+
+  const { redBits, greenBits, blueBits } = vgaBitCounts.value
+  const redBus = redBits > 0 ? findIndexedBus(vgaRedBusInput.value) : null
+  const greenBus = greenBits > 0 ? findIndexedBus(vgaGreenBusInput.value) : null
+  const blueBus = blueBits > 0 ? findIndexedBus(vgaBlueBusInput.value) : null
+  if (
+    !vgaHSyncInput.value ||
+    !vgaVSyncInput.value ||
+    (redBits > 0 && !redBus) ||
+    (greenBits > 0 && !greenBus) ||
+    (blueBits > 0 && !blueBus)
+  ) {
+    return
+  }
+
+  await Promise.all([
+    hardwareStore.bindCanvasSignalSlot(props.device.id, 0, vgaHSyncInput.value),
+    hardwareStore.bindCanvasSignalSlot(props.device.id, 1, vgaVSyncInput.value),
+    ...Array.from({ length: redBits }, (_, bitIndex) => {
+      return hardwareStore.bindCanvasSignalSlot(
+        props.device!.id,
+        2 + bitIndex,
+        redBus?.signals[bitIndex] ?? null,
+      )
+    }),
+    ...Array.from({ length: greenBits }, (_, bitIndex) => {
+      return hardwareStore.bindCanvasSignalSlot(
+        props.device!.id,
+        2 + redBits + bitIndex,
+        greenBus?.signals[bitIndex] ?? null,
+      )
+    }),
+    ...Array.from({ length: blueBits }, (_, bitIndex) => {
+      return hardwareStore.bindCanvasSignalSlot(
+        props.device!.id,
+        2 + redBits + greenBits + bitIndex,
+        blueBus?.signals[bitIndex] ?? null,
+      )
+    }),
+  ])
+}
+
 function clearBinding() {
   if (!props.device) {
     return
@@ -585,6 +730,24 @@ function formatSignalDirection(direction: SignalCatalogEntry['direction']) {
   }
 }
 
+function vgaColorModeLabel(mode: CanvasVgaColorMode) {
+  switch (mode) {
+    case 'mono':
+      return t('vgaColorModeMono')
+    case 'rgb111':
+      return t('vgaColorModeRgb111')
+    case 'rgb444':
+      return t('vgaColorModeRgb444')
+    case 'rgb565':
+      return t('vgaColorModeRgb565')
+    case 'rgb888':
+      return t('vgaColorModeRgb888')
+    case 'rgb332':
+    default:
+      return t('vgaColorModeRgb332')
+  }
+}
+
 function normalizeMatrixDimensionInput(rawValue: string, fallback: number) {
   const parsed = Number.parseInt(rawValue, 10)
   if (Number.isNaN(parsed)) {
@@ -601,6 +764,21 @@ function normalizeSegmentDigitInput(rawValue: string, fallback: number) {
   }
 
   return Math.min(SEGMENT_DIGITS_MAX, Math.max(SEGMENT_DIGITS_MIN, parsed))
+}
+
+function parseVgaResolution(value: string, fallbackColumns: number, fallbackRows: number) {
+  const match = value.match(/^(\d+)x(\d+)$/)
+  if (!match) {
+    return {
+      columns: fallbackColumns,
+      rows: fallbackRows,
+    }
+  }
+
+  return {
+    columns: Number.parseInt(match[1], 10),
+    rows: Number.parseInt(match[2], 10),
+  }
 }
 
 async function commitDeviceName() {
@@ -661,6 +839,87 @@ async function commitMatrixDimensions() {
         kind: 'led_matrix',
         rows: nextRows,
         columns: nextColumns,
+      },
+    },
+  })
+}
+
+async function commitVgaResolution(value: unknown) {
+  if (!props.device || !vgaDisplayConfig.value || typeof value !== 'string') {
+    return
+  }
+
+  const { columns, rows } = parseVgaResolution(
+    value,
+    vgaDisplayConfig.value.columns,
+    vgaDisplayConfig.value.rows,
+  )
+  vgaResolutionInput.value = `${columns}x${rows}`
+  if (
+    columns === vgaDisplayConfig.value.columns &&
+    rows === vgaDisplayConfig.value.rows &&
+    props.device.state.config.kind === 'vga_display'
+  ) {
+    return
+  }
+
+  await hardwareStore.upsertCanvasDevice({
+    ...props.device,
+    state: {
+      ...props.device.state,
+      config: {
+        kind: 'vga_display',
+        columns,
+        rows,
+        color_mode: vgaDisplayConfig.value.colorMode,
+      },
+    },
+  })
+}
+
+async function commitVgaColorMode(value: unknown) {
+  if (!props.device || !vgaDisplayConfig.value || typeof value !== 'string') {
+    return
+  }
+
+  if (
+    value !== 'mono' &&
+    value !== 'rgb111' &&
+    value !== 'rgb332' &&
+    value !== 'rgb444' &&
+    value !== 'rgb565' &&
+    value !== 'rgb888'
+  ) {
+    return
+  }
+
+  vgaColorModeInput.value = value
+  if (
+    value === vgaDisplayConfig.value.colorMode &&
+    props.device.state.config.kind === 'vga_display'
+  ) {
+    return
+  }
+
+  const nextSlotCount =
+    2 + Object.values(vgaColorModeBitCounts(value)).reduce((sum, bits) => sum + bits, 0)
+  const nextBoundSignals = Array.from({ length: nextSlotCount }, (_, index) => {
+    return getCanvasDeviceBoundSignals(props.device!)[index] ?? null
+  })
+
+  await hardwareStore.upsertCanvasDevice({
+    ...props.device,
+    state: {
+      ...props.device.state,
+      binding: {
+        kind: 'slots',
+        signals: nextBoundSignals,
+      },
+      config: {
+        kind: 'vga_display',
+        columns: vgaDisplayConfig.value.columns,
+        rows: vgaDisplayConfig.value.rows,
+        color_mode: value,
       },
     },
   })
@@ -1017,6 +1276,55 @@ async function removeDevice() {
 
         <Separator v-if="isMatrixDevice && matrixDimensions" class="my-5" />
 
+        <section v-if="isVgaDisplayDevice && vgaDisplayConfig" class="space-y-3">
+          <div>
+            <p class="text-sm font-medium">{{ t('displayMode') }}</p>
+            <p class="mt-1 text-xs leading-5 text-muted-foreground">
+              {{ t('vgaDisplayDescription') }}
+            </p>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div class="space-y-1">
+              <label class="text-xs font-medium text-muted-foreground">
+                {{ t('resolution') }}
+              </label>
+              <Select :model-value="vgaResolutionInput" @update:model-value="commitVgaResolution">
+                <SelectTrigger class="w-full">
+                  <SelectValue :placeholder="t('resolution')" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    v-for="option in vgaResolutionOptions"
+                    :key="option.value"
+                    :value="option.value"
+                  >
+                    {{ option.label }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div class="space-y-1">
+              <label class="text-xs font-medium text-muted-foreground">
+                {{ t('colorMode') }}
+              </label>
+              <Select :model-value="vgaColorModeInput" @update:model-value="commitVgaColorMode">
+                <SelectTrigger class="w-full">
+                  <SelectValue :placeholder="t('colorMode')" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem v-for="mode in VGA_COLOR_MODE_OPTIONS" :key="mode" :value="mode">
+                    {{ vgaColorModeLabel(mode) }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </section>
+
+        <Separator v-if="isVgaDisplayDevice && vgaDisplayConfig" class="my-5" />
+
         <section class="space-y-3">
           <div>
             <p class="text-sm font-medium">{{ t('portBinding') }}</p>
@@ -1169,6 +1477,146 @@ async function removeDevice() {
             </p>
           </div>
 
+          <div
+            v-if="isVgaDisplayDevice && vgaDisplayConfig"
+            class="space-y-3 rounded-2xl border border-border/70 bg-muted/20 p-3"
+          >
+            <div>
+              <p class="text-sm font-medium">{{ t('quickBind') }}</p>
+              <p class="mt-1 text-xs leading-5 text-muted-foreground">
+                {{ t('quickBindDescription') }}
+              </p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div class="space-y-1">
+                <label class="text-xs font-medium text-muted-foreground">
+                  {{ t('hSync') }}
+                </label>
+                <Select v-model="vgaHSyncInput">
+                  <SelectTrigger class="w-full">
+                    <SelectValue :placeholder="t('chooseTopLevelPort')" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem
+                      v-for="signal in compatibleSignals"
+                      :key="`vga-hsync-${signal.name}`"
+                      :value="signal.name"
+                    >
+                      <span class="font-mono text-xs">{{ signal.bindingLabel }}</span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div class="space-y-1">
+                <label class="text-xs font-medium text-muted-foreground">
+                  {{ t('vSync') }}
+                </label>
+                <Select v-model="vgaVSyncInput">
+                  <SelectTrigger class="w-full">
+                    <SelectValue :placeholder="t('chooseTopLevelPort')" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem
+                      v-for="signal in compatibleSignals"
+                      :key="`vga-vsync-${signal.name}`"
+                      :value="signal.name"
+                    >
+                      <span class="font-mono text-xs">{{ signal.bindingLabel }}</span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div v-if="vgaBitCounts.redBits > 0" class="space-y-1">
+                <label class="text-xs font-medium text-muted-foreground">
+                  {{ t('redBus') }}
+                </label>
+                <Select v-model="vgaRedBusInput">
+                  <SelectTrigger class="w-full">
+                    <SelectValue :placeholder="t('chooseBus')" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem
+                      v-for="bus in vgaRedBusOptions"
+                      :key="`vga-red-${bus.baseName}`"
+                      :value="bus.baseName"
+                    >
+                      <span class="font-mono text-xs">{{ bus.label }}</span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div v-if="vgaBitCounts.greenBits > 0" class="space-y-1">
+                <label class="text-xs font-medium text-muted-foreground">
+                  {{ t('greenBus') }}
+                </label>
+                <Select v-model="vgaGreenBusInput">
+                  <SelectTrigger class="w-full">
+                    <SelectValue :placeholder="t('chooseBus')" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem
+                      v-for="bus in vgaGreenBusOptions"
+                      :key="`vga-green-${bus.baseName}`"
+                      :value="bus.baseName"
+                    >
+                      <span class="font-mono text-xs">{{ bus.label }}</span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div v-if="vgaBitCounts.blueBits > 0" class="space-y-1">
+                <label class="text-xs font-medium text-muted-foreground">
+                  {{ t('blueBus') }}
+                </label>
+                <Select v-model="vgaBlueBusInput">
+                  <SelectTrigger class="w-full">
+                    <SelectValue :placeholder="t('chooseBus')" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem
+                      v-for="bus in vgaBlueBusOptions"
+                      :key="`vga-blue-${bus.baseName}`"
+                      :value="bus.baseName"
+                    >
+                      <span class="font-mono text-xs">{{ bus.label }}</span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <Button
+              variant="secondary"
+              class="w-full"
+              :disabled="
+                !vgaHSyncInput ||
+                !vgaVSyncInput ||
+                (vgaBitCounts.redBits > 0 && !vgaRedBusInput) ||
+                (vgaBitCounts.greenBits > 0 && !vgaGreenBusInput) ||
+                (vgaBitCounts.blueBits > 0 && !vgaBlueBusInput)
+              "
+              @click="applyVgaBusBindings"
+            >
+              {{ t('applyBusBindings') }}
+            </Button>
+
+            <p
+              v-if="
+                (vgaBitCounts.redBits > 0 && vgaRedBusOptions.length === 0) ||
+                (vgaBitCounts.greenBits > 0 && vgaGreenBusOptions.length === 0) ||
+                (vgaBitCounts.blueBits > 0 && vgaBlueBusOptions.length === 0)
+              "
+              class="text-xs leading-5 text-muted-foreground"
+            >
+              {{ t('noMatchingBuses') }}
+            </p>
+          </div>
+
           <div v-if="hasSlotBindings" class="space-y-3">
             <div v-for="(slot, slotIndex) in bindingSlots" :key="slot.key" class="space-y-1">
               <div class="flex items-center justify-between text-xs text-muted-foreground">
@@ -1277,6 +1725,28 @@ async function removeDevice() {
               </p>
               <p class="mt-2 font-medium">
                 {{ matrixDimensions.columns }} x {{ matrixDimensions.rows }}
+              </p>
+            </div>
+            <div
+              v-if="isVgaDisplayDevice && vgaDisplayConfig"
+              class="rounded-2xl border border-border bg-background p-3"
+            >
+              <p class="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
+                {{ t('resolution') }}
+              </p>
+              <p class="mt-2 font-medium">
+                {{ vgaDisplayConfig.columns }} × {{ vgaDisplayConfig.rows }}
+              </p>
+            </div>
+            <div
+              v-if="isVgaDisplayDevice && vgaDisplayConfig"
+              class="rounded-2xl border border-border bg-background p-3"
+            >
+              <p class="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
+                {{ t('colorMode') }}
+              </p>
+              <p class="mt-2 font-medium">
+                {{ vgaColorModeLabel(vgaDisplayConfig.colorMode) }}
               </p>
             </div>
           </div>
