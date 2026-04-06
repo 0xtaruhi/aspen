@@ -19,7 +19,7 @@ import { settingsStore } from '@/stores/settings'
 const STREAM_WORDS_PER_CYCLE = 4
 const STREAM_SIGNAL_LIMIT = STREAM_WORDS_PER_CYCLE * 16
 const DISPLAY_UPDATE_INTERVAL_MS = 1000
-const MAX_VERICOMM_CLOCK_DELAY = 65_535
+const FIXED_VERICOMM_CLOCK_DELAY = 4
 
 const showGallery = ref(false)
 const selectedDeviceId = ref<string | null>(null)
@@ -29,8 +29,6 @@ const galleryDropBlockInset = 60
 const streamBusy = ref(false)
 const streamMessage = ref('')
 const rateInput = ref<string | number>('1000')
-const clockHighDelayInput = ref<string | number>('11')
-const clockLowDelayInput = ref<string | number>('11')
 const displayedActualHz = ref(0)
 let streamStatusPollTimer: ReturnType<typeof setInterval> | null = null
 let displayedHzTimer: ReturnType<typeof setInterval> | null = null
@@ -157,37 +155,14 @@ function parseRequestedRate() {
   return nextRate
 }
 
-function parseDelayInput(value: string | number | null | undefined, label: string) {
-  const normalizedValue =
-    typeof value === 'string' ? value.trim() : value == null ? '' : String(value)
-  const nextDelay = Number(normalizedValue)
-  if (
-    normalizedValue.length === 0 ||
-    !Number.isInteger(nextDelay) ||
-    nextDelay < 0 ||
-    nextDelay > MAX_VERICOMM_CLOCK_DELAY
-  ) {
-    throw new Error(t('streamDelayInvalid', { label, max: MAX_VERICOMM_CLOCK_DELAY.toString() }))
-  }
-
-  return nextDelay
-}
-
-function parseRequestedClockDelays() {
-  return {
-    clockHighDelay: parseDelayInput(clockHighDelayInput.value, 'CH'),
-    clockLowDelay: parseDelayInput(clockLowDelayInput.value, 'CL'),
-  }
-}
-
-async function syncStreamConfig(overrides?: { clockHighDelay?: number; clockLowDelay?: number }) {
+async function syncStreamConfig() {
   await hardwareStore.configureDataStream(
     signalCatalogStore.streamInputSignalOrder.value,
     signalCatalogStore.streamOutputSignalOrder.value,
     {
       wordsPerCycle: STREAM_WORDS_PER_CYCLE,
-      vericommClockHighDelay: overrides?.clockHighDelay,
-      vericommClockLowDelay: overrides?.clockLowDelay,
+      vericommClockHighDelay: FIXED_VERICOMM_CLOCK_DELAY,
+      vericommClockLowDelay: FIXED_VERICOMM_CLOCK_DELAY,
     },
   )
 }
@@ -198,11 +173,10 @@ async function applyStreamSettings() {
 
   try {
     const nextRate = parseRequestedRate()
-    const { clockHighDelay, clockLowDelay } = parseRequestedClockDelays()
     const timingChanged =
-      clockHighDelay !== streamStatus.value.vericomm_clock_high_delay ||
-      clockLowDelay !== streamStatus.value.vericomm_clock_low_delay
-    await syncStreamConfig({ clockHighDelay, clockLowDelay })
+      streamStatus.value.vericomm_clock_high_delay !== FIXED_VERICOMM_CLOCK_DELAY ||
+      streamStatus.value.vericomm_clock_low_delay !== FIXED_VERICOMM_CLOCK_DELAY
+    await syncStreamConfig()
     await hardwareStore.setDataStreamRate(nextRate)
 
     if (streamRunning.value && timingChanged) {
@@ -221,8 +195,7 @@ async function startStream() {
   streamMessage.value = ''
 
   try {
-    const { clockHighDelay, clockLowDelay } = parseRequestedClockDelays()
-    await syncStreamConfig({ clockHighDelay, clockLowDelay })
+    await syncStreamConfig()
     await hardwareStore.setDataStreamRate(parseRequestedRate())
     await hardwareStore.startDataStream()
   } catch (err) {
@@ -372,22 +345,6 @@ watch(
   { immediate: true },
 )
 
-watch(
-  () => streamStatus.value.vericomm_clock_high_delay,
-  (nextDelay) => {
-    clockHighDelayInput.value = String(nextDelay)
-  },
-  { immediate: true },
-)
-
-watch(
-  () => streamStatus.value.vericomm_clock_low_delay,
-  (nextDelay) => {
-    clockLowDelayInput.value = String(nextDelay)
-  },
-  { immediate: true },
-)
-
 watch([streamInputSignalOrderKey, streamOutputSignalOrderKey], () => {
   if (!hardwareStore.isStarted.value) {
     return
@@ -437,7 +394,8 @@ onBeforeUnmount(() => {
         variant="outline"
         :title="galleryTitle"
         :aria-label="t('toggleComponentGallery')"
-        @click="toggleGallery"
+        @pointerdown.stop
+        @click.stop="toggleGallery"
       >
         <LayoutGrid class="w-4 h-4" />
       </Button>
@@ -482,32 +440,6 @@ onBeforeUnmount(() => {
             min="0.1"
             step="1"
             class="h-8 w-24 border-0 bg-transparent px-0 text-right shadow-none focus-visible:ring-0"
-            @keydown.enter.prevent="canApplySettings && applyStreamSettings()"
-          />
-        </div>
-        <div class="flex items-center gap-2 rounded-md border border-border bg-background px-2">
-          <span class="text-xs text-muted-foreground">CH</span>
-          <Input
-            v-model="clockHighDelayInput"
-            type="number"
-            min="0"
-            step="1"
-            max="65535"
-            class="h-8 w-16 border-0 bg-transparent px-0 text-right shadow-none focus-visible:ring-0"
-            :title="t('streamClockHighDelay')"
-            @keydown.enter.prevent="canApplySettings && applyStreamSettings()"
-          />
-        </div>
-        <div class="flex items-center gap-2 rounded-md border border-border bg-background px-2">
-          <span class="text-xs text-muted-foreground">CL</span>
-          <Input
-            v-model="clockLowDelayInput"
-            type="number"
-            min="0"
-            step="1"
-            max="65535"
-            class="h-8 w-16 border-0 bg-transparent px-0 text-right shadow-none focus-visible:ring-0"
-            :title="t('streamClockLowDelay')"
             @keydown.enter.prevent="canApplySettings && applyStreamSettings()"
           />
         </div>
@@ -576,7 +508,7 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="relative flex-1 min-h-0 overflow-hidden">
-      <ComponentGallery :open="showGallery" />
+      <ComponentGallery :open="showGallery" @close="showGallery = false" />
       <DeviceCanvas
         v-model:selected-device-id="selectedDeviceId"
         v-model:selected-device-ids="selectedDeviceIds"

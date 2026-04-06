@@ -110,6 +110,9 @@ function createTestDevice(type: 'switch' | 'led', id: string, x: number, y: numb
       config: {
         kind: 'none' as const,
       },
+      data: {
+        kind: 'none' as const,
+      },
     },
   }
 }

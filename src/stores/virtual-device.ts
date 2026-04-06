@@ -42,50 +42,7 @@ const canvasDevices = ref<CanvasDeviceSnapshot[]>([])
 resetState()
 
 function cloneDevice(device: CanvasDeviceSnapshot): CanvasDeviceSnapshot {
-  return {
-    ...device,
-    state: {
-      ...device.state,
-      binding:
-        device.state.binding.kind === 'single'
-          ? {
-              kind: 'single',
-              signal: device.state.binding.signal ?? null,
-            }
-          : {
-              kind: 'slots',
-              signals: [...device.state.binding.signals],
-            },
-      config:
-        device.state.config.kind === 'led_matrix'
-          ? {
-              kind: 'led_matrix',
-              rows: device.state.config.rows,
-              columns: device.state.config.columns,
-            }
-          : device.state.config.kind === 'vga_display'
-            ? {
-                kind: 'vga_display',
-                rows: device.state.config.rows,
-                columns: device.state.config.columns,
-                color_mode: device.state.config.color_mode,
-              }
-            : device.state.config.kind === 'button'
-              ? {
-                  kind: 'button',
-                  active_low: device.state.config.active_low ?? false,
-                }
-              : device.state.config.kind === 'segment_display'
-                ? {
-                    kind: 'segment_display',
-                    digits: device.state.config.digits,
-                    active_low: device.state.config.active_low ?? false,
-                  }
-                : {
-                    kind: 'none',
-                  },
-    },
-  }
+  return JSON.parse(JSON.stringify(device)) as CanvasDeviceSnapshot
 }
 
 function cloneCanvasDevices(

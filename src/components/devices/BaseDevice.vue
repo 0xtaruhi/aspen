@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onUnmounted, ref, watch } from 'vue'
-import { Settings2 } from 'lucide-vue-next'
+import { Settings2, Trash2 } from 'lucide-vue-next'
 
 import {
   ContextMenu,
@@ -106,6 +106,11 @@ function requestOpenSettings() {
 
 function handleSettingsButtonClick() {
   openSettings()
+}
+
+function handleDeleteButtonClick() {
+  emit('select', props.id, 'replace')
+  requestRemoveDevice()
 }
 
 function startRename() {
@@ -242,17 +247,33 @@ onUnmounted(() => {
           class="relative flex h-full min-h-0 flex-col overflow-hidden rounded-md border border-border bg-card"
           :class="props.preview ? 'border-primary/60 ring-1 ring-primary/30' : ''"
         >
-          <button
+          <div
             v-if="!props.preview"
-            type="button"
-            class="absolute right-2 top-2 z-20 inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/70 bg-background/95 text-muted-foreground opacity-0 shadow-md transition hover:bg-accent hover:text-accent-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 group-hover:opacity-100"
-            :title="t('settingsAction')"
-            :aria-label="t('settingsAction')"
-            @mousedown.stop
-            @click.stop="handleSettingsButtonClick"
+            class="absolute right-2 top-2 z-20 flex items-center gap-1.5 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100"
+            :class="selected ? 'opacity-100' : ''"
           >
-            <Settings2 class="h-3.5 w-3.5" />
-          </button>
+            <button
+              type="button"
+              class="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/70 bg-background/95 text-muted-foreground shadow-md transition hover:bg-accent hover:text-accent-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+              :title="t('settingsAction')"
+              :aria-label="t('settingsAction')"
+              @mousedown.stop
+              @click.stop="handleSettingsButtonClick"
+            >
+              <Settings2 class="h-3.5 w-3.5" />
+            </button>
+
+            <button
+              type="button"
+              class="inline-flex h-7 w-7 items-center justify-center rounded-full border border-destructive/35 bg-background/95 text-destructive shadow-md transition hover:bg-destructive hover:text-white focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40"
+              :title="t('delete')"
+              :aria-label="t('delete')"
+              @mousedown.stop
+              @click.stop="handleDeleteButtonClick"
+            >
+              <Trash2 class="h-3.5 w-3.5" />
+            </button>
+          </div>
 
           <div
             class="flex min-h-10 w-full items-center gap-3 border-b border-border/70 bg-muted/45 px-3 py-2"

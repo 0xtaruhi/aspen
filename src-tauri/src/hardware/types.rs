@@ -66,12 +66,14 @@ pub enum CanvasDeviceType {
     Led,
     Switch,
     Button,
-    Keypad,
-    SmallKeypad,
-    RotaryButton,
-    Ps2Keyboard,
-    TextLcd,
-    GraphicLcd,
+    DipSwitchBank,
+    LedBar,
+    AudioPwm,
+    QuadratureEncoder,
+    MatrixKeypad,
+    UartTerminal,
+    Hd44780Lcd,
+    Memory,
     VgaDisplay,
     SegmentDisplay,
     LedMatrix,
@@ -86,6 +88,29 @@ pub enum CanvasVgaColorMode {
     Rgb444,
     Rgb565,
     Rgb888,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CanvasHd44780BusMode {
+    #[serde(rename = "4bit")]
+    FourBit,
+    #[serde(rename = "8bit")]
+    EightBit,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum CanvasUartMode {
+    Tx,
+    Rx,
+    TxRx,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum CanvasMemoryMode {
+    Rom,
+    Ram,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
@@ -122,6 +147,68 @@ pub enum CanvasDeviceConfigSnapshot {
         rows: u16,
         color_mode: CanvasVgaColorMode,
     },
+    DipSwitchBank {
+        width: u16,
+    },
+    LedBar {
+        width: u16,
+        #[serde(default)]
+        active_low: bool,
+    },
+    QuadratureEncoder {
+        #[serde(default = "default_true")]
+        has_button: bool,
+    },
+    MatrixKeypad {
+        rows: u16,
+        columns: u16,
+        #[serde(default)]
+        active_low: bool,
+    },
+    UartTerminal {
+        cycles_per_bit: u16,
+        mode: CanvasUartMode,
+    },
+    Hd44780Lcd {
+        columns: u16,
+        rows: u16,
+        bus_mode: CanvasHd44780BusMode,
+    },
+    Memory {
+        mode: CanvasMemoryMode,
+        address_width: u16,
+        data_width: u16,
+    },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CanvasDeviceDataSnapshot {
+    None,
+    Bitset {
+        #[serde(default)]
+        bits: Vec<bool>,
+    },
+    QuadratureEncoder {
+        phase: u8,
+        #[serde(default)]
+        button_pressed: bool,
+    },
+    MatrixKeypad {
+        pressed_row: Option<u16>,
+        pressed_column: Option<u16>,
+    },
+    QueuedBytes {
+        #[serde(default)]
+        bytes: Vec<u8>,
+    },
+    Memory {
+        #[serde(default)]
+        words: Vec<u16>,
+        source_path: Option<String>,
+        #[serde(default)]
+        preview_offset: u32,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -130,6 +217,11 @@ pub struct CanvasDeviceStateSnapshot {
     pub color: Option<String>,
     pub binding: CanvasDeviceBindingSnapshot,
     pub config: CanvasDeviceConfigSnapshot,
+    pub data: CanvasDeviceDataSnapshot,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl CanvasDeviceStateSnapshot {
@@ -196,7 +288,8 @@ impl CanvasDeviceStateSnapshot {
 
     pub fn matrix_dimensions(&self) -> Option<(usize, usize)> {
         match self.config {
-            CanvasDeviceConfigSnapshot::LedMatrix { rows, columns } => {
+            CanvasDeviceConfigSnapshot::LedMatrix { rows, columns }
+            | CanvasDeviceConfigSnapshot::MatrixKeypad { rows, columns, .. } => {
                 Some((usize::from(rows), usize::from(columns)))
             }
             _ => None,
@@ -211,6 +304,107 @@ impl CanvasDeviceStateSnapshot {
                 color_mode,
             } => Some((usize::from(columns), usize::from(rows), color_mode)),
             _ => None,
+        }
+    }
+
+    pub fn dip_switch_width(&self) -> Option<usize> {
+        match self.config {
+            CanvasDeviceConfigSnapshot::DipSwitchBank { width }
+            | CanvasDeviceConfigSnapshot::LedBar { width, .. } => Some(usize::from(width)),
+            _ => None,
+        }
+    }
+
+    pub fn uart_config(&self) -> Option<(usize, CanvasUartMode)> {
+        match self.config {
+            CanvasDeviceConfigSnapshot::UartTerminal {
+                cycles_per_bit,
+                mode,
+            } => Some((usize::from(cycles_per_bit.max(1)), mode)),
+            _ => None,
+        }
+    }
+
+    pub fn hd44780_config(&self) -> Option<(usize, usize, CanvasHd44780BusMode)> {
+        match self.config {
+            CanvasDeviceConfigSnapshot::Hd44780Lcd {
+                columns,
+                rows,
+                bus_mode,
+            } => Some((
+                usize::from(columns.max(1)),
+                usize::from(rows.max(1)),
+                bus_mode,
+            )),
+            _ => None,
+        }
+    }
+
+    pub fn memory_config(&self) -> Option<(CanvasMemoryMode, usize, usize)> {
+        match self.config {
+            CanvasDeviceConfigSnapshot::Memory {
+                mode,
+                address_width,
+                data_width,
+            } => Some((
+                mode,
+                usize::from(address_width.max(1)),
+                usize::from(data_width.max(1)),
+            )),
+            _ => None,
+        }
+    }
+
+    pub fn bitset(&self) -> &[bool] {
+        match &self.data {
+            CanvasDeviceDataSnapshot::Bitset { bits } => bits,
+            _ => &[],
+        }
+    }
+
+    pub fn queued_bytes(&self) -> &[u8] {
+        match &self.data {
+            CanvasDeviceDataSnapshot::QueuedBytes { bytes } => bytes,
+            _ => &[],
+        }
+    }
+
+    pub fn memory_words(&self) -> &[u16] {
+        match &self.data {
+            CanvasDeviceDataSnapshot::Memory { words, .. } => words,
+            _ => &[],
+        }
+    }
+
+    pub fn memory_preview_offset(&self) -> usize {
+        match self.data {
+            CanvasDeviceDataSnapshot::Memory { preview_offset, .. } => {
+                usize::try_from(preview_offset).unwrap_or(usize::MAX)
+            }
+            _ => 0,
+        }
+    }
+
+    pub fn quadrature_encoder_data(&self) -> (u8, bool) {
+        match self.data {
+            CanvasDeviceDataSnapshot::QuadratureEncoder {
+                phase,
+                button_pressed,
+            } => (phase % 4, button_pressed),
+            _ => (0, false),
+        }
+    }
+
+    pub fn matrix_keypad_data(&self) -> (Option<usize>, Option<usize>) {
+        match self.data {
+            CanvasDeviceDataSnapshot::MatrixKeypad {
+                pressed_row,
+                pressed_column,
+            } => (
+                pressed_row.map(usize::from),
+                pressed_column.map(usize::from),
+            ),
+            _ => (None, None),
         }
     }
 }
@@ -256,6 +450,7 @@ impl Default for HardwareStateV1 {
                         color: Some("red".to_string()),
                         binding: CanvasDeviceBindingSnapshot::Single { signal: None },
                         config: CanvasDeviceConfigSnapshot::None,
+                        data: CanvasDeviceDataSnapshot::None,
                     },
                 },
                 CanvasDeviceSnapshot {
@@ -269,6 +464,7 @@ impl Default for HardwareStateV1 {
                         color: None,
                         binding: CanvasDeviceBindingSnapshot::Single { signal: None },
                         config: CanvasDeviceConfigSnapshot::None,
+                        data: CanvasDeviceDataSnapshot::None,
                     },
                 },
             ],
@@ -332,6 +528,18 @@ pub struct HardwareCanvasDeviceTelemetryEntryV1 {
     pub pixel_columns: u16,
     pub pixel_rows: u16,
     pub pixels: Vec<u8>,
+    pub bit_values: Vec<u8>,
+    pub text_lines: Vec<String>,
+    pub text_log: String,
+    pub memory_words: Vec<u16>,
+    pub sample_values: Vec<u16>,
+    pub audio_edge_count: u32,
+    pub audio_sample_count: u32,
+    pub audio_period_samples: f32,
+    pub memory_word_count: u32,
+    pub memory_preview_start: u32,
+    pub memory_address: u32,
+    pub memory_output_word: u16,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -383,8 +591,8 @@ impl Default for HardwareDataStreamConfigV1 {
             words_per_cycle: 4,
             min_batch_cycles: 128,
             max_wait_us: 2_000,
-            vericomm_clock_high_delay: 11,
-            vericomm_clock_low_delay: 11,
+            vericomm_clock_high_delay: 4,
+            vericomm_clock_low_delay: 4,
         }
     }
 }

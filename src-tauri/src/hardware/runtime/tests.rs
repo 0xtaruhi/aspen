@@ -4,9 +4,9 @@ use std::{
 };
 
 use crate::hardware::types::{
-    CanvasDeviceBindingSnapshot, CanvasDeviceConfigSnapshot, CanvasDeviceSnapshot,
-    CanvasDeviceStateSnapshot, CanvasDeviceType, CanvasVgaColorMode, HardwareDataStreamConfigV1,
-    HardwareSignalAggregateByIdV1,
+    CanvasDeviceBindingSnapshot, CanvasDeviceConfigSnapshot, CanvasDeviceDataSnapshot,
+    CanvasDeviceSnapshot, CanvasDeviceStateSnapshot, CanvasDeviceType, CanvasVgaColorMode,
+    HardwareDataStreamConfigV1, HardwareSignalAggregateByIdV1,
 };
 
 use super::*;
@@ -36,6 +36,10 @@ fn no_config() -> CanvasDeviceConfigSnapshot {
     CanvasDeviceConfigSnapshot::None
 }
 
+fn no_data() -> CanvasDeviceDataSnapshot {
+    CanvasDeviceDataSnapshot::None
+}
+
 fn button_config(active_low: bool) -> CanvasDeviceConfigSnapshot {
     CanvasDeviceConfigSnapshot::Button { active_low }
 }
@@ -57,6 +61,14 @@ fn packed_cycle(active_signal_indices: &[usize]) -> u16 {
         .iter()
         .copied()
         .fold(0_u16, |word, signal_index| word | (1_u16 << signal_index))
+}
+
+fn fill_write_frame(
+    state: &HardwareStateV1,
+    encoders: &[Box<dyn InputDeviceEncoder>],
+    frame_words: &mut [u16],
+) {
+    HardwareRuntime::fill_write_buffer(state, encoders, frame_words, frame_words.len(), 1);
 }
 
 #[test]
@@ -130,6 +142,7 @@ fn collect_data_sample_prefers_drivers_and_keeps_receiver_fallback() {
                 color: Some("green".to_string()),
                 binding: single_binding(Some("sig_receiver")),
                 config: no_config(),
+                data: no_data(),
             },
         });
     }
@@ -318,6 +331,7 @@ fn device_snapshot_interval_scales_with_vga_resolution() {
                 color: None,
                 binding: slot_bindings(&[]),
                 config: vga_display_config(160, 120, CanvasVgaColorMode::Rgb332),
+                data: no_data(),
             },
         }],
         ..HardwareStateV1::default()
@@ -339,6 +353,7 @@ fn device_snapshot_interval_scales_with_vga_resolution() {
                 color: None,
                 binding: slot_bindings(&[]),
                 config: vga_display_config(320, 240, CanvasVgaColorMode::Rgb332),
+                data: no_data(),
             },
         }],
         ..HardwareStateV1::default()
@@ -360,6 +375,7 @@ fn device_snapshot_interval_scales_with_vga_resolution() {
                 color: None,
                 binding: slot_bindings(&[]),
                 config: vga_display_config(640, 480, CanvasVgaColorMode::Rgb332),
+                data: no_data(),
             },
         }],
         ..HardwareStateV1::default()
@@ -379,10 +395,16 @@ fn device_capability_registry_marks_drivers_and_receivers() {
         CanvasDeviceType::Switch
     ));
     assert!(!HardwareRuntime::device_drives_signal(
-        CanvasDeviceType::TextLcd
+        CanvasDeviceType::Hd44780Lcd
     ));
     assert!(HardwareRuntime::device_receives_signal(
-        CanvasDeviceType::TextLcd
+        CanvasDeviceType::Hd44780Lcd
+    ));
+    assert!(!HardwareRuntime::device_drives_signal(
+        CanvasDeviceType::AudioPwm
+    ));
+    assert!(HardwareRuntime::device_receives_signal(
+        CanvasDeviceType::AudioPwm
     ));
 }
 
@@ -400,6 +422,7 @@ fn input_encoders_follow_live_device_state_without_recompiling() {
                 color: None,
                 binding: single_binding(Some("sig_a")),
                 config: no_config(),
+                data: no_data(),
             },
         }],
         ..HardwareStateV1::default()
@@ -410,11 +433,11 @@ fn input_encoders_follow_live_device_state_without_recompiling() {
     let encoders = HardwareRuntime::compile_input_encoders(&state, &signal_order);
     let mut frame_words = vec![0u16; 1];
 
-    HardwareRuntime::fill_write_frame(&state, &encoders, &mut frame_words);
+    fill_write_frame(&state, &encoders, &mut frame_words);
     assert_eq!(frame_words, vec![0b0000_0001u16]);
 
     state.canvas_devices[0].state.is_on = false;
-    HardwareRuntime::fill_write_frame(&state, &encoders, &mut frame_words);
+    fill_write_frame(&state, &encoders, &mut frame_words);
     assert_eq!(frame_words, vec![0u16]);
 }
 
@@ -432,6 +455,7 @@ fn button_input_encoder_honors_active_low_polarity() {
                 color: None,
                 binding: single_binding(Some("sig_a")),
                 config: button_config(true),
+                data: no_data(),
             },
         }],
         ..HardwareStateV1::default()
@@ -441,7 +465,7 @@ fn button_input_encoder_honors_active_low_polarity() {
     let encoders = HardwareRuntime::compile_input_encoders(&state, &signal_order);
     let mut frame_words = vec![0u16; 1];
 
-    HardwareRuntime::fill_write_frame(&state, &encoders, &mut frame_words);
+    fill_write_frame(&state, &encoders, &mut frame_words);
     assert_eq!(frame_words, vec![0b0000_0001u16]);
 }
 
@@ -472,6 +496,7 @@ fn segment_display_decoder_uses_dynamic_digit_count() {
                     digits: 6,
                     active_low: false,
                 },
+                data: no_data(),
             },
         }],
         ..HardwareStateV1::default()
@@ -509,6 +534,7 @@ fn segment_display_decoder_honors_active_low_polarity() {
                     digits: 1,
                     active_low: true,
                 },
+                data: no_data(),
             },
         }],
         ..HardwareStateV1::default()
@@ -549,6 +575,7 @@ fn matrix_decoder_normalizes_scanned_pixels_by_row_activity() {
                     rows: 2,
                     columns: 2,
                 },
+                data: no_data(),
             },
         }],
         ..HardwareStateV1::default()
@@ -604,6 +631,7 @@ fn vga_display_decoder_rasterizes_rgb332_frame() {
                     Some("b1"),
                 ]),
                 config: vga_display_config(160, 120, CanvasVgaColorMode::Rgb332),
+                data: no_data(),
             },
         }],
         ..HardwareStateV1::default()
@@ -664,6 +692,7 @@ fn vga_display_decoder_honors_resolution_and_mono_mode() {
                 color: None,
                 binding: slot_bindings(&[Some("hsync"), Some("vsync"), Some("mono")]),
                 config: vga_display_config(2, 2, CanvasVgaColorMode::Mono),
+                data: no_data(),
             },
         }],
         ..HardwareStateV1::default()
@@ -712,6 +741,7 @@ fn vga_display_decoder_prefers_active_window_over_blanking() {
                     Some("b0"),
                 ]),
                 config: vga_display_config(2, 2, CanvasVgaColorMode::Rgb111),
+                data: no_data(),
             },
         }],
         ..HardwareStateV1::default()
@@ -759,4 +789,52 @@ fn vga_display_decoder_prefers_active_window_over_blanking() {
         display.pixels,
         vec![0b1110_0000, 0b0001_1100, 0b0000_0011, 0b1111_1111]
     );
+}
+
+#[test]
+fn audio_pwm_decoder_reports_period_edges_and_duty_ratio() {
+    let state = HardwareStateV1 {
+        canvas_devices: vec![CanvasDeviceSnapshot {
+            id: "audio0".to_string(),
+            r#type: CanvasDeviceType::AudioPwm,
+            x: 0.0,
+            y: 0.0,
+            label: "Audio PWM".to_string(),
+            state: CanvasDeviceStateSnapshot {
+                is_on: false,
+                color: None,
+                binding: single_binding(Some("tone")),
+                config: no_config(),
+                data: no_data(),
+            },
+        }],
+        ..HardwareStateV1::default()
+    };
+
+    let signal_order = vec!["tone".to_string()];
+    let mut decoders = HardwareRuntime::compile_output_decoders(&state, &signal_order);
+    assert_eq!(decoders.len(), 1);
+
+    for cycle in [
+        packed_cycle(&[]),
+        packed_cycle(&[]),
+        packed_cycle(&[0]),
+        packed_cycle(&[0]),
+        packed_cycle(&[]),
+        packed_cycle(&[]),
+        packed_cycle(&[0]),
+        packed_cycle(&[0]),
+        packed_cycle(&[]),
+        packed_cycle(&[]),
+        packed_cycle(&[0]),
+        packed_cycle(&[0]),
+    ] {
+        decoders[0].ingest_cycle(&[cycle]);
+    }
+
+    let snapshot = decoders[0].flush_snapshot();
+    assert_eq!(snapshot.audio_edge_count, 5);
+    assert_eq!(snapshot.audio_sample_count, 12);
+    assert!((snapshot.audio_period_samples - 4.0).abs() < 0.01);
+    assert!((snapshot.high_ratio - 0.5).abs() < 0.01);
 }

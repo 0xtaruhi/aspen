@@ -1,9 +1,16 @@
 <script setup lang="ts">
-import type { CanvasDeviceSnapshot, CanvasVgaColorMode } from '@/lib/hardware-client'
+import { open as openDialog } from '@tauri-apps/plugin-dialog'
+import type {
+  CanvasDeviceSnapshot,
+  CanvasHd44780BusMode,
+  CanvasMemoryMode,
+  CanvasVgaColorMode,
+} from '@/lib/hardware-client'
+import { loadHardwareMemoryImage } from '@/lib/hardware-client'
 import type { SignalCatalogEntry } from '@/stores/signal-catalog'
 
 import { computed, ref, watch } from 'vue'
-import { CheckCircle2, Link2, Trash2, Unplug, X } from 'lucide-vue-next'
+import { Link2, Trash2, Unplug, X } from 'lucide-vue-next'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -18,23 +25,29 @@ import {
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import {
+  CANVAS_MEMORY_MAX_ADDRESS_WIDTH,
+  CANVAS_MEMORY_PREVIEW_WORDS,
   CANVAS_DEVICE_PRESET_COLORS,
   VGA_DISPLAY_RESOLUTION_PRESETS,
-  type CanvasDeviceColorOption,
-  getCanvasButtonConfig,
   deviceDrivesSignal,
   deviceReceivesSignal,
-  getCanvasDeviceBoundSignal,
-  getCanvasDeviceBoundSignalCount,
-  getCanvasDeviceBoundSignals,
+  getCanvasBitsetData,
+  getCanvasButtonConfig,
   getCanvasDeviceBindingSlots,
+  getCanvasDipSwitchBankConfig,
+  getCanvasHd44780LcdConfig,
+  getCanvasLedBarConfig,
   getCanvasMatrixDimensions,
+  getCanvasMatrixKeypadConfig,
+  getCanvasMemoryConfig,
+  getCanvasMemoryData,
+  getCanvasMemoryWordsData,
+  getCanvasQuadratureEncoderConfig,
   getCanvasSegmentDisplayConfig,
+  getCanvasUartTerminalConfig,
   getCanvasVgaDisplayConfig,
   normalizeCanvasDeviceColor,
   resolveCanvasDeviceColor,
-  isCanvasMatrixDevice,
-  isCanvasSegmentDisplayDevice,
   vgaColorModeBitCounts,
 } from '@/lib/canvas-devices'
 import { confirmAction } from '@/lib/confirm-action'
@@ -59,67 +72,16 @@ const emit = defineEmits<{
 }>()
 
 const UNBOUND_SIGNAL = '__unbound__'
-const MATRIX_DIMENSION_MIN = 1
-const MATRIX_DIMENSION_MAX = 32
-const SEGMENT_DIGITS_MIN = 1
-const SEGMENT_DIGITS_MAX = 16
-const ACTIVE_HIGH = 'high'
-const ACTIVE_LOW = 'low'
-const VGA_COLOR_MODE_OPTIONS: CanvasVgaColorMode[] = [
-  'mono',
-  'rgb111',
-  'rgb332',
-  'rgb444',
-  'rgb565',
-  'rgb888',
-]
-const DEVICE_COLOR_OPTIONS: CanvasDeviceColorOption[] = [
-  'red',
-  'green',
-  'blue',
-  'yellow',
-  'orange',
-  'white',
-]
 
-const matrixRowsInput = ref('')
-const matrixColumnsInput = ref('')
-const segmentDigitsInput = ref('')
-const buttonPolarityInput = ref(ACTIVE_HIGH)
-const segmentPolarityInput = ref(ACTIVE_HIGH)
-const deviceColorInput = ref(CANVAS_DEVICE_PRESET_COLORS.red)
-const deviceNameInput = ref('')
+const { t } = useI18n()
+
+const nameInput = ref('')
+const colorInput = ref(CANVAS_DEVICE_PRESET_COLORS.red)
+const numericInputs = ref<Record<string, string>>({})
 const matrixRowBusInput = ref('')
 const matrixColumnBusInput = ref('')
 const segmentBusInput = ref('')
 const segmentDigitBusInput = ref('')
-const vgaHSyncInput = ref('')
-const vgaVSyncInput = ref('')
-const vgaRedBusInput = ref('')
-const vgaGreenBusInput = ref('')
-const vgaBlueBusInput = ref('')
-const vgaResolutionInput = ref('')
-const vgaColorModeInput = ref<CanvasVgaColorMode>('rgb332')
-const { t } = useI18n()
-
-const capabilityLabel = computed(() => {
-  if (!props.device) {
-    return ''
-  }
-
-  const drives = deviceDrivesSignal(props.device.type)
-  const receives = deviceReceivesSignal(props.device.type)
-
-  if (drives && !receives) {
-    return t('drivesFpgaInput')
-  }
-
-  if (receives && !drives) {
-    return t('observesFpgaOutput')
-  }
-
-  return t('bidirectionalDevice')
-})
 
 const compatibleSignals = computed<readonly SignalCatalogEntry[]>(() => {
   if (!props.device) {
@@ -185,14 +147,6 @@ const indexedCompatibleBuses = computed<IndexedSignalBus[]>(() => {
     .sort((left, right) => left.baseName.localeCompare(right.baseName))
 })
 
-const bindingValue = computed(() => {
-  if (!props.device) {
-    return UNBOUND_SIGNAL
-  }
-
-  return getCanvasDeviceBoundSignal(props.device) ?? UNBOUND_SIGNAL
-})
-
 const bindingSlots = computed(() => {
   if (!props.device) {
     return []
@@ -201,73 +155,20 @@ const bindingSlots = computed(() => {
   return getCanvasDeviceBindingSlots(props.device)
 })
 
-const hasSlotBindings = computed(() => bindingSlots.value.length > 0)
-
 const matrixDimensions = computed(() => {
-  if (!props.device) {
+  if (!props.device || props.device.type !== 'led_matrix') {
     return null
   }
 
   return getCanvasMatrixDimensions(props.device)
 })
 
-const isMatrixDevice = computed(() => {
-  return props.device ? isCanvasMatrixDevice(props.device.type) : false
-})
-
 const segmentDisplayConfig = computed(() => {
-  if (!props.device) {
+  if (!props.device || props.device.type !== 'segment_display') {
     return null
   }
 
   return getCanvasSegmentDisplayConfig(props.device)
-})
-
-const buttonConfig = computed(() => {
-  if (!props.device) {
-    return null
-  }
-
-  return getCanvasButtonConfig(props.device)
-})
-
-const isButtonDevice = computed(() => props.device?.type === 'button')
-const supportsDeviceColor = computed(() => {
-  const type = props.device?.type
-  return type === 'led' || type === 'led_matrix'
-})
-
-const isSegmentDisplayDevice = computed(() => {
-  return props.device ? isCanvasSegmentDisplayDevice(props.device.type) : false
-})
-
-const isVgaDisplayDevice = computed(() => props.device?.type === 'vga_display')
-
-const vgaDisplayConfig = computed(() => {
-  if (!props.device) {
-    return null
-  }
-
-  return getCanvasVgaDisplayConfig(props.device)
-})
-
-const vgaBitCounts = computed(() => {
-  return vgaColorModeBitCounts(vgaDisplayConfig.value?.colorMode ?? 'rgb332')
-})
-
-const vgaResolutionOptions = computed(() => {
-  return VGA_DISPLAY_RESOLUTION_PRESETS.map((preset) => ({
-    value: `${preset.columns}x${preset.rows}`,
-    label: `${preset.columns} × ${preset.rows}`,
-  }))
-})
-
-const boundSignalCount = computed(() => {
-  if (!props.device) {
-    return 0
-  }
-
-  return getCanvasDeviceBoundSignalCount(props.device)
 })
 
 const matrixRowBusOptions = computed(() => {
@@ -289,67 +190,118 @@ const segmentDigitBusOptions = computed(() => {
   return indexedCompatibleBuses.value.filter((bus) => bus.width >= digits)
 })
 
-const vgaRedBusOptions = computed(() => {
-  return indexedCompatibleBuses.value.filter((bus) => bus.width >= vgaBitCounts.value.redBits)
-})
-
-const vgaGreenBusOptions = computed(() => {
-  return indexedCompatibleBuses.value.filter((bus) => bus.width >= vgaBitCounts.value.greenBits)
-})
-
-const vgaBlueBusOptions = computed(() => {
-  return indexedCompatibleBuses.value.filter((bus) => bus.width >= vgaBitCounts.value.blueBits)
-})
-
-const streamRunning = computed(() => hardwareStore.dataStreamStatus.value.running)
-
 const liveLevel = computed(() => {
-  if (!streamRunning.value) {
+  if (!props.device || !hardwareStore.dataStreamStatus.value.running) {
     return false
   }
 
-  const deviceId = props.device?.id
-  if (deviceId) {
-    const deviceTelemetry = hardwareStore.deviceTelemetry.value[deviceId]
-    if (deviceTelemetry) {
-      return deviceTelemetry.latest
-    }
-  }
-
-  const signal = props.device ? getCanvasDeviceBoundSignal(props.device) : null
-  if (!signal) {
-    return props.device?.state.is_on ?? false
-  }
-  const telemetry = hardwareStore.signalTelemetry.value[signal]
-  if (telemetry && deviceReceivesSignal(props.device?.type ?? 'led')) {
+  const telemetry = hardwareStore.deviceTelemetry.value[props.device.id]
+  if (telemetry) {
     return telemetry.latest
   }
 
-  return props.device?.state.is_on ?? false
+  return false
 })
 
-const stateLabel = computed(() => {
+const capabilityLabel = computed(() => {
   if (!props.device) {
-    return t('idle')
+    return ''
   }
 
-  return liveLevel.value ? t('high') : t('low')
+  const drives = deviceDrivesSignal(props.device.type)
+  const receives = deviceReceivesSignal(props.device.type)
+
+  if (drives && receives) return t('bidirectionalDevice')
+  if (drives) return t('drivesFpgaInput')
+  return t('observesFpgaOutput')
+})
+
+const memoryPreviewRows = computed(() => {
+  if (!props.device || props.device.type !== 'memory') {
+    return []
+  }
+
+  const config = getCanvasMemoryConfig(props.device)
+  const wordCount = 1 << Math.min(config?.addressWidth ?? 8, CANVAS_MEMORY_MAX_ADDRESS_WIDTH)
+  const data = getCanvasMemoryData(props.device, wordCount)
+  const maxOffset = Math.max(0, wordCount - 1)
+  const previewOffset = clampInt(
+    numericInputs.value.memoryPreviewOffset,
+    data.previewOffset,
+    0,
+    maxOffset,
+  )
+  const telemetry = hardwareStore.deviceTelemetry.value[props.device.id]
+  const liveWords =
+    hardwareStore.dataStreamStatus.value.running &&
+    telemetry?.sample_values?.length &&
+    telemetry.memory_preview_start === previewOffset
+      ? telemetry.sample_values
+      : null
+  const sourceWords =
+    liveWords ?? data.words.slice(previewOffset, previewOffset + CANVAS_MEMORY_PREVIEW_WORDS)
+
+  return sourceWords.map((value, localIndex) => ({
+    index: previewOffset + localIndex,
+    value,
+  }))
+})
+
+const memorySourceLabel = computed(() => {
+  if (!props.device || props.device.type !== 'memory') {
+    return null
+  }
+
+  return basenameFromPath(getCanvasMemoryData(props.device).sourcePath)
 })
 
 watch(
-  () => {
-    const device = props.device
-    if (!device) {
-      return null
-    }
+  () => props.device,
+  (device) => {
+    nameInput.value = device?.label ?? ''
+    colorInput.value = device
+      ? (resolveCanvasDeviceColor(device) ?? CANVAS_DEVICE_PRESET_COLORS.red)
+      : CANVAS_DEVICE_PRESET_COLORS.red
 
-    return {
-      id: device.id,
-      label: device.label,
+    numericInputs.value = {
+      ledMatrixRows: String(
+        getCanvasMatrixDimensions(device ?? fallbackDevice('led_matrix'))?.rows ?? 8,
+      ),
+      ledMatrixColumns: String(
+        getCanvasMatrixDimensions(device ?? fallbackDevice('led_matrix'))?.columns ?? 8,
+      ),
+      segmentDigits: String(
+        getCanvasSegmentDisplayConfig(device ?? fallbackDevice('segment_display'))?.digits ?? 1,
+      ),
+      dipWidth: String(
+        getCanvasDipSwitchBankConfig(device ?? fallbackDevice('dip_switch_bank'))?.width ?? 8,
+      ),
+      ledBarWidth: String(getCanvasLedBarConfig(device ?? fallbackDevice('led_bar'))?.width ?? 8),
+      keypadRows: String(
+        getCanvasMatrixKeypadConfig(device ?? fallbackDevice('matrix_keypad'))?.rows ?? 4,
+      ),
+      keypadColumns: String(
+        getCanvasMatrixKeypadConfig(device ?? fallbackDevice('matrix_keypad'))?.columns ?? 4,
+      ),
+      uartCycles: String(
+        getCanvasUartTerminalConfig(device ?? fallbackDevice('uart_terminal'))?.cyclesPerBit ?? 16,
+      ),
+      lcdColumns: String(
+        getCanvasHd44780LcdConfig(device ?? fallbackDevice('hd44780_lcd'))?.columns ?? 16,
+      ),
+      lcdRows: String(
+        getCanvasHd44780LcdConfig(device ?? fallbackDevice('hd44780_lcd'))?.rows ?? 2,
+      ),
+      memoryAddressWidth: String(
+        getCanvasMemoryConfig(device ?? fallbackDevice('memory'))?.addressWidth ?? 8,
+      ),
+      memoryDataWidth: String(
+        getCanvasMemoryConfig(device ?? fallbackDevice('memory'))?.dataWidth ?? 8,
+      ),
+      memoryPreviewOffset: String(
+        getCanvasMemoryData(device ?? fallbackDevice('memory')).previewOffset ?? 0,
+      ),
     }
-  },
-  (nextDeviceState) => {
-    deviceNameInput.value = nextDeviceState?.label ?? ''
   },
   { immediate: true },
 )
@@ -357,26 +309,19 @@ watch(
 watch(
   () => {
     const device = props.device
-    if (!device) {
-      return null
-    }
-
     return {
-      id: device.id,
-      type: device.type,
+      id: device?.id ?? null,
+      type: device?.type ?? null,
       rows: matrixDimensions.value?.rows ?? null,
       columns: matrixDimensions.value?.columns ?? null,
       digits: segmentDisplayConfig.value?.digits ?? null,
-      vgaColumns: vgaDisplayConfig.value?.columns ?? null,
-      vgaRows: vgaDisplayConfig.value?.rows ?? null,
-      vgaColorMode: vgaDisplayConfig.value?.colorMode ?? null,
       indexedBuses: indexedCompatibleBuses.value
         .map((bus) => `${bus.baseName}:${bus.width}`)
         .join('|'),
     }
   },
   () => {
-    if (isMatrixDevice.value && matrixDimensions.value) {
+    if (matrixDimensions.value) {
       matrixRowBusInput.value = guessIndexedBus(matrixDimensions.value.rows, ['row'])
       matrixColumnBusInput.value = guessIndexedBus(
         matrixDimensions.value.columns,
@@ -388,7 +333,7 @@ watch(
       matrixColumnBusInput.value = ''
     }
 
-    if (isSegmentDisplayDevice.value && segmentDisplayConfig.value) {
+    if (segmentDisplayConfig.value) {
       segmentBusInput.value = guessIndexedBus(8, ['segment', 'seg'])
       segmentDigitBusInput.value =
         segmentDisplayConfig.value.digits > 1
@@ -402,141 +347,104 @@ watch(
       segmentBusInput.value = ''
       segmentDigitBusInput.value = ''
     }
-
-    if (isVgaDisplayDevice.value) {
-      vgaResolutionInput.value = vgaDisplayConfig.value
-        ? `${vgaDisplayConfig.value.columns}x${vgaDisplayConfig.value.rows}`
-        : ''
-      vgaColorModeInput.value = vgaDisplayConfig.value?.colorMode ?? 'rgb332'
-      vgaHSyncInput.value = guessSignal(['hsync', 'h_sync', 'vga_hs', 'hs'])
-      vgaVSyncInput.value = guessSignal(['vsync', 'v_sync', 'vga_vs', 'vs'])
-      vgaRedBusInput.value = guessIndexedBus(vgaBitCounts.value.redBits, ['vga_r', 'red'])
-      vgaGreenBusInput.value = guessIndexedBus(
-        vgaBitCounts.value.greenBits,
-        ['vga_g', 'green'],
-        vgaRedBusInput.value,
-      )
-      vgaBlueBusInput.value = guessIndexedBus(
-        vgaBitCounts.value.blueBits,
-        ['vga_b', 'blue', 'mono', 'pixel', 'video'],
-        vgaRedBusInput.value || vgaGreenBusInput.value,
-      )
-    } else {
-      vgaResolutionInput.value = ''
-      vgaColorModeInput.value = 'rgb332'
-      vgaHSyncInput.value = ''
-      vgaVSyncInput.value = ''
-      vgaRedBusInput.value = ''
-      vgaGreenBusInput.value = ''
-      vgaBlueBusInput.value = ''
-    }
   },
   { immediate: true },
 )
 
-watch(
-  () => {
-    const device = props.device
-    if (!device) {
-      return null
-    }
+function fallbackDevice(type: CanvasDeviceSnapshot['type']): CanvasDeviceSnapshot {
+  return {
+    id: '__fallback__',
+    type,
+    x: 0,
+    y: 0,
+    label: type,
+    state: {
+      is_on: false,
+      color: null,
+      binding: { kind: 'single', signal: null },
+      config: { kind: 'none' },
+      data: { kind: 'none' },
+    },
+  }
+}
 
-    return {
-      id: device.id,
-      color: resolveCanvasDeviceColor(device),
-    }
-  },
-  (nextColorState) => {
-    deviceColorInput.value = nextColorState?.color ?? CANVAS_DEVICE_PRESET_COLORS.red
-  },
-  { immediate: true },
-)
+function clampInt(value: string, fallback: number, min = 1, max = 1024) {
+  const parsed = Number.parseInt(value, 10)
+  if (Number.isNaN(parsed)) {
+    return fallback
+  }
+  return Math.max(min, Math.min(max, parsed))
+}
 
-watch(
-  () => {
-    const device = props.device
-    if (!device) {
-      return null
-    }
+function getErrorMessage(err: unknown) {
+  return err instanceof Error ? err.message : String(err)
+}
 
-    const dimensions = getCanvasMatrixDimensions(device)
-    return {
-      id: device.id,
-      rows: dimensions?.rows ?? null,
-      columns: dimensions?.columns ?? null,
-    }
-  },
-  (nextMatrixState) => {
-    matrixRowsInput.value = nextMatrixState?.rows ? String(nextMatrixState.rows) : ''
-    matrixColumnsInput.value = nextMatrixState?.columns ? String(nextMatrixState.columns) : ''
-  },
-  { immediate: true },
-)
+function memoryWordCount(addressWidth: number) {
+  return 1 << Math.min(addressWidth, CANVAS_MEMORY_MAX_ADDRESS_WIDTH)
+}
 
-watch(
-  () => {
-    const device = props.device
-    if (!device) {
-      return null
-    }
-
-    const config = getCanvasSegmentDisplayConfig(device)
-    return {
-      id: device.id,
-      digits: config?.digits ?? null,
-      activeLow: config?.activeLow ?? false,
-    }
-  },
-  (nextSegmentState) => {
-    segmentDigitsInput.value = nextSegmentState?.digits ? String(nextSegmentState.digits) : ''
-    segmentPolarityInput.value = nextSegmentState?.activeLow ? ACTIVE_LOW : ACTIVE_HIGH
-  },
-  { immediate: true },
-)
-
-watch(
-  () => {
-    const device = props.device
-    if (!device) {
-      return null
-    }
-
-    const config = getCanvasButtonConfig(device)
-    return {
-      id: device.id,
-      activeLow: config?.activeLow ?? false,
-    }
-  },
-  (nextButtonState) => {
-    buttonPolarityInput.value = nextButtonState?.activeLow ? ACTIVE_LOW : ACTIVE_HIGH
-  },
-  { immediate: true },
-)
-
-function handleBindingUpdate(value: unknown) {
-  if (!props.device || typeof value !== 'string') {
-    return
+function requiredMemoryAddressWidth(wordCount: number) {
+  if (wordCount <= 1) {
+    return 1
   }
 
-  void hardwareStore.bindCanvasSignal(props.device.id, value === UNBOUND_SIGNAL ? null : value)
+  return Math.min(CANVAS_MEMORY_MAX_ADDRESS_WIDTH, Math.max(1, Math.ceil(Math.log2(wordCount))))
+}
+
+function memoryHexWidth(bits: number) {
+  return Math.max(2, Math.ceil(bits / 4))
+}
+
+function formatMemoryAddress(index: number, addressWidth: number) {
+  return index.toString(16).toUpperCase().padStart(memoryHexWidth(addressWidth), '0')
+}
+
+function formatMemoryWord(value: number, dataWidth: number) {
+  return (value ?? 0).toString(16).toUpperCase().padStart(memoryHexWidth(dataWidth), '0')
+}
+
+function basenameFromPath(path: string | null | undefined) {
+  if (!path) {
+    return null
+  }
+
+  const normalized = path.replace(/\\/g, '/')
+  return normalized.split('/').pop() || normalized
 }
 
 function slotBindingValue(slotIndex: number) {
-  return props.device
-    ? (getCanvasDeviceBoundSignals(props.device)[slotIndex] ?? UNBOUND_SIGNAL)
-    : UNBOUND_SIGNAL
+  if (!props.device || props.device.state.binding.kind !== 'slots') {
+    return UNBOUND_SIGNAL
+  }
+  return props.device.state.binding.signals[slotIndex] ?? UNBOUND_SIGNAL
 }
 
-function handleSlotBindingUpdate(slotIndex: number, value: unknown) {
-  if (!props.device || typeof value !== 'string') {
+function singleBindingValue() {
+  if (!props.device || props.device.state.binding.kind !== 'single') {
+    return UNBOUND_SIGNAL
+  }
+  return props.device.state.binding.signal ?? UNBOUND_SIGNAL
+}
+
+function updateDevice(updater: (device: CanvasDeviceSnapshot) => CanvasDeviceSnapshot) {
+  if (!props.device) {
     return
   }
+  void hardwareStore.upsertCanvasDevice(updater(props.device))
+}
 
-  void hardwareStore.bindCanvasSignalSlot(
-    props.device.id,
-    slotIndex,
-    value === UNBOUND_SIGNAL ? null : value,
-  )
+function resizeSlotBindings(device: CanvasDeviceSnapshot, count: number) {
+  const nextSignals = Array.from({ length: count }, (_, index) => {
+    if (device.state.binding.kind !== 'slots') {
+      return null
+    }
+    return device.state.binding.signals[index] ?? null
+  })
+  return {
+    kind: 'slots' as const,
+    signals: nextSignals,
+  }
 }
 
 function findIndexedBus(baseName: string) {
@@ -562,21 +470,56 @@ function guessIndexedBus(
   return narrowed[0]?.baseName ?? ''
 }
 
-function guessSignal(keywords: readonly string[]) {
-  const loweredSignals = compatibleSignals.value.map((signal) => ({
-    name: signal.name,
-    loweredName: signal.name.toLowerCase(),
-  }))
+function vgaSlotCount(mode: CanvasVgaColorMode) {
+  const { redBits, greenBits, blueBits } = vgaColorModeBitCounts(mode)
+  return 2 + redBits + greenBits + blueBits
+}
 
-  for (const keyword of keywords) {
-    const loweredKeyword = keyword.toLowerCase()
-    const match = loweredSignals.find((signal) => signal.loweredName.includes(loweredKeyword))
-    if (match) {
-      return match.name
-    }
+function hd44780SlotCount(mode: CanvasHd44780BusMode) {
+  return 3 + (mode === '8bit' ? 8 : 4)
+}
+
+function memorySlotCount(mode: CanvasMemoryMode, addressWidth: number, dataWidth: number) {
+  if (mode === 'rom') {
+    return addressWidth + dataWidth + 2
   }
 
-  return ''
+  return addressWidth + dataWidth + dataWidth + 3
+}
+
+function commitName() {
+  if (!props.device) return
+  const nextLabel = nameInput.value.trim() || props.device.label
+  if (nextLabel === props.device.label) return
+  updateDevice((device) => ({ ...device, label: nextLabel }))
+}
+
+function commitColor(value: string) {
+  if (!props.device) return
+  const nextColor = normalizeCanvasDeviceColor(value)
+  if (!nextColor) return
+  colorInput.value = nextColor
+  updateDevice((device) => ({
+    ...device,
+    state: {
+      ...device.state,
+      color: nextColor,
+    },
+  }))
+}
+
+function commitSingleBinding(value: string) {
+  if (!props.device || props.device.state.binding.kind !== 'single') return
+  void hardwareStore.bindCanvasSignal(props.device.id, value === UNBOUND_SIGNAL ? null : value)
+}
+
+function commitSlotBinding(slotIndex: number, value: string) {
+  if (!props.device || props.device.state.binding.kind !== 'slots') return
+  void hardwareStore.bindCanvasSignalSlot(
+    props.device.id,
+    slotIndex,
+    value === UNBOUND_SIGNAL ? null : value,
+  )
 }
 
 async function applyMatrixBusBindings() {
@@ -600,6 +543,7 @@ async function applyMatrixBusBindings() {
       ),
     )
   }
+
   for (let columnIndex = 0; columnIndex < matrixDimensions.value.columns; columnIndex += 1) {
     operations.push(
       hardwareStore.bindCanvasSignalSlot(
@@ -654,396 +598,496 @@ async function applySegmentBusBindings() {
   await Promise.all(operations)
 }
 
-async function applyVgaBusBindings() {
-  if (!props.device || !vgaDisplayConfig.value) {
-    return
-  }
-
-  const { redBits, greenBits, blueBits } = vgaBitCounts.value
-  const redBus = redBits > 0 ? findIndexedBus(vgaRedBusInput.value) : null
-  const greenBus = greenBits > 0 ? findIndexedBus(vgaGreenBusInput.value) : null
-  const blueBus = blueBits > 0 ? findIndexedBus(vgaBlueBusInput.value) : null
-  if (
-    !vgaHSyncInput.value ||
-    !vgaVSyncInput.value ||
-    (redBits > 0 && !redBus) ||
-    (greenBits > 0 && !greenBus) ||
-    (blueBits > 0 && !blueBus)
-  ) {
-    return
-  }
-
-  await Promise.all([
-    hardwareStore.bindCanvasSignalSlot(props.device.id, 0, vgaHSyncInput.value),
-    hardwareStore.bindCanvasSignalSlot(props.device.id, 1, vgaVSyncInput.value),
-    ...Array.from({ length: redBits }, (_, bitIndex) => {
-      return hardwareStore.bindCanvasSignalSlot(
-        props.device!.id,
-        2 + bitIndex,
-        redBus?.signals[bitIndex] ?? null,
-      )
-    }),
-    ...Array.from({ length: greenBits }, (_, bitIndex) => {
-      return hardwareStore.bindCanvasSignalSlot(
-        props.device!.id,
-        2 + redBits + bitIndex,
-        greenBus?.signals[bitIndex] ?? null,
-      )
-    }),
-    ...Array.from({ length: blueBits }, (_, bitIndex) => {
-      return hardwareStore.bindCanvasSignalSlot(
-        props.device!.id,
-        2 + redBits + greenBits + bitIndex,
-        blueBus?.signals[bitIndex] ?? null,
-      )
-    }),
-  ])
-}
-
-function clearBinding() {
-  if (!props.device) {
-    return
-  }
-
-  if (hasSlotBindings.value) {
-    void Promise.all(
-      bindingSlots.value.map((_, slotIndex) => {
-        return hardwareStore.bindCanvasSignalSlot(props.device!.id, slotIndex, null)
-      }),
-    )
-    return
-  }
-
-  void hardwareStore.bindCanvasSignal(props.device.id, null)
-}
-
-function formatSignalDirection(direction: SignalCatalogEntry['direction']) {
-  switch (direction) {
-    case 'input':
-      return t('inputDirection')
-    case 'output':
-      return t('outputDirection')
-    case 'inout':
-      return t('inoutDirection')
-    default:
-      return direction
-  }
-}
-
-function vgaColorModeLabel(mode: CanvasVgaColorMode) {
-  switch (mode) {
-    case 'mono':
-      return t('vgaColorModeMono')
-    case 'rgb111':
-      return t('vgaColorModeRgb111')
-    case 'rgb444':
-      return t('vgaColorModeRgb444')
-    case 'rgb565':
-      return t('vgaColorModeRgb565')
-    case 'rgb888':
-      return t('vgaColorModeRgb888')
-    case 'rgb332':
-    default:
-      return t('vgaColorModeRgb332')
-  }
-}
-
-function normalizeMatrixDimensionInput(rawValue: string, fallback: number) {
-  const parsed = Number.parseInt(rawValue, 10)
-  if (Number.isNaN(parsed)) {
-    return fallback
-  }
-
-  return Math.min(MATRIX_DIMENSION_MAX, Math.max(MATRIX_DIMENSION_MIN, parsed))
-}
-
-function normalizeSegmentDigitInput(rawValue: string, fallback: number) {
-  const parsed = Number.parseInt(rawValue, 10)
-  if (Number.isNaN(parsed)) {
-    return fallback
-  }
-
-  return Math.min(SEGMENT_DIGITS_MAX, Math.max(SEGMENT_DIGITS_MIN, parsed))
-}
-
-function parseVgaResolution(value: string, fallbackColumns: number, fallbackRows: number) {
-  const match = value.match(/^(\d+)x(\d+)$/)
-  if (!match) {
-    return {
-      columns: fallbackColumns,
-      rows: fallbackRows,
-    }
-  }
-
-  return {
-    columns: Number.parseInt(match[1], 10),
-    rows: Number.parseInt(match[2], 10),
-  }
-}
-
-async function commitDeviceName() {
-  if (!props.device) {
-    return
-  }
-
-  const nextLabel = deviceNameInput.value.trim()
-  const resolvedLabel = nextLabel.length > 0 ? nextLabel : props.device.label
-  deviceNameInput.value = resolvedLabel
-
-  if (resolvedLabel === props.device.label) {
-    return
-  }
-
-  await hardwareStore.upsertCanvasDevice({
-    ...props.device,
-    label: resolvedLabel,
-  })
-}
-
-async function commitMatrixDimensions() {
-  if (!props.device || !matrixDimensions.value) {
-    return
-  }
-
-  const nextRows = normalizeMatrixDimensionInput(matrixRowsInput.value, matrixDimensions.value.rows)
-  const nextColumns = normalizeMatrixDimensionInput(
-    matrixColumnsInput.value,
-    matrixDimensions.value.columns,
-  )
-
-  matrixRowsInput.value = String(nextRows)
-  matrixColumnsInput.value = String(nextColumns)
-
-  if (
-    nextRows === matrixDimensions.value.rows &&
-    nextColumns === matrixDimensions.value.columns &&
-    props.device.type === 'led_matrix'
-  ) {
-    return
-  }
-
-  const nextBoundSignals = Array.from({ length: nextRows + nextColumns }, (_, index) => {
-    return getCanvasDeviceBoundSignals(props.device!)[index] ?? null
-  })
-
-  await hardwareStore.upsertCanvasDevice({
-    ...props.device,
-    type: 'led_matrix',
+function commitButtonPolarity(value: string) {
+  if (!props.device || props.device.state.config.kind !== 'button') return
+  updateDevice((device) => ({
+    ...device,
     state: {
-      ...props.device.state,
-      binding: {
-        kind: 'slots',
-        signals: nextBoundSignals,
-      },
+      ...device.state,
       config: {
-        kind: 'led_matrix',
-        rows: nextRows,
-        columns: nextColumns,
+        kind: 'button',
+        active_low: value === 'low',
       },
     },
-  })
+  }))
 }
 
-async function commitVgaResolution(value: unknown) {
-  if (!props.device || !vgaDisplayConfig.value || typeof value !== 'string') {
-    return
-  }
-
-  const { columns, rows } = parseVgaResolution(
-    value,
-    vgaDisplayConfig.value.columns,
-    vgaDisplayConfig.value.rows,
-  )
-  vgaResolutionInput.value = `${columns}x${rows}`
-  if (
-    columns === vgaDisplayConfig.value.columns &&
-    rows === vgaDisplayConfig.value.rows &&
-    props.device.state.config.kind === 'vga_display'
-  ) {
-    return
-  }
-
-  await hardwareStore.upsertCanvasDevice({
-    ...props.device,
+function commitSegmentConfig() {
+  if (!props.device) return
+  const current = getCanvasSegmentDisplayConfig(props.device)
+  const digits = clampInt(numericInputs.value.segmentDigits, current?.digits ?? 1, 1, 16)
+  numericInputs.value.segmentDigits = String(digits)
+  updateDevice((device) => ({
+    ...device,
     state: {
-      ...props.device.state,
+      ...device.state,
+      binding: resizeSlotBindings(device, digits > 1 ? 8 + digits : 8),
+      config: {
+        kind: 'segment_display',
+        digits,
+        active_low:
+          device.state.config.kind === 'segment_display'
+            ? (device.state.config.active_low ?? false)
+            : false,
+      },
+    },
+  }))
+}
+
+function commitSegmentPolarity(value: string) {
+  if (!props.device) return
+  const digits = getCanvasSegmentDisplayConfig(props.device)?.digits ?? 1
+  updateDevice((device) => ({
+    ...device,
+    state: {
+      ...device.state,
+      config: {
+        kind: 'segment_display',
+        digits,
+        active_low: value === 'low',
+      },
+    },
+  }))
+}
+
+function commitLedMatrixConfig() {
+  if (!props.device) return
+  const current = getCanvasMatrixDimensions(props.device)
+  const rows = clampInt(numericInputs.value.ledMatrixRows, current?.rows ?? 8, 1, 64)
+  const columns = clampInt(numericInputs.value.ledMatrixColumns, current?.columns ?? 8, 1, 64)
+  numericInputs.value.ledMatrixRows = String(rows)
+  numericInputs.value.ledMatrixColumns = String(columns)
+  updateDevice((device) => ({
+    ...device,
+    state: {
+      ...device.state,
+      binding: resizeSlotBindings(device, rows + columns),
+      config: { kind: 'led_matrix', rows, columns },
+    },
+  }))
+}
+
+function commitDipWidth() {
+  if (!props.device) return
+  const current = getCanvasDipSwitchBankConfig(props.device)
+  const width = clampInt(numericInputs.value.dipWidth, current?.width ?? 8, 1, 32)
+  const bits = getCanvasBitsetData(props.device, width).slice(0, width)
+  numericInputs.value.dipWidth = String(width)
+  updateDevice((device) => ({
+    ...device,
+    state: {
+      ...device.state,
+      binding: resizeSlotBindings(device, width),
+      config: { kind: 'dip_switch_bank', width },
+      data: { kind: 'bitset', bits },
+    },
+  }))
+}
+
+function commitLedBarWidth() {
+  if (!props.device) return
+  const current = getCanvasLedBarConfig(props.device)
+  const width = clampInt(numericInputs.value.ledBarWidth, current?.width ?? 8, 1, 32)
+  numericInputs.value.ledBarWidth = String(width)
+  updateDevice((device) => ({
+    ...device,
+    state: {
+      ...device.state,
+      binding: resizeSlotBindings(device, width),
+      config: {
+        kind: 'led_bar',
+        width,
+        active_low: current?.activeLow ?? false,
+      },
+    },
+  }))
+}
+
+function commitLedBarPolarity(value: string) {
+  if (!props.device) return
+  const width = getCanvasLedBarConfig(props.device)?.width ?? 8
+  updateDevice((device) => ({
+    ...device,
+    state: {
+      ...device.state,
+      config: {
+        kind: 'led_bar',
+        width,
+        active_low: value === 'low',
+      },
+    },
+  }))
+}
+
+function commitQuadratureHasButton(value: string) {
+  if (!props.device) return
+  const hasButton = value === 'yes'
+  const data =
+    props.device.state.data.kind === 'quadrature_encoder'
+      ? props.device.state.data
+      : { kind: 'quadrature_encoder' as const, phase: 0, button_pressed: false }
+  updateDevice((device) => ({
+    ...device,
+    state: {
+      ...device.state,
+      binding: resizeSlotBindings(device, hasButton ? 3 : 2),
+      config: {
+        kind: 'quadrature_encoder',
+        has_button: hasButton,
+      },
+      data: {
+        kind: 'quadrature_encoder',
+        phase: data.phase,
+        button_pressed: hasButton ? data.button_pressed : false,
+      },
+    },
+  }))
+}
+
+function commitKeypadConfig() {
+  if (!props.device) return
+  const current = getCanvasMatrixKeypadConfig(props.device)
+  const rows = clampInt(numericInputs.value.keypadRows, current?.rows ?? 4, 1, 8)
+  const columns = clampInt(numericInputs.value.keypadColumns, current?.columns ?? 4, 1, 8)
+  updateDevice((device) => ({
+    ...device,
+    state: {
+      ...device.state,
+      binding: resizeSlotBindings(device, rows + columns),
+      config: {
+        kind: 'matrix_keypad',
+        rows,
+        columns,
+        active_low: current?.activeLow ?? true,
+      },
+    },
+  }))
+}
+
+function commitKeypadPolarity(value: string) {
+  if (!props.device) return
+  const current = getCanvasMatrixKeypadConfig(props.device)
+  updateDevice((device) => ({
+    ...device,
+    state: {
+      ...device.state,
+      config: {
+        kind: 'matrix_keypad',
+        rows: current?.rows ?? 4,
+        columns: current?.columns ?? 4,
+        active_low: value === 'low',
+      },
+    },
+  }))
+}
+
+function commitVgaResolution(value: string) {
+  if (!props.device) return
+  const [columnsRaw, rowsRaw] = value.split('x')
+  const current = getCanvasVgaDisplayConfig(props.device)
+  const columns = clampInt(columnsRaw, current?.columns ?? 320, 1, 2048)
+  const rows = clampInt(rowsRaw, current?.rows ?? 240, 1, 2048)
+  updateDevice((device) => ({
+    ...device,
+    state: {
+      ...device.state,
       config: {
         kind: 'vga_display',
         columns,
         rows,
-        color_mode: vgaDisplayConfig.value.colorMode,
+        color_mode: current?.colorMode ?? 'rgb332',
       },
     },
-  })
+  }))
 }
 
-async function commitVgaColorMode(value: unknown) {
-  if (!props.device || !vgaDisplayConfig.value || typeof value !== 'string') {
-    return
-  }
-
-  if (
-    value !== 'mono' &&
-    value !== 'rgb111' &&
-    value !== 'rgb332' &&
-    value !== 'rgb444' &&
-    value !== 'rgb565' &&
-    value !== 'rgb888'
-  ) {
-    return
-  }
-
-  vgaColorModeInput.value = value
-  if (
-    value === vgaDisplayConfig.value.colorMode &&
-    props.device.state.config.kind === 'vga_display'
-  ) {
-    return
-  }
-
-  const nextSlotCount =
-    2 + Object.values(vgaColorModeBitCounts(value)).reduce((sum, bits) => sum + bits, 0)
-  const nextBoundSignals = Array.from({ length: nextSlotCount }, (_, index) => {
-    return getCanvasDeviceBoundSignals(props.device!)[index] ?? null
-  })
-
-  await hardwareStore.upsertCanvasDevice({
-    ...props.device,
+function commitVgaColorMode(value: string) {
+  if (!props.device) return
+  if (!['mono', 'rgb111', 'rgb332', 'rgb444', 'rgb565', 'rgb888'].includes(value)) return
+  const current = getCanvasVgaDisplayConfig(props.device)
+  updateDevice((device) => ({
+    ...device,
     state: {
-      ...props.device.state,
-      binding: {
-        kind: 'slots',
-        signals: nextBoundSignals,
-      },
+      ...device.state,
+      binding: resizeSlotBindings(device, vgaSlotCount(value as CanvasVgaColorMode)),
       config: {
         kind: 'vga_display',
-        columns: vgaDisplayConfig.value.columns,
-        rows: vgaDisplayConfig.value.rows,
-        color_mode: value,
+        columns: current?.columns ?? 320,
+        rows: current?.rows ?? 240,
+        color_mode: value as CanvasVgaColorMode,
       },
     },
-  })
+  }))
 }
 
-async function commitSegmentDigits() {
-  if (!props.device || !segmentDisplayConfig.value) {
-    return
-  }
-
-  const nextDigits = normalizeSegmentDigitInput(
-    segmentDigitsInput.value,
-    segmentDisplayConfig.value.digits,
+function commitUartCycles() {
+  if (!props.device) return
+  const current = getCanvasUartTerminalConfig(props.device)
+  const cyclesPerBit = clampInt(
+    numericInputs.value.uartCycles,
+    current?.cyclesPerBit ?? 16,
+    1,
+    4096,
   )
-  segmentDigitsInput.value = String(nextDigits)
-
-  if (nextDigits === segmentDisplayConfig.value.digits && props.device.type === 'segment_display') {
-    return
-  }
-
-  const nextSlotCount = nextDigits > 1 ? 8 + nextDigits : 8
-  const nextBoundSignals = Array.from({ length: nextSlotCount }, (_, index) => {
-    return getCanvasDeviceBoundSignals(props.device!)[index] ?? null
-  })
-
-  await hardwareStore.upsertCanvasDevice({
-    ...props.device,
-    type: 'segment_display',
+  numericInputs.value.uartCycles = String(cyclesPerBit)
+  updateDevice((device) => ({
+    ...device,
     state: {
-      ...props.device.state,
-      binding: {
-        kind: 'slots',
-        signals: nextBoundSignals,
-      },
+      ...device.state,
       config: {
-        kind: 'segment_display',
-        digits: nextDigits,
-        active_low: segmentDisplayConfig.value.activeLow,
+        kind: 'uart_terminal',
+        cycles_per_bit: cyclesPerBit,
+        mode: current?.mode ?? 'tx_rx',
       },
     },
-  })
+  }))
 }
 
-async function commitButtonPolarity(value: unknown) {
-  if (!props.device || props.device.type !== 'button' || typeof value !== 'string') {
-    return
-  }
-
-  const activeLow = value === ACTIVE_LOW
-  buttonPolarityInput.value = activeLow ? ACTIVE_LOW : ACTIVE_HIGH
-  const currentConfig = getCanvasButtonConfig(props.device)
-  if (currentConfig?.activeLow === activeLow) {
-    return
-  }
-
-  await hardwareStore.upsertCanvasDevice({
-    ...props.device,
+function commitHd44780Size() {
+  if (!props.device) return
+  const current = getCanvasHd44780LcdConfig(props.device)
+  const columns = clampInt(numericInputs.value.lcdColumns, current?.columns ?? 16, 8, 40)
+  const rows = clampInt(numericInputs.value.lcdRows, current?.rows ?? 2, 1, 4)
+  updateDevice((device) => ({
+    ...device,
     state: {
-      ...props.device.state,
+      ...device.state,
       config: {
-        kind: 'button',
-        active_low: activeLow,
+        kind: 'hd44780_lcd',
+        columns,
+        rows,
+        bus_mode: current?.busMode ?? '4bit',
       },
     },
-  })
+  }))
 }
 
-async function commitSegmentPolarity(value: unknown) {
-  if (!props.device || !segmentDisplayConfig.value || typeof value !== 'string') {
-    return
-  }
-
-  const activeLow = value === ACTIVE_LOW
-  segmentPolarityInput.value = activeLow ? ACTIVE_LOW : ACTIVE_HIGH
-  if (segmentDisplayConfig.value.activeLow === activeLow) {
-    return
-  }
-
-  await hardwareStore.upsertCanvasDevice({
-    ...props.device,
+function commitHd44780BusMode(value: string) {
+  if (!props.device) return
+  if (value !== '4bit' && value !== '8bit') return
+  const current = getCanvasHd44780LcdConfig(props.device)
+  updateDevice((device) => ({
+    ...device,
     state: {
-      ...props.device.state,
+      ...device.state,
+      binding: resizeSlotBindings(device, hd44780SlotCount(value as CanvasHd44780BusMode)),
       config: {
-        kind: 'segment_display',
-        digits: segmentDisplayConfig.value.digits,
-        active_low: activeLow,
+        kind: 'hd44780_lcd',
+        columns: current?.columns ?? 16,
+        rows: current?.rows ?? 2,
+        bus_mode: value as CanvasHd44780BusMode,
       },
     },
-  })
+  }))
 }
 
-async function commitDeviceColor(value: string) {
-  if (!props.device) {
-    return
-  }
-
-  const nextColor = normalizeCanvasDeviceColor(value) ?? CANVAS_DEVICE_PRESET_COLORS.red
-  deviceColorInput.value = nextColor
-
-  if (
-    resolveCanvasDeviceColor(props.device) === nextColor &&
-    props.device.state.color === nextColor
-  ) {
-    return
-  }
-
-  await hardwareStore.upsertCanvasDevice({
-    ...props.device,
+function commitMemoryGeometry() {
+  if (!props.device) return
+  const current = getCanvasMemoryConfig(props.device)
+  const currentData = getCanvasMemoryData(props.device)
+  const addressWidth = clampInt(
+    numericInputs.value.memoryAddressWidth,
+    current?.addressWidth ?? 8,
+    1,
+    CANVAS_MEMORY_MAX_ADDRESS_WIDTH,
+  )
+  const dataWidth = clampInt(numericInputs.value.memoryDataWidth, current?.dataWidth ?? 8, 1, 16)
+  const wordCount = memoryWordCount(addressWidth)
+  const previousWords = getCanvasMemoryWordsData(props.device, wordCount)
+  const words = Array.from({ length: wordCount }, (_, index) => previousWords[index] ?? 0)
+  const previewOffset = clampInt(
+    numericInputs.value.memoryPreviewOffset,
+    currentData.previewOffset,
+    0,
+    Math.max(0, wordCount - 1),
+  )
+  numericInputs.value.memoryPreviewOffset = String(previewOffset)
+  updateDevice((device) => ({
+    ...device,
     state: {
-      ...props.device.state,
-      color: nextColor,
+      ...device.state,
+      binding: resizeSlotBindings(
+        device,
+        memorySlotCount(current?.mode ?? 'ram', addressWidth, dataWidth),
+      ),
+      config: {
+        kind: 'memory',
+        mode: current?.mode ?? 'ram',
+        address_width: addressWidth,
+        data_width: dataWidth,
+      },
+      data: {
+        kind: 'memory',
+        words,
+        source_path: currentData.sourcePath,
+        preview_offset: previewOffset,
+      },
     },
-  })
+  }))
 }
 
-function applyPresetDeviceColor(color: CanvasDeviceColorOption) {
-  void commitDeviceColor(CANVAS_DEVICE_PRESET_COLORS[color])
+function commitMemoryMode(value: string) {
+  if (!props.device) return
+  if (value !== 'rom' && value !== 'ram') return
+  const current = getCanvasMemoryConfig(props.device)
+  updateDevice((device) => ({
+    ...device,
+    state: {
+      ...device.state,
+      binding: resizeSlotBindings(
+        device,
+        memorySlotCount(
+          value as CanvasMemoryMode,
+          current?.addressWidth ?? 8,
+          current?.dataWidth ?? 8,
+        ),
+      ),
+      config: {
+        kind: 'memory',
+        mode: value as CanvasMemoryMode,
+        address_width: current?.addressWidth ?? 8,
+        data_width: current?.dataWidth ?? 8,
+      },
+    },
+  }))
+}
+
+function commitMemoryPreviewOffset() {
+  if (!props.device || props.device.type !== 'memory') return
+  const config = getCanvasMemoryConfig(props.device)
+  const data = getCanvasMemoryData(props.device)
+  const wordCount = memoryWordCount(config?.addressWidth ?? 8)
+  const previewOffset = clampInt(
+    numericInputs.value.memoryPreviewOffset,
+    data.previewOffset,
+    0,
+    Math.max(0, wordCount - 1),
+  )
+  numericInputs.value.memoryPreviewOffset = String(previewOffset)
+  updateDevice((device) => ({
+    ...device,
+    state: {
+      ...device.state,
+      data: {
+        kind: 'memory',
+        words: data.words,
+        source_path: data.sourcePath,
+        preview_offset: previewOffset,
+      },
+    },
+  }))
+}
+
+function commitMemoryPreviewWord(index: number, value: string) {
+  if (!props.device || props.device.type !== 'memory') return
+  const config = getCanvasMemoryConfig(props.device)
+  const data = getCanvasMemoryData(props.device)
+  const parsed = Number.parseInt(value, 16)
+  if (Number.isNaN(parsed)) {
+    return
+  }
+  const dataWidth = config?.dataWidth ?? 8
+  const dataMask = dataWidth >= 16 ? 0xffff : (1 << dataWidth) - 1
+  const words = [...data.words]
+  if (index < 0 || index >= words.length) {
+    return
+  }
+  words[index] = parsed & dataMask
+  updateDevice((device) => ({
+    ...device,
+    state: {
+      ...device.state,
+      data: {
+        kind: 'memory',
+        words,
+        source_path: data.sourcePath,
+        preview_offset: data.previewOffset,
+      },
+    },
+  }))
+}
+
+async function loadMemoryImage() {
+  if (!props.device || props.device.type !== 'memory') return
+
+  const current = getCanvasMemoryConfig(props.device) ?? {
+    mode: 'ram' as CanvasMemoryMode,
+    addressWidth: 8,
+    dataWidth: 8,
+  }
+
+  try {
+    const selected = await openDialog({
+      multiple: false,
+      filters: [
+        {
+          name: 'Memory Image',
+          extensions: ['hex', 'mem', 'mif', 'coe', 'txt', 'bin', 'rom', 'ram'],
+        },
+      ],
+    })
+
+    if (typeof selected !== 'string') {
+      return
+    }
+
+    const parsed = await loadHardwareMemoryImage(selected, current.dataWidth)
+    const requiredWidth = requiredMemoryAddressWidth(parsed.words.length)
+    const nextAddressWidth = Math.max(current.addressWidth, requiredWidth)
+    const wordCount = memoryWordCount(nextAddressWidth)
+    const words = Array.from({ length: wordCount }, (_, index) => parsed.words[index] ?? 0)
+
+    numericInputs.value.memoryAddressWidth = String(nextAddressWidth)
+    numericInputs.value.memoryPreviewOffset = '0'
+
+    updateDevice((device) => ({
+      ...device,
+      state: {
+        ...device.state,
+        binding: resizeSlotBindings(
+          device,
+          memorySlotCount(current.mode, nextAddressWidth, current.dataWidth),
+        ),
+        config: {
+          kind: 'memory',
+          mode: current.mode,
+          address_width: nextAddressWidth,
+          data_width: current.dataWidth,
+        },
+        data: {
+          kind: 'memory',
+          words,
+          source_path: parsed.source_path,
+          preview_offset: 0,
+        },
+      },
+    }))
+  } catch (err) {
+    window.alert(`Failed to load memory image: ${getErrorMessage(err)}`)
+  }
+}
+
+function clearMemoryData() {
+  if (!props.device || props.device.type !== 'memory') return
+  const config = getCanvasMemoryConfig(props.device)
+  const wordCount = memoryWordCount(config?.addressWidth ?? 8)
+  numericInputs.value.memoryPreviewOffset = '0'
+  updateDevice((device) => ({
+    ...device,
+    state: {
+      ...device.state,
+      data: {
+        kind: 'memory',
+        words: Array.from({ length: wordCount }, () => 0),
+        source_path: null,
+        preview_offset: 0,
+      },
+    },
+  }))
 }
 
 async function removeDevice() {
-  if (!props.device) {
-    return
-  }
-
+  if (!props.device) return
   if (
     settingsStore.state.confirmDelete &&
     !(await confirmAction(t('deleteDeviceConfirm', { name: props.device.label }), {
@@ -1059,7 +1103,7 @@ async function removeDevice() {
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-col bg-card/80">
+  <div class="flex h-full min-h-0 flex-col bg-card/85">
     <ScrollArea class="h-full">
       <div v-if="device" class="flex min-h-full flex-col p-5">
         <div class="flex items-start gap-3">
@@ -1079,263 +1123,75 @@ async function removeDevice() {
 
         <div class="mt-4 flex flex-wrap gap-2">
           <Badge variant="secondary">{{ capabilityLabel }}</Badge>
-          <Badge variant="outline">{{ t('levelLabel', { state: stateLabel }) }}</Badge>
-          <Badge v-if="getCanvasDeviceBoundSignal(device)" variant="outline">
-            {{ getCanvasDeviceBoundSignal(device) }}
-          </Badge>
-          <Badge v-else-if="boundSignalCount > 0" variant="outline">
-            {{ t('bindingCount', { count: boundSignalCount }) }}
-          </Badge>
+          <Badge variant="outline">{{ liveLevel ? t('high') : t('low') }}</Badge>
+          <Badge variant="outline">{{ bindingSlots.length }} pins</Badge>
         </div>
 
         <Separator class="my-5" />
 
         <section class="space-y-3">
-          <div>
-            <p class="text-sm font-medium">{{ t('name') }}</p>
-          </div>
-
-          <Input
-            v-model="deviceNameInput"
-            :placeholder="t('name')"
-            @blur="commitDeviceName"
-            @keydown.enter.prevent="commitDeviceName"
-          />
+          <p class="text-sm font-medium">{{ t('name') }}</p>
+          <Input v-model="nameInput" @blur="commitName" @keydown.enter.prevent="commitName" />
         </section>
 
         <Separator class="my-5" />
 
-        <section v-if="supportsDeviceColor" class="space-y-3">
-          <div>
-            <p class="text-sm font-medium">{{ t('color') }}</p>
+        <section
+          v-if="device.type === 'led' || device.type === 'led_bar' || device.type === 'led_matrix'"
+          class="space-y-3"
+        >
+          <p class="text-sm font-medium">{{ t('color') }}</p>
+          <div class="grid grid-cols-3 gap-2">
+            <button
+              v-for="(color, key) in CANVAS_DEVICE_PRESET_COLORS"
+              :key="key"
+              type="button"
+              class="flex items-center gap-2 rounded-md border px-2 py-2 text-xs"
+              :class="
+                normalizeCanvasDeviceColor(colorInput) === color
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border bg-background'
+              "
+              @click="commitColor(color)"
+            >
+              <span
+                class="h-4 w-4 rounded-full border border-black/10"
+                :style="{ backgroundColor: color }"
+              />
+              <span>{{ key }}</span>
+            </button>
           </div>
+        </section>
 
-          <div class="space-y-3">
-            <div class="space-y-2">
-              <label class="text-xs font-medium text-muted-foreground">
-                {{ t('deviceColorPresets') }}
-              </label>
-              <div class="grid grid-cols-3 gap-2">
-                <button
-                  v-for="color in DEVICE_COLOR_OPTIONS"
-                  :key="color"
-                  type="button"
-                  class="group flex items-center gap-2 rounded-xl border px-2 py-2 text-left transition-colors hover:border-primary/40 hover:bg-muted/60"
-                  :class="
-                    normalizeCanvasDeviceColor(deviceColorInput) ===
-                    CANVAS_DEVICE_PRESET_COLORS[color]
-                      ? 'border-primary/50 bg-primary/5'
-                      : 'border-border/70 bg-background/70'
-                  "
-                  @click="applyPresetDeviceColor(color)"
-                >
-                  <span
-                    class="h-4 w-4 shrink-0 rounded-full border border-black/10 shadow-sm"
-                    :style="{ backgroundColor: CANVAS_DEVICE_PRESET_COLORS[color] }"
-                  />
-                  <span class="truncate text-xs font-medium">{{ t(color) }}</span>
-                </button>
-              </div>
-            </div>
+        <Separator
+          v-if="device.type === 'led' || device.type === 'led_bar' || device.type === 'led_matrix'"
+          class="my-5"
+        />
 
-            <div class="space-y-2">
-              <label class="text-xs font-medium text-muted-foreground">
-                {{ t('customColor') }}
-              </label>
-              <div
-                class="flex items-center gap-3 rounded-xl border border-border/70 bg-background/70 px-3 py-2"
+        <section v-if="device.state.binding.kind === 'single'" class="space-y-3">
+          <p class="text-sm font-medium">Signal</p>
+          <Select
+            :model-value="singleBindingValue()"
+            @update:model-value="(value) => commitSingleBinding(String(value))"
+          >
+            <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem :value="UNBOUND_SIGNAL">Unbound</SelectItem>
+              <SelectItem
+                v-for="signal in compatibleSignals"
+                :key="signal.name"
+                :value="signal.name"
               >
-                <input
-                  :value="deviceColorInput"
-                  type="color"
-                  class="h-9 w-12 cursor-pointer rounded-md border border-border bg-transparent p-0"
-                  @input="commitDeviceColor(($event.target as HTMLInputElement).value)"
-                />
-                <div class="min-w-0 flex-1">
-                  <p class="text-xs font-medium text-foreground">{{ t('selectedColor') }}</p>
-                  <p class="truncate text-xs text-muted-foreground">
-                    {{ normalizeCanvasDeviceColor(deviceColorInput) ?? deviceColorInput }}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
+                {{ signal.name }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </section>
 
-        <Separator v-if="supportsDeviceColor" class="my-5" />
-
-        <section v-if="isButtonDevice && buttonConfig" class="space-y-3">
-          <div>
-            <p class="text-sm font-medium">{{ t('activeLevel') }}</p>
-            <p class="mt-1 text-xs leading-5 text-muted-foreground">
-              {{ t('buttonActiveLevelDescription') }}
-            </p>
-          </div>
-
-          <div class="space-y-1">
-            <label class="text-xs font-medium text-muted-foreground">
-              {{ t('pressedSignalLevel') }}
-            </label>
-            <Select :model-value="buttonPolarityInput" @update:model-value="commitButtonPolarity">
-              <SelectTrigger class="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem :value="ACTIVE_HIGH">{{ t('high') }}</SelectItem>
-                <SelectItem :value="ACTIVE_LOW">{{ t('low') }}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </section>
-
-        <Separator v-if="isButtonDevice && buttonConfig" class="my-5" />
-
-        <section v-if="isSegmentDisplayDevice && segmentDisplayConfig" class="space-y-3">
-          <div>
-            <p class="text-sm font-medium">{{ t('digits') }}</p>
-            <p class="mt-1 text-xs leading-5 text-muted-foreground">
-              {{ t('digitsDescription') }}
-            </p>
-          </div>
-
-          <div class="space-y-1">
-            <label class="text-xs font-medium text-muted-foreground" for="segment-digits">
-              {{ t('digitCount') }}
-            </label>
-            <Input
-              id="segment-digits"
-              v-model="segmentDigitsInput"
-              type="number"
-              :min="SEGMENT_DIGITS_MIN"
-              :max="SEGMENT_DIGITS_MAX"
-              step="1"
-              @blur="commitSegmentDigits"
-              @keydown.enter.prevent="commitSegmentDigits"
-            />
-          </div>
-
-          <div class="space-y-1">
-            <label class="text-xs font-medium text-muted-foreground">
-              {{ t('litSignalLevel') }}
-            </label>
-            <Select :model-value="segmentPolarityInput" @update:model-value="commitSegmentPolarity">
-              <SelectTrigger class="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem :value="ACTIVE_HIGH">{{ t('high') }}</SelectItem>
-                <SelectItem :value="ACTIVE_LOW">{{ t('low') }}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </section>
-
-        <Separator v-if="isSegmentDisplayDevice && segmentDisplayConfig" class="my-5" />
-
-        <section v-if="isMatrixDevice && matrixDimensions" class="space-y-3">
-          <div>
-            <p class="text-sm font-medium">{{ t('matrixSize') }}</p>
-            <p class="mt-1 text-xs leading-5 text-muted-foreground">
-              {{ t('matrixSizeDescription') }}
-            </p>
-          </div>
-
-          <div class="grid grid-cols-2 gap-3">
-            <div class="space-y-1">
-              <label class="text-xs font-medium text-muted-foreground" for="matrix-rows">
-                {{ t('rows') }}
-              </label>
-              <Input
-                id="matrix-rows"
-                v-model="matrixRowsInput"
-                type="number"
-                :min="MATRIX_DIMENSION_MIN"
-                :max="MATRIX_DIMENSION_MAX"
-                step="1"
-                @blur="commitMatrixDimensions"
-                @keydown.enter.prevent="commitMatrixDimensions"
-              />
-            </div>
-            <div class="space-y-1">
-              <label class="text-xs font-medium text-muted-foreground" for="matrix-columns">
-                {{ t('columns') }}
-              </label>
-              <Input
-                id="matrix-columns"
-                v-model="matrixColumnsInput"
-                type="number"
-                :min="MATRIX_DIMENSION_MIN"
-                :max="MATRIX_DIMENSION_MAX"
-                step="1"
-                @blur="commitMatrixDimensions"
-                @keydown.enter.prevent="commitMatrixDimensions"
-              />
-            </div>
-          </div>
-        </section>
-
-        <Separator v-if="isMatrixDevice && matrixDimensions" class="my-5" />
-
-        <section v-if="isVgaDisplayDevice && vgaDisplayConfig" class="space-y-3">
-          <div>
-            <p class="text-sm font-medium">{{ t('displayMode') }}</p>
-            <p class="mt-1 text-xs leading-5 text-muted-foreground">
-              {{ t('vgaDisplayDescription') }}
-            </p>
-          </div>
-
-          <div class="grid grid-cols-2 gap-3">
-            <div class="space-y-1">
-              <label class="text-xs font-medium text-muted-foreground">
-                {{ t('resolution') }}
-              </label>
-              <Select :model-value="vgaResolutionInput" @update:model-value="commitVgaResolution">
-                <SelectTrigger class="w-full">
-                  <SelectValue :placeholder="t('resolution')" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem
-                    v-for="option in vgaResolutionOptions"
-                    :key="option.value"
-                    :value="option.value"
-                  >
-                    {{ option.label }}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div class="space-y-1">
-              <label class="text-xs font-medium text-muted-foreground">
-                {{ t('colorMode') }}
-              </label>
-              <Select :model-value="vgaColorModeInput" @update:model-value="commitVgaColorMode">
-                <SelectTrigger class="w-full">
-                  <SelectValue :placeholder="t('colorMode')" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem v-for="mode in VGA_COLOR_MODE_OPTIONS" :key="mode" :value="mode">
-                    {{ vgaColorModeLabel(mode) }}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </section>
-
-        <Separator v-if="isVgaDisplayDevice && vgaDisplayConfig" class="my-5" />
-
-        <section class="space-y-3">
-          <div>
-            <p class="text-sm font-medium">{{ t('portBinding') }}</p>
-            <p class="mt-1 text-xs leading-5 text-muted-foreground">
-              {{ t('portBindingDescription') }}
-            </p>
-          </div>
-
+        <section v-else class="space-y-3">
           <div
-            v-if="isMatrixDevice && matrixDimensions"
-            class="space-y-3 rounded-2xl border border-border/70 bg-muted/20 p-3"
+            v-if="device.type === 'led_matrix'"
+            class="space-y-3 rounded-md border border-border/70 bg-muted/20 p-3"
           >
             <div>
               <p class="text-sm font-medium">{{ t('quickBind') }}</p>
@@ -1343,16 +1199,16 @@ async function removeDevice() {
                 {{ t('quickBindDescription') }}
               </p>
             </div>
-
             <div class="grid grid-cols-2 gap-3">
-              <div class="space-y-1">
-                <label class="text-xs font-medium text-muted-foreground">
-                  {{ t('rowBus') }}
-                </label>
-                <Select v-model="matrixRowBusInput">
-                  <SelectTrigger class="w-full">
-                    <SelectValue :placeholder="t('chooseBus')" />
-                  </SelectTrigger>
+              <div class="space-y-1.5">
+                <p class="text-xs font-medium text-muted-foreground">{{ t('rowBus') }}</p>
+                <Select
+                  :model-value="matrixRowBusInput"
+                  @update:model-value="(value) => (matrixRowBusInput = String(value))"
+                >
+                  <SelectTrigger class="w-full"
+                    ><SelectValue :placeholder="t('chooseBus')"
+                  /></SelectTrigger>
                   <SelectContent>
                     <SelectItem
                       v-for="bus in matrixRowBusOptions"
@@ -1364,18 +1220,19 @@ async function removeDevice() {
                   </SelectContent>
                 </Select>
               </div>
-              <div class="space-y-1">
-                <label class="text-xs font-medium text-muted-foreground">
-                  {{ t('columnBus') }}
-                </label>
-                <Select v-model="matrixColumnBusInput">
-                  <SelectTrigger class="w-full">
-                    <SelectValue :placeholder="t('chooseBus')" />
-                  </SelectTrigger>
+              <div class="space-y-1.5">
+                <p class="text-xs font-medium text-muted-foreground">{{ t('columnBus') }}</p>
+                <Select
+                  :model-value="matrixColumnBusInput"
+                  @update:model-value="(value) => (matrixColumnBusInput = String(value))"
+                >
+                  <SelectTrigger class="w-full"
+                    ><SelectValue :placeholder="t('chooseBus')"
+                  /></SelectTrigger>
                   <SelectContent>
                     <SelectItem
                       v-for="bus in matrixColumnBusOptions"
-                      :key="`matrix-col-${bus.baseName}`"
+                      :key="`matrix-column-${bus.baseName}`"
                       :value="bus.baseName"
                     >
                       <span class="font-mono text-xs">{{ bus.label }}</span>
@@ -1384,16 +1241,14 @@ async function removeDevice() {
                 </Select>
               </div>
             </div>
-
             <Button
-              variant="secondary"
+              variant="outline"
               class="w-full"
               :disabled="!matrixRowBusInput || !matrixColumnBusInput"
               @click="applyMatrixBusBindings"
             >
               {{ t('applyBusBindings') }}
             </Button>
-
             <p
               v-if="matrixRowBusOptions.length === 0 || matrixColumnBusOptions.length === 0"
               class="text-xs leading-5 text-muted-foreground"
@@ -1403,8 +1258,8 @@ async function removeDevice() {
           </div>
 
           <div
-            v-if="isSegmentDisplayDevice && segmentDisplayConfig"
-            class="space-y-3 rounded-2xl border border-border/70 bg-muted/20 p-3"
+            v-if="device.type === 'segment_display'"
+            class="space-y-3 rounded-md border border-border/70 bg-muted/20 p-3"
           >
             <div>
               <p class="text-sm font-medium">{{ t('quickBind') }}</p>
@@ -1412,16 +1267,16 @@ async function removeDevice() {
                 {{ t('quickBindDescription') }}
               </p>
             </div>
-
             <div class="space-y-3">
-              <div class="space-y-1">
-                <label class="text-xs font-medium text-muted-foreground">
-                  {{ t('segmentBus') }}
-                </label>
-                <Select v-model="segmentBusInput">
-                  <SelectTrigger class="w-full">
-                    <SelectValue :placeholder="t('chooseBus')" />
-                  </SelectTrigger>
+              <div class="space-y-1.5">
+                <p class="text-xs font-medium text-muted-foreground">{{ t('segmentBus') }}</p>
+                <Select
+                  :model-value="segmentBusInput"
+                  @update:model-value="(value) => (segmentBusInput = String(value))"
+                >
+                  <SelectTrigger class="w-full"
+                    ><SelectValue :placeholder="t('chooseBus')"
+                  /></SelectTrigger>
                   <SelectContent>
                     <SelectItem
                       v-for="bus in segmentBusOptions"
@@ -1433,15 +1288,15 @@ async function removeDevice() {
                   </SelectContent>
                 </Select>
               </div>
-
-              <div v-if="segmentDisplayConfig.digits > 1" class="space-y-1">
-                <label class="text-xs font-medium text-muted-foreground">
-                  {{ t('digitSelectBus') }}
-                </label>
-                <Select v-model="segmentDigitBusInput">
-                  <SelectTrigger class="w-full">
-                    <SelectValue :placeholder="t('chooseBus')" />
-                  </SelectTrigger>
+              <div v-if="(segmentDisplayConfig?.digits ?? 1) > 1" class="space-y-1.5">
+                <p class="text-xs font-medium text-muted-foreground">{{ t('digitSelectBus') }}</p>
+                <Select
+                  :model-value="segmentDigitBusInput"
+                  @update:model-value="(value) => (segmentDigitBusInput = String(value))"
+                >
+                  <SelectTrigger class="w-full"
+                    ><SelectValue :placeholder="t('chooseBus')"
+                  /></SelectTrigger>
                   <SelectContent>
                     <SelectItem
                       v-for="bus in segmentDigitBusOptions"
@@ -1454,22 +1309,21 @@ async function removeDevice() {
                 </Select>
               </div>
             </div>
-
             <Button
-              variant="secondary"
+              variant="outline"
               class="w-full"
               :disabled="
-                !segmentBusInput || (segmentDisplayConfig.digits > 1 && !segmentDigitBusInput)
+                !segmentBusInput ||
+                ((segmentDisplayConfig?.digits ?? 1) > 1 && !segmentDigitBusInput)
               "
               @click="applySegmentBusBindings"
             >
               {{ t('applyBusBindings') }}
             </Button>
-
             <p
               v-if="
                 segmentBusOptions.length === 0 ||
-                (segmentDisplayConfig.digits > 1 && segmentDigitBusOptions.length === 0)
+                ((segmentDisplayConfig?.digits ?? 1) > 1 && segmentDigitBusOptions.length === 0)
               "
               class="text-xs leading-5 text-muted-foreground"
             >
@@ -1477,332 +1331,371 @@ async function removeDevice() {
             </p>
           </div>
 
-          <div
-            v-if="isVgaDisplayDevice && vgaDisplayConfig"
-            class="space-y-3 rounded-2xl border border-border/70 bg-muted/20 p-3"
-          >
-            <div>
-              <p class="text-sm font-medium">{{ t('quickBind') }}</p>
-              <p class="mt-1 text-xs leading-5 text-muted-foreground">
-                {{ t('quickBindDescription') }}
-              </p>
-            </div>
-
-            <div class="grid grid-cols-2 gap-3">
-              <div class="space-y-1">
-                <label class="text-xs font-medium text-muted-foreground">
-                  {{ t('hSync') }}
-                </label>
-                <Select v-model="vgaHSyncInput">
-                  <SelectTrigger class="w-full">
-                    <SelectValue :placeholder="t('chooseTopLevelPort')" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem
-                      v-for="signal in compatibleSignals"
-                      :key="`vga-hsync-${signal.name}`"
-                      :value="signal.name"
-                    >
-                      <span class="font-mono text-xs">{{ signal.bindingLabel }}</span>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div class="space-y-1">
-                <label class="text-xs font-medium text-muted-foreground">
-                  {{ t('vSync') }}
-                </label>
-                <Select v-model="vgaVSyncInput">
-                  <SelectTrigger class="w-full">
-                    <SelectValue :placeholder="t('chooseTopLevelPort')" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem
-                      v-for="signal in compatibleSignals"
-                      :key="`vga-vsync-${signal.name}`"
-                      :value="signal.name"
-                    >
-                      <span class="font-mono text-xs">{{ signal.bindingLabel }}</span>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div v-if="vgaBitCounts.redBits > 0" class="space-y-1">
-                <label class="text-xs font-medium text-muted-foreground">
-                  {{ t('redBus') }}
-                </label>
-                <Select v-model="vgaRedBusInput">
-                  <SelectTrigger class="w-full">
-                    <SelectValue :placeholder="t('chooseBus')" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem
-                      v-for="bus in vgaRedBusOptions"
-                      :key="`vga-red-${bus.baseName}`"
-                      :value="bus.baseName"
-                    >
-                      <span class="font-mono text-xs">{{ bus.label }}</span>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div v-if="vgaBitCounts.greenBits > 0" class="space-y-1">
-                <label class="text-xs font-medium text-muted-foreground">
-                  {{ t('greenBus') }}
-                </label>
-                <Select v-model="vgaGreenBusInput">
-                  <SelectTrigger class="w-full">
-                    <SelectValue :placeholder="t('chooseBus')" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem
-                      v-for="bus in vgaGreenBusOptions"
-                      :key="`vga-green-${bus.baseName}`"
-                      :value="bus.baseName"
-                    >
-                      <span class="font-mono text-xs">{{ bus.label }}</span>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div v-if="vgaBitCounts.blueBits > 0" class="space-y-1">
-                <label class="text-xs font-medium text-muted-foreground">
-                  {{ t('blueBus') }}
-                </label>
-                <Select v-model="vgaBlueBusInput">
-                  <SelectTrigger class="w-full">
-                    <SelectValue :placeholder="t('chooseBus')" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem
-                      v-for="bus in vgaBlueBusOptions"
-                      :key="`vga-blue-${bus.baseName}`"
-                      :value="bus.baseName"
-                    >
-                      <span class="font-mono text-xs">{{ bus.label }}</span>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <Button
-              variant="secondary"
-              class="w-full"
-              :disabled="
-                !vgaHSyncInput ||
-                !vgaVSyncInput ||
-                (vgaBitCounts.redBits > 0 && !vgaRedBusInput) ||
-                (vgaBitCounts.greenBits > 0 && !vgaGreenBusInput) ||
-                (vgaBitCounts.blueBits > 0 && !vgaBlueBusInput)
-              "
-              @click="applyVgaBusBindings"
-            >
-              {{ t('applyBusBindings') }}
-            </Button>
-
-            <p
-              v-if="
-                (vgaBitCounts.redBits > 0 && vgaRedBusOptions.length === 0) ||
-                (vgaBitCounts.greenBits > 0 && vgaGreenBusOptions.length === 0) ||
-                (vgaBitCounts.blueBits > 0 && vgaBlueBusOptions.length === 0)
-              "
-              class="text-xs leading-5 text-muted-foreground"
-            >
-              {{ t('noMatchingBuses') }}
-            </p>
-          </div>
-
-          <div v-if="hasSlotBindings" class="space-y-3">
-            <div v-for="(slot, slotIndex) in bindingSlots" :key="slot.key" class="space-y-1">
-              <div class="flex items-center justify-between text-xs text-muted-foreground">
-                <span>{{ slot.label }}</span>
-                <span class="font-mono">{{
-                  slotBindingValue(slotIndex) === UNBOUND_SIGNAL
-                    ? t('unbound')
-                    : slotBindingValue(slotIndex)
-                }}</span>
-              </div>
+          <p class="text-sm font-medium">Pins</p>
+          <div class="grid gap-3">
+            <div v-for="(slot, index) in bindingSlots" :key="slot.key" class="grid gap-1.5">
+              <p class="text-xs font-medium text-muted-foreground">{{ slot.label }}</p>
               <Select
-                :model-value="slotBindingValue(slotIndex)"
-                @update:model-value="(value) => handleSlotBindingUpdate(slotIndex, value)"
+                :model-value="slotBindingValue(index)"
+                @update:model-value="(value) => commitSlotBinding(index, String(value))"
               >
-                <SelectTrigger class="w-full">
-                  <SelectValue :placeholder="t('chooseSignalFor', { label: slot.label })" />
-                </SelectTrigger>
+                <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem :value="UNBOUND_SIGNAL">{{ t('noBinding') }}</SelectItem>
+                  <SelectItem :value="UNBOUND_SIGNAL">Unbound</SelectItem>
                   <SelectItem
                     v-for="signal in compatibleSignals"
-                    :key="`${slot.key}-${signal.name}`"
+                    :key="signal.name"
                     :value="signal.name"
                   >
-                    <div class="flex w-full items-center gap-2">
-                      <span class="font-mono text-xs">{{ signal.bindingLabel }}</span>
-                      <span
-                        class="ml-auto text-[11px] uppercase tracking-wide text-muted-foreground"
-                      >
-                        {{ formatSignalDirection(signal.direction) }}
-                      </span>
-                    </div>
+                    {{ signal.name }}
                   </SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
-
-          <Select v-else :model-value="bindingValue" @update:model-value="handleBindingUpdate">
-            <SelectTrigger class="w-full">
-              <SelectValue :placeholder="t('chooseTopLevelPort')" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem :value="UNBOUND_SIGNAL">{{ t('noBinding') }}</SelectItem>
-              <SelectItem
-                v-for="signal in compatibleSignals"
-                :key="signal.name"
-                :value="signal.name"
-              >
-                <div class="flex w-full items-center gap-2">
-                  <span class="font-mono text-xs">{{ signal.bindingLabel }}</span>
-                  <span class="ml-auto text-[11px] uppercase tracking-wide text-muted-foreground">
-                    {{ formatSignalDirection(signal.direction) }}
-                  </span>
-                </div>
-              </SelectItem>
-            </SelectContent>
-          </Select>
-
-          <p v-if="compatibleSignals.length === 0" class="text-xs leading-5 text-amber-600">
-            {{ t('noCompatiblePorts') }}
-          </p>
         </section>
 
         <Separator class="my-5" />
 
-        <section class="space-y-3">
-          <div>
-            <p class="text-sm font-medium">{{ t('quickFacts') }}</p>
-          </div>
+        <section v-if="device.type === 'button'" class="space-y-3">
+          <p class="text-sm font-medium">Active level</p>
+          <Select
+            :model-value="(getCanvasButtonConfig(device)?.activeLow ?? false) ? 'low' : 'high'"
+            @update:model-value="(value) => commitButtonPolarity(String(value))"
+          >
+            <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="high">Active high</SelectItem>
+              <SelectItem value="low">Active low</SelectItem>
+            </SelectContent>
+          </Select>
+        </section>
 
-          <div class="grid grid-cols-2 gap-3 text-sm">
-            <div class="rounded-2xl border border-border bg-background p-3">
-              <p class="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
-                {{ t('position') }}
-              </p>
-              <p class="mt-2 font-medium">{{ Math.round(device.x) }}, {{ Math.round(device.y) }}</p>
+        <section v-if="device.type === 'segment_display'" class="space-y-3">
+          <p class="text-sm font-medium">Segment display</p>
+          <Input
+            v-model="numericInputs.segmentDigits"
+            type="number"
+            min="1"
+            max="16"
+            @blur="commitSegmentConfig"
+            @keydown.enter.prevent="commitSegmentConfig"
+          />
+          <Select
+            :model-value="
+              (getCanvasSegmentDisplayConfig(device)?.activeLow ?? false) ? 'low' : 'high'
+            "
+            @update:model-value="(value) => commitSegmentPolarity(String(value))"
+          >
+            <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="high">Active high</SelectItem>
+              <SelectItem value="low">Active low</SelectItem>
+            </SelectContent>
+          </Select>
+        </section>
+
+        <section v-if="device.type === 'led_matrix'" class="space-y-3">
+          <p class="text-sm font-medium">LED matrix</p>
+          <div class="grid grid-cols-2 gap-3">
+            <Input
+              v-model="numericInputs.ledMatrixRows"
+              type="number"
+              min="1"
+              max="64"
+              @blur="commitLedMatrixConfig"
+              @keydown.enter.prevent="commitLedMatrixConfig"
+            />
+            <Input
+              v-model="numericInputs.ledMatrixColumns"
+              type="number"
+              min="1"
+              max="64"
+              @blur="commitLedMatrixConfig"
+              @keydown.enter.prevent="commitLedMatrixConfig"
+            />
+          </div>
+        </section>
+
+        <section v-if="device.type === 'dip_switch_bank'" class="space-y-3">
+          <p class="text-sm font-medium">DIP switch bank</p>
+          <Input
+            v-model="numericInputs.dipWidth"
+            type="number"
+            min="1"
+            max="32"
+            @blur="commitDipWidth"
+            @keydown.enter.prevent="commitDipWidth"
+          />
+          <p class="text-xs text-muted-foreground">
+            Current bits:
+            {{
+              getCanvasBitsetData(device, getCanvasDipSwitchBankConfig(device)?.width ?? 8)
+                .map((bit) => (bit ? 1 : 0))
+                .join('')
+            }}
+          </p>
+        </section>
+
+        <section v-if="device.type === 'led_bar'" class="space-y-3">
+          <p class="text-sm font-medium">LED bar</p>
+          <Input
+            v-model="numericInputs.ledBarWidth"
+            type="number"
+            min="1"
+            max="32"
+            @blur="commitLedBarWidth"
+            @keydown.enter.prevent="commitLedBarWidth"
+          />
+          <Select
+            :model-value="(getCanvasLedBarConfig(device)?.activeLow ?? false) ? 'low' : 'high'"
+            @update:model-value="(value) => commitLedBarPolarity(String(value))"
+          >
+            <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="high">Active high</SelectItem>
+              <SelectItem value="low">Active low</SelectItem>
+            </SelectContent>
+          </Select>
+        </section>
+
+        <section v-if="device.type === 'quadrature_encoder'" class="space-y-3">
+          <p class="text-sm font-medium">Quadrature encoder</p>
+          <Select
+            :model-value="
+              (getCanvasQuadratureEncoderConfig(device)?.hasButton ?? true) ? 'yes' : 'no'
+            "
+            @update:model-value="(value) => commitQuadratureHasButton(String(value))"
+          >
+            <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="yes">With push button</SelectItem>
+              <SelectItem value="no">A/B only</SelectItem>
+            </SelectContent>
+          </Select>
+        </section>
+
+        <section v-if="device.type === 'matrix_keypad'" class="space-y-3">
+          <p class="text-sm font-medium">Matrix keypad</p>
+          <div class="grid grid-cols-2 gap-3">
+            <Input
+              v-model="numericInputs.keypadRows"
+              type="number"
+              min="1"
+              max="8"
+              @blur="commitKeypadConfig"
+              @keydown.enter.prevent="commitKeypadConfig"
+            />
+            <Input
+              v-model="numericInputs.keypadColumns"
+              type="number"
+              min="1"
+              max="8"
+              @blur="commitKeypadConfig"
+              @keydown.enter.prevent="commitKeypadConfig"
+            />
+          </div>
+          <Select
+            :model-value="(getCanvasMatrixKeypadConfig(device)?.activeLow ?? true) ? 'low' : 'high'"
+            @update:model-value="(value) => commitKeypadPolarity(String(value))"
+          >
+            <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="low">Active low scan</SelectItem>
+              <SelectItem value="high">Active high scan</SelectItem>
+            </SelectContent>
+          </Select>
+        </section>
+
+        <section v-if="device.type === 'vga_display'" class="space-y-3">
+          <p class="text-sm font-medium">VGA display</p>
+          <Select
+            :model-value="`${getCanvasVgaDisplayConfig(device)?.columns ?? 320}x${getCanvasVgaDisplayConfig(device)?.rows ?? 240}`"
+            @update:model-value="(value) => commitVgaResolution(String(value))"
+          >
+            <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem
+                v-for="preset in VGA_DISPLAY_RESOLUTION_PRESETS"
+                :key="preset.key"
+                :value="`${preset.columns}x${preset.rows}`"
+              >
+                {{ preset.columns }} × {{ preset.rows }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <Select
+            :model-value="getCanvasVgaDisplayConfig(device)?.colorMode ?? 'rgb332'"
+            @update:model-value="(value) => commitVgaColorMode(String(value))"
+          >
+            <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="mono">Mono</SelectItem>
+              <SelectItem value="rgb111">RGB111</SelectItem>
+              <SelectItem value="rgb332">RGB332</SelectItem>
+              <SelectItem value="rgb444">RGB444</SelectItem>
+              <SelectItem value="rgb565">RGB565</SelectItem>
+              <SelectItem value="rgb888">RGB888</SelectItem>
+            </SelectContent>
+          </Select>
+        </section>
+
+        <section v-if="device.type === 'uart_terminal'" class="space-y-3">
+          <p class="text-sm font-medium">UART terminal</p>
+          <Input
+            v-model="numericInputs.uartCycles"
+            type="number"
+            min="1"
+            max="4096"
+            @blur="commitUartCycles"
+            @keydown.enter.prevent="commitUartCycles"
+          />
+        </section>
+
+        <section v-if="device.type === 'hd44780_lcd'" class="space-y-3">
+          <p class="text-sm font-medium">HD44780 LCD</p>
+          <div class="grid grid-cols-2 gap-3">
+            <Input
+              v-model="numericInputs.lcdColumns"
+              type="number"
+              min="8"
+              max="40"
+              @blur="commitHd44780Size"
+              @keydown.enter.prevent="commitHd44780Size"
+            />
+            <Input
+              v-model="numericInputs.lcdRows"
+              type="number"
+              min="1"
+              max="4"
+              @blur="commitHd44780Size"
+              @keydown.enter.prevent="commitHd44780Size"
+            />
+          </div>
+          <Select
+            :model-value="getCanvasHd44780LcdConfig(device)?.busMode ?? '4bit'"
+            @update:model-value="(value) => commitHd44780BusMode(String(value))"
+          >
+            <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="4bit">4-bit bus</SelectItem>
+              <SelectItem value="8bit">8-bit bus</SelectItem>
+            </SelectContent>
+          </Select>
+        </section>
+
+        <section v-if="device.type === 'memory'" class="space-y-3">
+          <p class="text-sm font-medium">ROM / RAM</p>
+          <Select
+            :model-value="getCanvasMemoryConfig(device)?.mode ?? 'ram'"
+            @update:model-value="(value) => commitMemoryMode(String(value))"
+          >
+            <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="rom">ROM</SelectItem>
+              <SelectItem value="ram">RAM</SelectItem>
+            </SelectContent>
+          </Select>
+          <div class="grid grid-cols-2 gap-3">
+            <Input
+              v-model="numericInputs.memoryAddressWidth"
+              type="number"
+              min="1"
+              :max="CANVAS_MEMORY_MAX_ADDRESS_WIDTH"
+              @blur="commitMemoryGeometry"
+              @keydown.enter.prevent="commitMemoryGeometry"
+            />
+            <Input
+              v-model="numericInputs.memoryDataWidth"
+              type="number"
+              min="1"
+              max="16"
+              @blur="commitMemoryGeometry"
+              @keydown.enter.prevent="commitMemoryGeometry"
+            />
+          </div>
+          <div class="flex gap-2">
+            <Button variant="outline" class="flex-1" @click="loadMemoryImage">Load file</Button>
+            <Button variant="outline" class="flex-1" @click="clearMemoryData">Clear data</Button>
+          </div>
+          <div
+            class="rounded-md border border-border/70 bg-background/70 px-3 py-2 text-xs text-muted-foreground"
+          >
+            <div class="font-medium text-foreground">{{ t('memoryImageFormatsTitle') }}</div>
+            <div class="mt-1">{{ t('memoryImageFormatsVivado') }}</div>
+            <div>{{ t('memoryImageFormatsQuartus') }}</div>
+            <div>{{ t('memoryImageFormatsBinary') }}</div>
+            <div>{{ t('memoryImageFormatsPlainText') }}</div>
+          </div>
+          <div
+            class="rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs text-muted-foreground"
+          >
+            <div>{{ getCanvasMemoryWordsData(device).length }} words allocated</div>
+            <div class="truncate">
+              Source:
+              <span class="text-foreground">{{
+                memorySourceLabel ?? 'inline / zero-initialized'
+              }}</span>
             </div>
-            <div class="rounded-2xl border border-border bg-background p-3">
-              <p class="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
-                {{ t('signal') }}
+          </div>
+          <div class="space-y-2 rounded-md border border-border/70 bg-background/70 p-3">
+            <div class="flex items-center justify-between gap-3">
+              <p class="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                Preview window
               </p>
-              <p class="mt-2 font-medium">
-                {{
-                  boundSignalCount > 0 ? t('boundCount', { count: boundSignalCount }) : t('unbound')
-                }}
-              </p>
+              <Input
+                v-model="numericInputs.memoryPreviewOffset"
+                type="number"
+                min="0"
+                class="h-8 w-28 font-mono"
+                @blur="commitMemoryPreviewOffset"
+                @keydown.enter.prevent="commitMemoryPreviewOffset"
+              />
             </div>
-            <div
-              v-if="isSegmentDisplayDevice && segmentDisplayConfig"
-              class="rounded-2xl border border-border bg-background p-3"
-            >
-              <p class="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
-                {{ t('digits') }}
-              </p>
-              <p class="mt-2 font-medium">
-                {{ segmentDisplayConfig.digits }}
-              </p>
-            </div>
-            <div
-              v-if="isMatrixDevice && matrixDimensions"
-              class="rounded-2xl border border-border bg-background p-3"
-            >
-              <p class="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
-                {{ t('matrixLabel') }}
-              </p>
-              <p class="mt-2 font-medium">
-                {{ matrixDimensions.columns }} x {{ matrixDimensions.rows }}
-              </p>
-            </div>
-            <div
-              v-if="isVgaDisplayDevice && vgaDisplayConfig"
-              class="rounded-2xl border border-border bg-background p-3"
-            >
-              <p class="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
-                {{ t('resolution') }}
-              </p>
-              <p class="mt-2 font-medium">
-                {{ vgaDisplayConfig.columns }} × {{ vgaDisplayConfig.rows }}
-              </p>
-            </div>
-            <div
-              v-if="isVgaDisplayDevice && vgaDisplayConfig"
-              class="rounded-2xl border border-border bg-background p-3"
-            >
-              <p class="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
-                {{ t('colorMode') }}
-              </p>
-              <p class="mt-2 font-medium">
-                {{ vgaColorModeLabel(vgaDisplayConfig.colorMode) }}
-              </p>
+            <div class="grid max-h-72 gap-2 overflow-auto">
+              <label
+                v-for="row in memoryPreviewRows"
+                :key="row.index"
+                class="flex items-center gap-3 rounded border border-border/70 bg-muted/20 px-3 py-2"
+              >
+                <span class="w-16 shrink-0 font-mono text-xs text-muted-foreground">
+                  {{
+                    formatMemoryAddress(row.index, getCanvasMemoryConfig(device)?.addressWidth ?? 8)
+                  }}
+                </span>
+                <Input
+                  class="h-8 min-w-0 flex-1 font-mono"
+                  :value="
+                    formatMemoryWord(row.value, getCanvasMemoryConfig(device)?.dataWidth ?? 8)
+                  "
+                  @change="
+                    commitMemoryPreviewWord(row.index, ($event.target as HTMLInputElement).value)
+                  "
+                />
+              </label>
             </div>
           </div>
         </section>
 
-        <div class="mt-auto pt-6">
-          <div class="rounded-2xl border border-border bg-muted/40 p-4">
-            <p class="flex items-center gap-2 text-sm font-medium">
-              <CheckCircle2 class="h-4 w-4 text-emerald-600" />
-              {{ t('workbenchActions') }}
-            </p>
-            <p class="mt-2 text-xs leading-5 text-muted-foreground">
-              {{ t('workbenchActionsDescription') }}
-            </p>
-          </div>
+        <Separator class="my-5" />
 
-          <div class="mt-4 flex gap-2">
-            <Button
-              variant="outline"
-              class="flex-1 gap-2"
-              :disabled="boundSignalCount === 0"
-              @click="clearBinding"
-            >
-              <Unplug class="h-4 w-4" />
-              {{ t('clearBinding') }}
-            </Button>
-            <Button variant="destructive" class="gap-2" @click="removeDevice">
-              <Trash2 class="h-4 w-4" />
-              {{ t('remove') }}
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      <div v-else class="flex min-h-full flex-col justify-between p-5">
-        <div>
-          <div
-            class="grid h-12 w-12 place-items-center rounded-2xl border border-dashed border-border bg-muted/30"
+        <div class="flex gap-2">
+          <Button
+            variant="outline"
+            class="flex-1"
+            @click="
+              device.state.binding.kind === 'single'
+                ? commitSingleBinding(UNBOUND_SIGNAL)
+                : bindingSlots.forEach((_, index) => commitSlotBinding(index, UNBOUND_SIGNAL))
+            "
           >
-            <Link2 class="h-5 w-5 text-muted-foreground" />
-          </div>
-          <h3 class="mt-4 text-lg font-semibold">{{ t('deviceInspector') }}</h3>
-          <p class="mt-2 text-sm leading-6 text-muted-foreground">
-            {{ t('deviceInspectorDescription') }}
-          </p>
-        </div>
-
-        <div class="rounded-2xl border border-border bg-muted/40 p-4">
-          <p class="text-xs uppercase tracking-[0.24em] text-muted-foreground">
-            {{ t('howItWorks') }}
-          </p>
-          <div class="mt-3 space-y-2 text-sm text-foreground/90">
-            <p>{{ t('howItWorksStep1') }}</p>
-            <p>{{ t('howItWorksStep2') }}</p>
-            <p>{{ t('howItWorksStep3') }}</p>
-          </div>
+            <Unplug class="mr-2 h-4 w-4" />
+            {{ t('clearBindings') }}
+          </Button>
+          <Button variant="destructive" class="flex-1" @click="removeDevice">
+            <Trash2 class="mr-2 h-4 w-4" />
+            {{ t('delete') }}
+          </Button>
         </div>
       </div>
     </ScrollArea>

@@ -21,6 +21,7 @@ mod canvas;
 mod input;
 mod output;
 mod registry;
+mod shared;
 mod stream;
 mod telemetry;
 
@@ -42,8 +43,8 @@ const DATA_DEFAULT_WORDS_PER_CYCLE: u16 = 4;
 const DATA_DEFAULT_TARGET_HZ: f64 = 1.0;
 const DATA_DEFAULT_MIN_BATCH_CYCLES: u16 = 128;
 const DATA_DEFAULT_MAX_WAIT_US: u32 = 2_000;
-const DATA_DEFAULT_CLOCK_HIGH_DELAY: u16 = 11;
-const DATA_DEFAULT_CLOCK_LOW_DELAY: u16 = 11;
+const DATA_DEFAULT_CLOCK_HIGH_DELAY: u16 = 4;
+const DATA_DEFAULT_CLOCK_LOW_DELAY: u16 = 4;
 const DATA_RATE_WINDOW: Duration = Duration::from_millis(1000);
 
 struct HardwareDataStreamSession {

@@ -34,6 +34,26 @@ fn quote_test_yosys_path(path: &Path) -> String {
 }
 
 fn prepare_test_synthesized_edif(workdir: &Path) -> Result<PathBuf, String> {
+    prepare_test_synthesized_edif_with_source(
+        workdir,
+        [
+            "module top(",
+            "  input wire sw,",
+            "  output wire led",
+            ");",
+            "  assign led = sw;",
+            "endmodule",
+            "",
+        ]
+        .join("\n")
+        .as_str(),
+    )
+}
+
+fn prepare_test_synthesized_edif_with_source(
+    workdir: &Path,
+    top_source: &str,
+) -> Result<PathBuf, String> {
     let yosys_bin = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join(TEST_BUNDLED_YOSYS_DIR)
         .join("bin")
@@ -57,20 +77,7 @@ fn prepare_test_synthesized_edif(workdir: &Path) -> Result<PathBuf, String> {
     }
 
     let top_path = workdir.join("top.v");
-    fs::write(
-        &top_path,
-        [
-            "module top(",
-            "  input wire sw,",
-            "  output wire led",
-            ");",
-            "  assign led = sw;",
-            "endmodule",
-            "",
-        ]
-        .join("\n"),
-    )
-    .map_err(|err| err.to_string())?;
+    fs::write(&top_path, top_source).map_err(|err| err.to_string())?;
 
     let edif_path = workdir.join("top_syn.edf");
     let script_path = workdir.join("prep.ys");
@@ -93,6 +100,16 @@ opt\n\
 wreduce\n\
 clean\n\
 dffinit -ff DFFNHQ Q INIT -ff DFFHQ Q INIT -ff EDFFHQ Q INIT -ff DFFRHQ Q INIT -ff DFFSHQ Q INIT -ff DFFNRHQ Q INIT -ff DFFNSHQ Q INIT\n\
+abc -lut 4\n\
+opt\n\
+wreduce\n\
+clean\n\
+maccmap -unmap\n\
+techmap\n\
+simplemap\n\
+opt\n\
+wreduce\n\
+clean\n\
 abc -lut 4\n\
 opt\n\
 wreduce\n\
@@ -369,6 +386,144 @@ fn implementation_smoke_test_runs_with_in_process_rust_fde_when_yosys_is_availab
         .map(Path::new)
         .is_some_and(Path::is_file));
     assert!(!report.timing_report.is_empty());
+
+    let _ = fs::remove_dir_all(&workdir);
+}
+
+#[test]
+fn implementation_smoke_test_runs_with_division_logic_lowered_by_bundled_yosys() {
+    let resources = test_resource_paths();
+    if !resources.dc_cell.is_file()
+        || !resources.pack_cell.is_file()
+        || !resources.pack_dcp_lib.is_file()
+        || !resources.pack_config.is_file()
+        || !resources.arch.is_file()
+        || !resources.delay.is_file()
+        || !resources.cil.is_file()
+    {
+        return;
+    }
+
+    let generated_at_ms = now_millis().unwrap();
+    let workdir = resolve_workdir(
+        &ImplementationRequestV1 {
+            op_id: "impl-div-smoke".to_string(),
+            project_name: "div-smoke".to_string(),
+            project_dir: None,
+            top_module: "top".to_string(),
+            target_device_id: "FDP3P7".to_string(),
+            constraint_xml: [
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+                "<design name=\"top\">",
+                "  <port name=\"clk\" position=\"P77\"/>",
+                "  <port name=\"led\" position=\"P7\"/>",
+                "</design>",
+                "",
+            ]
+            .join("\n"),
+            place_mode: ImplementationPlaceModeV1::TimingDriven,
+            files: vec![SynthesisSourceFileV1 {
+                path: "top.v".to_string(),
+                content: [
+                    "module top(",
+                    "  input wire clk,",
+                    "  output wire led",
+                    ");",
+                    "  reg [3:0] counter = 4'd0;",
+                    "  wire [3:0] quotient = counter / 4'd3;",
+                    "  always @(posedge clk) begin",
+                    "    counter <= counter + 4'd1;",
+                    "  end",
+                    "  assign led = ^quotient;",
+                    "endmodule",
+                    "",
+                ]
+                .join("\n"),
+            }],
+            synthesized_edif_path: None,
+        },
+        generated_at_ms,
+    )
+    .unwrap();
+    let synthesized_edif_path = match prepare_test_synthesized_edif_with_source(
+        &workdir,
+        [
+            "module top(",
+            "  input wire clk,",
+            "  output wire led",
+            ");",
+            "  reg [3:0] counter = 4'd0;",
+            "  wire [3:0] quotient = counter / 4'd3;",
+            "  always @(posedge clk) begin",
+            "    counter <= counter + 4'd1;",
+            "  end",
+            "  assign led = ^quotient;",
+            "endmodule",
+            "",
+        ]
+        .join("\n")
+        .as_str(),
+    ) {
+        Ok(path) => path,
+        Err(_) => return,
+    };
+
+    let request = ImplementationRequestV1 {
+        op_id: "impl-div-smoke".to_string(),
+        project_name: "div-smoke".to_string(),
+        project_dir: None,
+        top_module: "top".to_string(),
+        target_device_id: "FDP3P7".to_string(),
+        constraint_xml: [
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+            "<design name=\"top\">",
+            "  <port name=\"clk\" position=\"P77\"/>",
+            "  <port name=\"led\" position=\"P7\"/>",
+            "</design>",
+            "",
+        ]
+        .join("\n"),
+        place_mode: ImplementationPlaceModeV1::TimingDriven,
+        files: vec![SynthesisSourceFileV1 {
+            path: "top.v".to_string(),
+            content: [
+                "module top(",
+                "  input wire clk,",
+                "  output wire led",
+                ");",
+                "  reg [3:0] counter = 4'd0;",
+                "  wire [3:0] quotient = counter / 4'd3;",
+                "  always @(posedge clk) begin",
+                "    counter <= counter + 4'd1;",
+                "  end",
+                "  assign led = ^quotient;",
+                "endmodule",
+                "",
+            ]
+            .join("\n"),
+        }],
+        synthesized_edif_path: Some(synthesized_edif_path.to_string_lossy().to_string()),
+    };
+
+    let report = run_fde_implementation_in_workdir(
+        &resources,
+        &workdir,
+        &request,
+        generated_at_ms,
+        Instant::now(),
+        |_, _| {},
+    )
+    .unwrap();
+
+    assert!(report.success, "{}", report.log);
+    assert!(report.log.contains(">>> starting route"), "{}", report.log);
+    assert!(report.log.contains("stage: bitgen"), "{}", report.log);
+    assert!(report
+        .artifacts
+        .bitstream_path
+        .as_deref()
+        .map(Path::new)
+        .is_some_and(Path::is_file));
 
     let _ = fs::remove_dir_all(&workdir);
 }

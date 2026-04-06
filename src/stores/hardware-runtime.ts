@@ -48,8 +48,8 @@ type DeviceTelemetrySnapshot = HardwareCanvasDeviceTelemetryEntryV1 & {
 
 const DATA_DEFAULT_MIN_BATCH_CYCLES = 128
 const DATA_DEFAULT_MAX_WAIT_US = 2000
-const DATA_DEFAULT_CLOCK_HIGH_DELAY = 11
-const DATA_DEFAULT_CLOCK_LOW_DELAY = 11
+const DATA_DEFAULT_CLOCK_HIGH_DELAY = 4
+const DATA_DEFAULT_CLOCK_LOW_DELAY = 4
 
 const initialRuntimeState: RuntimeState = {
   version: 1,

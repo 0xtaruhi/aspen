@@ -34,6 +34,12 @@ export interface HardwareArtifactSnapshot {
   bytes: number
 }
 
+export interface LoadedMemoryImage {
+  format: 'text' | 'binary'
+  words: number[]
+  source_path: string
+}
+
 export interface SynthesisSourceFileV1 {
   path: string
   content: string
@@ -176,17 +182,22 @@ export type CanvasDeviceType =
   | 'led'
   | 'switch'
   | 'button'
-  | 'keypad'
-  | 'small_keypad'
-  | 'rotary_button'
-  | 'ps2_keyboard'
-  | 'text_lcd'
-  | 'graphic_lcd'
+  | 'dip_switch_bank'
+  | 'led_bar'
+  | 'audio_pwm'
+  | 'quadrature_encoder'
+  | 'matrix_keypad'
+  | 'uart_terminal'
+  | 'hd44780_lcd'
+  | 'memory'
   | 'vga_display'
   | 'segment_display'
   | 'led_matrix'
 
 export type CanvasVgaColorMode = 'mono' | 'rgb111' | 'rgb332' | 'rgb444' | 'rgb565' | 'rgb888'
+export type CanvasHd44780BusMode = '4bit' | '8bit'
+export type CanvasUartMode = 'tx' | 'rx' | 'tx_rx'
+export type CanvasMemoryMode = 'rom' | 'ram'
 
 export type CanvasDeviceBindingSnapshot =
   | {
@@ -222,12 +233,78 @@ export type CanvasDeviceConfigSnapshot =
       rows: number
       color_mode: CanvasVgaColorMode
     }
+  | {
+      kind: 'dip_switch_bank'
+      width: number
+    }
+  | {
+      kind: 'led_bar'
+      width: number
+      active_low?: boolean
+    }
+  | {
+      kind: 'quadrature_encoder'
+      has_button?: boolean
+    }
+  | {
+      kind: 'matrix_keypad'
+      rows: number
+      columns: number
+      active_low?: boolean
+    }
+  | {
+      kind: 'uart_terminal'
+      cycles_per_bit: number
+      mode: CanvasUartMode
+    }
+  | {
+      kind: 'hd44780_lcd'
+      columns: number
+      rows: number
+      bus_mode: CanvasHd44780BusMode
+    }
+  | {
+      kind: 'memory'
+      mode: CanvasMemoryMode
+      address_width: number
+      data_width: number
+    }
+
+export type CanvasDeviceDataSnapshot =
+  | {
+      kind: 'none'
+    }
+  | {
+      kind: 'bitset'
+      bits: boolean[]
+    }
+  | {
+      kind: 'quadrature_encoder'
+      phase: number
+      button_pressed: boolean
+    }
+  | {
+      kind: 'matrix_keypad'
+      pressed_row: number | null
+      pressed_column: number | null
+    }
+  | {
+      kind: 'queued_bytes'
+      bytes: number[]
+    }
+  | {
+      kind: 'memory'
+      words: number[]
+      source_path: string | null
+      preview_offset: number
+    }
 
 export interface CanvasDeviceStateSnapshot {
   is_on: boolean
   color: string | null
   binding: CanvasDeviceBindingSnapshot
   config: CanvasDeviceConfigSnapshot
+  data: CanvasDeviceDataSnapshot
 }
 
 export interface CanvasDeviceSnapshot {
@@ -300,6 +377,18 @@ export interface HardwareCanvasDeviceTelemetryEntryV1 {
   pixel_columns: number
   pixel_rows: number
   pixels: number[]
+  bit_values: number[]
+  text_lines: string[]
+  text_log: string
+  memory_words: number[]
+  sample_values: number[]
+  audio_edge_count: number
+  audio_sample_count: number
+  audio_period_samples: number
+  memory_word_count: number
+  memory_preview_start: number
+  memory_address: number
+  memory_output_word: number
 }
 
 export interface HardwareCanvasDeviceTelemetryV1 {
@@ -404,6 +493,13 @@ export async function runHardwareImplementation(
   request: ImplementationRequestV1,
 ): Promise<ImplementationReportV1> {
   return invoke<ImplementationReportV1>('run_fde_implementation', { request })
+}
+
+export async function loadHardwareMemoryImage(
+  path: string,
+  dataWidth: number,
+): Promise<LoadedMemoryImage> {
+  return invoke<LoadedMemoryImage>('load_memory_image', { path, dataWidth })
 }
 
 export async function listenHardwareSynthesisLog(

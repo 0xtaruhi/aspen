@@ -283,25 +283,26 @@ module \$__div_mod_u (A, B, Y, R);
 
 	input [WIDTH-1:0] A, B;
 	output [WIDTH-1:0] Y, R;
+	wire [1023:0] _TECHMAP_DO_ = "proc";
 
-	wire [WIDTH*WIDTH-1:0] chaindata;
-	assign R = chaindata[WIDTH*WIDTH-1:WIDTH*(WIDTH-1)];
+	reg [WIDTH-1:0] quotient;
+	reg [WIDTH:0] remainder;
+	integer i;
 
-	genvar i;
-	generate begin
-		for (i = 0; i < WIDTH; i=i+1) begin:stage
-			wire [WIDTH-1:0] stage_in;
-
-			if (i == 0) begin:cp
-				assign stage_in = A;
-			end else begin:cp
-				assign stage_in = chaindata[i*WIDTH-1:(i-1)*WIDTH];
+	always @* begin
+		quotient = {WIDTH{1'b0}};
+		remainder = {(WIDTH+1){1'b0}};
+		for (i = 0; i < WIDTH; i = i + 1) begin
+			remainder = {remainder[WIDTH-1:0], A[WIDTH-1-i]};
+			if (remainder >= {1'b0, B}) begin
+				remainder = remainder - {1'b0, B};
+				quotient[WIDTH-1-i] = 1'b1;
 			end
-
-			assign Y[WIDTH-(i+1)] = stage_in >= {B, {WIDTH-(i+1){1'b0}}};
-			assign chaindata[(i+1)*WIDTH-1:i*WIDTH] = Y[WIDTH-(i+1)] ? stage_in - {B, {WIDTH-(i+1){1'b0}}} : stage_in;
 		end
-	end endgenerate
+	end
+
+	assign Y = quotient;
+	assign R = remainder[WIDTH-1:0];
 endmodule
 
 module \$__div_mod (A, B, Y, R);
@@ -319,13 +320,17 @@ module \$__div_mod (A, B, Y, R);
 	input [B_WIDTH-1:0] B;
 	output [Y_WIDTH-1:0] Y, R;
 
-	wire [WIDTH-1:0] A_buf, B_buf;
-	\$pos #(.A_SIGNED(A_SIGNED), .A_WIDTH(A_WIDTH), .Y_WIDTH(WIDTH)) A_conv (.A(A), .Y(A_buf));
-	\$pos #(.A_SIGNED(B_SIGNED), .A_WIDTH(B_WIDTH), .Y_WIDTH(WIDTH)) B_conv (.A(B), .Y(B_buf));
+	localparam [WIDTH-1:0] ONE = {{(WIDTH-1){1'b0}}, 1'b1};
 
-	wire [WIDTH-1:0] A_buf_u, B_buf_u, Y_u, R_u;
-	assign A_buf_u = A_SIGNED && A_buf[WIDTH-1] ? -A_buf : A_buf;
-	assign B_buf_u = B_SIGNED && B_buf[WIDTH-1] ? -B_buf : B_buf;
+	wire [WIDTH-1:0] A_buf = {{(WIDTH-A_WIDTH){A_SIGNED ? A[A_WIDTH-1] : 1'b0}}, A};
+	wire [WIDTH-1:0] B_buf = {{(WIDTH-B_WIDTH){B_SIGNED ? B[B_WIDTH-1] : 1'b0}}, B};
+
+	wire A_is_negative = A_SIGNED && A_buf[WIDTH-1];
+	wire B_is_negative = B_SIGNED && B_buf[WIDTH-1];
+
+	wire [WIDTH-1:0] A_buf_u = A_is_negative ? (~A_buf + ONE) : A_buf;
+	wire [WIDTH-1:0] B_buf_u = B_is_negative ? (~B_buf + ONE) : B_buf;
+	wire [WIDTH-1:0] Y_u, R_u;
 
 	\$__div_mod_u #(
 		.WIDTH(WIDTH)
@@ -336,8 +341,12 @@ module \$__div_mod (A, B, Y, R);
 		.R(R_u)
 	);
 
-	assign Y = A_SIGNED && B_SIGNED && (A_buf[WIDTH-1] != B_buf[WIDTH-1]) ? -Y_u : Y_u;
-	assign R = A_SIGNED && B_SIGNED && A_buf[WIDTH-1] ? -R_u : R_u;
+	wire quotient_is_negative = A_is_negative ^ B_is_negative;
+	wire [WIDTH-1:0] Y_buf = quotient_is_negative ? (~Y_u + ONE) : Y_u;
+	wire [WIDTH-1:0] R_buf = A_is_negative ? (~R_u + ONE) : R_u;
+
+	assign Y = Y_buf;
+	assign R = R_buf;
 endmodule
 
 (* techmap_celltype = "$div" *)
@@ -465,4 +474,3 @@ endmodule
 module _90_lut;
 endmodule
 `endif
-

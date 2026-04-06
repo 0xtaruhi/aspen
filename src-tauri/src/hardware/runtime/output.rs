@@ -1,11 +1,18 @@
-use std::hash::{Hash, Hasher};
+use std::{
+    hash::{Hash, Hasher},
+    sync::{Arc, Mutex},
+};
 
 use crate::hardware::types::{
-    CanvasDeviceSnapshot, CanvasVgaColorMode, HardwareCanvasDeviceTelemetryEntryV1,
-    HardwareCanvasDeviceTelemetryV1, HardwareStateV1,
+    CanvasDeviceSnapshot, CanvasHd44780BusMode, CanvasMemoryMode, CanvasUartMode,
+    CanvasVgaColorMode, HardwareCanvasDeviceTelemetryEntryV1, HardwareCanvasDeviceTelemetryV1,
+    HardwareStateV1,
 };
 
 use super::registry::{output_compiler_for_device_type, SignalIndexLookup};
+use super::shared::{
+    matrix_keypad_shared_state, memory_shared_state, MatrixKeypadRuntimeState, MemoryRuntimeState,
+};
 use super::*;
 
 pub(super) trait OutputDeviceDecoder: Send {
@@ -30,6 +37,28 @@ struct SegmentDisplayOutputDecoder {
     sample_counts: Vec<u32>,
     segment_on_counts: Vec<[u32; 8]>,
     latest_masks: Vec<u16>,
+}
+
+struct LedBarOutputDecoder {
+    device_id: String,
+    active_low: bool,
+    signal_indices: Vec<Option<usize>>,
+    latest_bits: Vec<u8>,
+    high_count: u32,
+    total_count: u32,
+}
+
+struct AudioPwmOutputDecoder {
+    device_id: String,
+    signal_index: usize,
+    latest: bool,
+    previous: bool,
+    high_count: u32,
+    total_count: u32,
+    edge_count: u32,
+    samples_since_rising: u32,
+    has_rising_edge: bool,
+    period_samples: f32,
 }
 
 struct LedMatrixOutputDecoder {
@@ -62,8 +91,59 @@ struct VgaDisplayOutputDecoder {
     last_column_window: Option<(usize, usize)>,
 }
 
+struct UartTerminalOutputDecoder {
+    device_id: String,
+    signal_index: usize,
+    cycles_per_bit: usize,
+    state: UartDecodeState,
+    text_log: String,
+}
+
+struct UartDecodeState {
+    receiving: bool,
+    countdown: usize,
+    bit_index: usize,
+    byte: u8,
+}
+
+struct MatrixKeypadOutputDecoder {
+    device_id: String,
+    row_signal_indices: Vec<Option<usize>>,
+    latest_rows: Vec<u8>,
+    shared: Arc<Mutex<MatrixKeypadRuntimeState>>,
+}
+
+struct MemoryOutputDecoder {
+    device_id: String,
+    address_signal_indices: Vec<Option<usize>>,
+    data_in_signal_indices: Vec<Option<usize>>,
+    chip_select_index: Option<usize>,
+    output_enable_index: Option<usize>,
+    write_enable_index: Option<usize>,
+    preview_offset: usize,
+    shared: Arc<Mutex<MemoryRuntimeState>>,
+    selected_count: u32,
+    total_count: u32,
+}
+
+struct Hd44780LcdOutputDecoder {
+    device_id: String,
+    columns: usize,
+    rows: usize,
+    bus_mode: CanvasHd44780BusMode,
+    rs_index: usize,
+    e_index: usize,
+    rw_index: Option<usize>,
+    data_indices: Vec<Option<usize>>,
+    prev_enable: bool,
+    pending_high_nibble: Option<u8>,
+    ddram: Vec<u8>,
+    cursor_addr: u8,
+}
+
 const VGA_MAX_CAPTURE_COLUMNS: usize = 1024;
 const VGA_MAX_CAPTURE_ROWS: usize = 768;
+const MEMORY_PREVIEW_WORDS: usize = 16;
 
 impl HardwareRuntime {
     pub(super) fn device_snapshot_interval_for_state(state: &HardwareStateV1) -> Duration {
@@ -103,6 +183,7 @@ impl HardwareRuntime {
             device.r#type.hash(&mut hasher);
             device.state.binding.hash(&mut hasher);
             device.state.config.hash(&mut hasher);
+            device.state.data.hash(&mut hasher);
         }
         hasher.finish()
     }
@@ -189,6 +270,47 @@ impl HardwareRuntime {
     }
 }
 
+fn empty_device_snapshot(device_id: &str) -> HardwareCanvasDeviceTelemetryEntryV1 {
+    HardwareCanvasDeviceTelemetryEntryV1 {
+        device_id: device_id.to_string(),
+        latest: false,
+        high_ratio: 0.0,
+        segment_mask: None,
+        digit_segment_masks: Vec::new(),
+        pixel_columns: 0,
+        pixel_rows: 0,
+        pixels: Vec::new(),
+        bit_values: Vec::new(),
+        text_lines: Vec::new(),
+        text_log: String::new(),
+        memory_words: Vec::new(),
+        sample_values: Vec::new(),
+        audio_edge_count: 0,
+        audio_sample_count: 0,
+        audio_period_samples: 0.0,
+        memory_word_count: 0,
+        memory_preview_start: 0,
+        memory_address: 0,
+        memory_output_word: 0,
+    }
+}
+
+fn sample_bus_value(signal_indices: &[Option<usize>], cycle: &[u16]) -> u16 {
+    signal_indices
+        .iter()
+        .enumerate()
+        .fold(0_u16, |value, (bit_index, signal_index)| {
+            let bit_is_set = signal_index
+                .map(|signal_index| read_signal_value(cycle, signal_index))
+                .unwrap_or(false);
+            if bit_is_set {
+                value | (1_u16 << bit_index)
+            } else {
+                value
+            }
+        })
+}
+
 pub(super) fn compile_led_output(
     device: &CanvasDeviceSnapshot,
     signal_indices: &SignalIndexLookup<'_>,
@@ -204,6 +326,246 @@ pub(super) fn compile_led_output(
         latest: false,
         high_count: 0,
         total_count: 0,
+    }))
+}
+
+pub(super) fn compile_led_bar_output(
+    device: &CanvasDeviceSnapshot,
+    signal_indices: &SignalIndexLookup<'_>,
+) -> Option<Box<dyn OutputDeviceDecoder>> {
+    let width = device.state.dip_switch_width()?;
+    let active_low = matches!(
+        device.state.config,
+        crate::hardware::types::CanvasDeviceConfigSnapshot::LedBar {
+            active_low: true,
+            ..
+        }
+    );
+    let slot_signals = device.state.slot_signals();
+    let mapped = (0..width)
+        .map(|index| {
+            slot_signals
+                .get(index)
+                .and_then(|signal| signal.as_deref())
+                .and_then(|signal| signal_indices.get(signal).copied())
+        })
+        .collect::<Vec<_>>();
+    if !mapped.iter().any(Option::is_some) {
+        return None;
+    }
+
+    Some(Box::new(LedBarOutputDecoder {
+        device_id: device.id.clone(),
+        active_low,
+        latest_bits: vec![0; mapped.len()],
+        signal_indices: mapped,
+        high_count: 0,
+        total_count: 0,
+    }))
+}
+
+pub(super) fn compile_uart_terminal_output(
+    device: &CanvasDeviceSnapshot,
+    signal_indices: &SignalIndexLookup<'_>,
+) -> Option<Box<dyn OutputDeviceDecoder>> {
+    let (cycles_per_bit, mode) = device.state.uart_config()?;
+    if matches!(mode, CanvasUartMode::Rx) {
+        return None;
+    }
+
+    let slot_signals = device.state.slot_signals();
+    let tx_slot_index = if matches!(mode, CanvasUartMode::Tx) {
+        0
+    } else {
+        1
+    };
+    let signal_index = slot_signals
+        .get(tx_slot_index)
+        .and_then(|signal| signal.as_deref())
+        .and_then(|signal| signal_indices.get(signal).copied())?;
+
+    Some(Box::new(UartTerminalOutputDecoder {
+        device_id: device.id.clone(),
+        signal_index,
+        cycles_per_bit: cycles_per_bit.max(1),
+        state: UartDecodeState {
+            receiving: false,
+            countdown: 0,
+            bit_index: 0,
+            byte: 0,
+        },
+        text_log: String::new(),
+    }))
+}
+
+pub(super) fn compile_matrix_keypad_output(
+    device: &CanvasDeviceSnapshot,
+    signal_indices: &SignalIndexLookup<'_>,
+) -> Option<Box<dyn OutputDeviceDecoder>> {
+    let (rows, _) = device.state.matrix_dimensions()?;
+    let slot_signals = device.state.slot_signals();
+    let row_signal_indices = (0..rows)
+        .map(|index| {
+            slot_signals
+                .get(index)
+                .and_then(|signal| signal.as_deref())
+                .and_then(|signal| signal_indices.get(signal).copied())
+        })
+        .collect::<Vec<_>>();
+    if !row_signal_indices.iter().any(Option::is_some) {
+        return None;
+    }
+
+    Some(Box::new(MatrixKeypadOutputDecoder {
+        device_id: device.id.clone(),
+        latest_rows: vec![0; row_signal_indices.len()],
+        row_signal_indices,
+        shared: matrix_keypad_shared_state(device),
+    }))
+}
+
+pub(super) fn compile_hd44780_lcd_output(
+    device: &CanvasDeviceSnapshot,
+    signal_indices: &SignalIndexLookup<'_>,
+) -> Option<Box<dyn OutputDeviceDecoder>> {
+    let (columns, rows, bus_mode) = device.state.hd44780_config()?;
+    let slot_signals = device.state.slot_signals();
+    let rs_index = slot_signals
+        .first()
+        .and_then(|signal| signal.as_deref())
+        .and_then(|signal| signal_indices.get(signal).copied())?;
+    let e_index = slot_signals
+        .get(1)
+        .and_then(|signal| signal.as_deref())
+        .and_then(|signal| signal_indices.get(signal).copied())?;
+    let rw_index = slot_signals
+        .get(2)
+        .and_then(|signal| signal.as_deref())
+        .and_then(|signal| signal_indices.get(signal).copied());
+    let data_bits = if matches!(bus_mode, CanvasHd44780BusMode::EightBit) {
+        8
+    } else {
+        4
+    };
+    let data_indices = (0..data_bits)
+        .map(|offset| {
+            slot_signals
+                .get(3 + offset)
+                .and_then(|signal| signal.as_deref())
+                .and_then(|signal| signal_indices.get(signal).copied())
+        })
+        .collect::<Vec<_>>();
+    if !data_indices.iter().any(Option::is_some) {
+        return None;
+    }
+
+    Some(Box::new(Hd44780LcdOutputDecoder {
+        device_id: device.id.clone(),
+        columns,
+        rows,
+        bus_mode,
+        rs_index,
+        e_index,
+        rw_index,
+        data_indices,
+        prev_enable: false,
+        pending_high_nibble: None,
+        ddram: vec![b' '; 0x68],
+        cursor_addr: 0,
+    }))
+}
+
+pub(super) fn compile_memory_output(
+    device: &CanvasDeviceSnapshot,
+    signal_indices: &SignalIndexLookup<'_>,
+) -> Option<Box<dyn OutputDeviceDecoder>> {
+    let (mode, address_width, data_width) = device.state.memory_config()?;
+    let slot_signals = device.state.slot_signals();
+    let address_signal_indices = (0..address_width)
+        .map(|index| {
+            slot_signals
+                .get(index)
+                .and_then(|signal| signal.as_deref())
+                .and_then(|signal| signal_indices.get(signal).copied())
+        })
+        .collect::<Vec<_>>();
+    let data_in_signal_indices = if matches!(mode, CanvasMemoryMode::Ram) {
+        (0..data_width)
+            .map(|index| {
+                slot_signals
+                    .get(address_width + index)
+                    .and_then(|signal| signal.as_deref())
+                    .and_then(|signal| signal_indices.get(signal).copied())
+            })
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    let controls_offset = if matches!(mode, CanvasMemoryMode::Ram) {
+        address_width + (2 * data_width)
+    } else {
+        address_width + data_width
+    };
+    let chip_select_index = slot_signals
+        .get(controls_offset)
+        .and_then(|signal| signal.as_deref())
+        .and_then(|signal| signal_indices.get(signal).copied());
+    let output_enable_index = slot_signals
+        .get(controls_offset + 1)
+        .and_then(|signal| signal.as_deref())
+        .and_then(|signal| signal_indices.get(signal).copied());
+    let write_enable_index = if matches!(mode, CanvasMemoryMode::Ram) {
+        slot_signals
+            .get(controls_offset + 2)
+            .and_then(|signal| signal.as_deref())
+            .and_then(|signal| signal_indices.get(signal).copied())
+    } else {
+        None
+    };
+
+    if !address_signal_indices.iter().any(Option::is_some)
+        && !data_in_signal_indices.iter().any(Option::is_some)
+        && chip_select_index.is_none()
+        && output_enable_index.is_none()
+        && write_enable_index.is_none()
+    {
+        return None;
+    }
+
+    Some(Box::new(MemoryOutputDecoder {
+        device_id: device.id.clone(),
+        address_signal_indices,
+        data_in_signal_indices,
+        chip_select_index,
+        output_enable_index,
+        write_enable_index,
+        preview_offset: device.state.memory_preview_offset(),
+        shared: memory_shared_state(device),
+        selected_count: 0,
+        total_count: 0,
+    }))
+}
+
+pub(super) fn compile_audio_pwm_output(
+    device: &CanvasDeviceSnapshot,
+    signal_indices: &SignalIndexLookup<'_>,
+) -> Option<Box<dyn OutputDeviceDecoder>> {
+    let signal_index = device
+        .state
+        .single_signal()
+        .and_then(|signal| signal_indices.get(signal).copied())?;
+
+    Some(Box::new(AudioPwmOutputDecoder {
+        device_id: device.id.clone(),
+        signal_index,
+        latest: false,
+        previous: false,
+        high_count: 0,
+        total_count: 0,
+        edge_count: 0,
+        samples_since_rising: 0,
+        has_rising_edge: false,
+        period_samples: 0.0,
     }))
 }
 
@@ -372,19 +734,99 @@ impl OutputDeviceDecoder for LedOutputDecoder {
 
     fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntryV1 {
         let total_count = self.total_count.max(1);
-        let entry = HardwareCanvasDeviceTelemetryEntryV1 {
-            device_id: self.device_id.clone(),
-            latest: self.latest,
-            high_ratio: self.high_count as f32 / total_count as f32,
-            segment_mask: None,
-            digit_segment_masks: Vec::new(),
-            pixel_columns: 0,
-            pixel_rows: 0,
-            pixels: Vec::new(),
-        };
+        let mut entry = empty_device_snapshot(&self.device_id);
+        entry.latest = self.latest;
+        entry.high_ratio = self.high_count as f32 / total_count as f32;
         self.latest = false;
         self.high_count = 0;
         self.total_count = 0;
+        entry
+    }
+}
+
+impl OutputDeviceDecoder for LedBarOutputDecoder {
+    fn ingest_cycle(&mut self, cycle: &[u16]) {
+        let mut any_on = false;
+        for (bit_index, signal_index) in self.signal_indices.iter().enumerate() {
+            let raw_value = signal_index
+                .map(|signal_index| read_signal_value(cycle, signal_index))
+                .unwrap_or(false);
+            let logical_on = if self.active_low {
+                !raw_value
+            } else {
+                raw_value
+            };
+            self.latest_bits[bit_index] = u8::from(logical_on);
+            if logical_on {
+                any_on = true;
+            }
+        }
+        self.total_count = self.total_count.saturating_add(1);
+        if any_on {
+            self.high_count = self.high_count.saturating_add(1);
+        }
+    }
+
+    fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntryV1 {
+        let total_count = self.total_count.max(1);
+        let mut entry = empty_device_snapshot(&self.device_id);
+        entry.latest = self.latest_bits.iter().any(|value| *value != 0);
+        entry.high_ratio = self.high_count as f32 / total_count as f32;
+        entry.bit_values = self.latest_bits.clone();
+        self.high_count = 0;
+        self.total_count = 0;
+        entry
+    }
+}
+
+impl OutputDeviceDecoder for AudioPwmOutputDecoder {
+    fn ingest_cycle(&mut self, cycle: &[u16]) {
+        let value = read_signal_value(cycle, self.signal_index);
+        self.latest = value;
+        self.total_count = self.total_count.saturating_add(1);
+        self.samples_since_rising = self.samples_since_rising.saturating_add(1);
+        if value {
+            self.high_count = self.high_count.saturating_add(1);
+        }
+
+        if value != self.previous {
+            self.edge_count = self.edge_count.saturating_add(1);
+        }
+
+        if value && !self.previous {
+            if self.has_rising_edge && self.samples_since_rising > 0 {
+                let period = self.samples_since_rising as f32;
+                self.period_samples = if self.period_samples <= 0.0 {
+                    period
+                } else {
+                    (self.period_samples * 0.75) + (period * 0.25)
+                };
+            }
+            self.samples_since_rising = 0;
+            self.has_rising_edge = true;
+        }
+
+        self.previous = value;
+    }
+
+    fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntryV1 {
+        let total_count = self.total_count.max(1);
+        let mut entry = empty_device_snapshot(&self.device_id);
+        entry.latest = self.latest;
+        entry.high_ratio = self.high_count as f32 / total_count as f32;
+        entry.audio_edge_count = self.edge_count;
+        entry.audio_sample_count = self.total_count;
+        entry.audio_period_samples = if self.edge_count == 0
+            && self.samples_since_rising as f32 > self.period_samples * 3.0
+        {
+            0.0
+        } else {
+            self.period_samples
+        };
+
+        self.high_count = 0;
+        self.total_count = 0;
+        self.edge_count = 0;
         entry
     }
 }
@@ -481,6 +923,18 @@ impl OutputDeviceDecoder for SegmentDisplayOutputDecoder {
             pixel_columns: 0,
             pixel_rows: 0,
             pixels: Vec::new(),
+            bit_values: Vec::new(),
+            text_lines: Vec::new(),
+            text_log: String::new(),
+            memory_words: Vec::new(),
+            sample_values: Vec::new(),
+            audio_edge_count: 0,
+            audio_sample_count: 0,
+            audio_period_samples: 0.0,
+            memory_word_count: 0,
+            memory_preview_start: 0,
+            memory_address: 0,
+            memory_output_word: 0,
         };
         self.sample_counts.fill(0);
         for segment_counts in &mut self.segment_on_counts {
@@ -566,6 +1020,18 @@ impl OutputDeviceDecoder for LedMatrixOutputDecoder {
             pixel_columns: self.columns as u16,
             pixel_rows: self.rows as u16,
             pixels,
+            bit_values: Vec::new(),
+            text_lines: Vec::new(),
+            text_log: String::new(),
+            memory_words: Vec::new(),
+            sample_values: Vec::new(),
+            audio_edge_count: 0,
+            audio_sample_count: 0,
+            audio_period_samples: 0.0,
+            memory_word_count: 0,
+            memory_preview_start: 0,
+            memory_address: 0,
+            memory_output_word: 0,
         };
         self.row_samples.fill(0);
         self.pixel_on_counts.fill(0);
@@ -650,16 +1116,16 @@ impl VgaDisplayOutputDecoder {
     fn column_activity_scores(lines: &[Vec<u8>], max_width: usize) -> Vec<u64> {
         let mut scores = vec![0_u64; max_width];
 
-        for column_index in 0..max_width {
+        for (column_index, score) in scores.iter_mut().enumerate().take(max_width) {
             let mut previous = None;
             for row in lines {
                 let pixel = row.get(column_index).copied().unwrap_or(0);
                 if pixel != 0 {
-                    scores[column_index] += 4;
+                    *score += 4;
                 }
                 if let Some(previous_pixel) = previous {
                     if previous_pixel != pixel {
-                        scores[column_index] += 1;
+                        *score += 1;
                     }
                 }
                 previous = Some(pixel);
@@ -833,8 +1299,310 @@ impl OutputDeviceDecoder for VgaDisplayOutputDecoder {
             pixel_columns: self.target_columns as u16,
             pixel_rows: self.target_rows as u16,
             pixels: self.frame_pixels.clone(),
+            bit_values: Vec::new(),
+            text_lines: Vec::new(),
+            text_log: String::new(),
+            memory_words: Vec::new(),
+            sample_values: Vec::new(),
+            audio_edge_count: 0,
+            audio_sample_count: 0,
+            audio_period_samples: 0.0,
+            memory_word_count: 0,
+            memory_preview_start: 0,
+            memory_address: 0,
+            memory_output_word: 0,
         }
     }
+}
+
+impl OutputDeviceDecoder for UartTerminalOutputDecoder {
+    fn ingest_cycle(&mut self, cycle: &[u16]) {
+        let value = read_signal_value(cycle, self.signal_index);
+        if !self.state.receiving {
+            if !value {
+                self.state.receiving = true;
+                self.state.countdown = self.cycles_per_bit + self.cycles_per_bit / 2;
+                self.state.bit_index = 0;
+                self.state.byte = 0;
+            }
+            return;
+        }
+
+        if self.state.countdown > 0 {
+            self.state.countdown -= 1;
+            return;
+        }
+
+        if value {
+            self.state.byte |= 1 << self.state.bit_index;
+        }
+        self.state.bit_index += 1;
+        if self.state.bit_index >= 8 {
+            let next_char = if self.state.byte.is_ascii_graphic() || self.state.byte == b' ' {
+                self.state.byte as char
+            } else if self.state.byte == b'\n' || self.state.byte == b'\r' {
+                '\n'
+            } else {
+                '·'
+            };
+            self.text_log.push(next_char);
+            if self.text_log.len() > 4096 {
+                let drain_len = self.text_log.len().saturating_sub(4096);
+                self.text_log.drain(..drain_len);
+            }
+            self.state.receiving = false;
+            self.state.countdown = 0;
+            self.state.bit_index = 0;
+            self.state.byte = 0;
+            return;
+        }
+
+        self.state.countdown = self.cycles_per_bit.saturating_sub(1);
+    }
+
+    fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntryV1 {
+        HardwareCanvasDeviceTelemetryEntryV1 {
+            device_id: self.device_id.clone(),
+            latest: !self.text_log.is_empty(),
+            high_ratio: 0.0,
+            segment_mask: None,
+            digit_segment_masks: Vec::new(),
+            pixel_columns: 0,
+            pixel_rows: 0,
+            pixels: Vec::new(),
+            bit_values: Vec::new(),
+            text_lines: Vec::new(),
+            text_log: self.text_log.clone(),
+            memory_words: Vec::new(),
+            sample_values: Vec::new(),
+            audio_edge_count: 0,
+            audio_sample_count: 0,
+            audio_period_samples: 0.0,
+            memory_word_count: 0,
+            memory_preview_start: 0,
+            memory_address: 0,
+            memory_output_word: 0,
+        }
+    }
+}
+
+impl OutputDeviceDecoder for MatrixKeypadOutputDecoder {
+    fn ingest_cycle(&mut self, cycle: &[u16]) {
+        let mut next_rows = Vec::with_capacity(self.row_signal_indices.len());
+        for signal_index in &self.row_signal_indices {
+            let value = signal_index
+                .map(|signal_index| read_signal_value(cycle, signal_index))
+                .unwrap_or(false);
+            next_rows.push(value);
+        }
+        self.latest_rows = next_rows.iter().copied().map(u8::from).collect();
+
+        if let Ok(mut shared) = self.shared.lock() {
+            shared.active_rows = next_rows;
+        }
+    }
+
+    fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntryV1 {
+        let mut entry = empty_device_snapshot(&self.device_id);
+        entry.latest = self.latest_rows.iter().any(|value| *value != 0);
+        entry.bit_values = self.latest_rows.clone();
+        entry
+    }
+}
+
+impl OutputDeviceDecoder for MemoryOutputDecoder {
+    fn ingest_cycle(&mut self, cycle: &[u16]) {
+        let chip_selected = self
+            .chip_select_index
+            .map(|signal_index| !read_signal_value(cycle, signal_index))
+            .unwrap_or(true);
+        let output_enabled = self
+            .output_enable_index
+            .map(|signal_index| !read_signal_value(cycle, signal_index))
+            .unwrap_or(true);
+        let write_enabled = self
+            .write_enable_index
+            .map(|signal_index| !read_signal_value(cycle, signal_index))
+            .unwrap_or(false);
+
+        let address = usize::from(sample_bus_value(&self.address_signal_indices, cycle));
+        let data_in = sample_bus_value(&self.data_in_signal_indices, cycle);
+
+        let Ok(mut shared) = self.shared.lock() else {
+            return;
+        };
+        let data_width = shared.data_width.min(u16::BITS as usize);
+        let data_mask = if data_width >= u16::BITS as usize {
+            u16::MAX
+        } else {
+            ((1_u32 << data_width) - 1) as u16
+        };
+        let word_count = shared.words.len().max(1);
+        let next_address = address.min(word_count - 1);
+        shared.address = next_address;
+        shared.chip_selected = chip_selected;
+
+        if matches!(shared.mode, CanvasMemoryMode::Ram) && chip_selected && write_enabled {
+            if let Some(word) = shared.words.get_mut(next_address) {
+                *word = data_in & data_mask;
+            }
+        }
+
+        shared.output_word = shared.words.get(next_address).copied().unwrap_or(0) & data_mask;
+        shared.read_enabled = chip_selected && output_enabled && !write_enabled;
+
+        self.total_count = self.total_count.saturating_add(1);
+        if chip_selected {
+            self.selected_count = self.selected_count.saturating_add(1);
+        }
+    }
+
+    fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntryV1 {
+        let Ok(shared) = self.shared.lock() else {
+            return empty_device_snapshot(&self.device_id);
+        };
+        let total_count = self.total_count.max(1);
+        let mut entry = empty_device_snapshot(&self.device_id);
+        entry.latest = shared.chip_selected;
+        entry.high_ratio = self.selected_count as f32 / total_count as f32;
+        let preview_start = self
+            .preview_offset
+            .min(shared.words.len().saturating_sub(1));
+        let preview_end = shared
+            .words
+            .len()
+            .min(preview_start.saturating_add(MEMORY_PREVIEW_WORDS));
+        entry.memory_word_count = u32::try_from(shared.words.len()).unwrap_or(u32::MAX);
+        entry.memory_preview_start = u32::try_from(preview_start).unwrap_or(u32::MAX);
+        entry.memory_address = u32::try_from(shared.address).unwrap_or(u32::MAX);
+        entry.memory_output_word = shared.output_word;
+        entry.sample_values = shared.words[preview_start..preview_end].to_vec();
+        self.selected_count = 0;
+        self.total_count = 0;
+        entry
+    }
+}
+
+impl OutputDeviceDecoder for Hd44780LcdOutputDecoder {
+    fn ingest_cycle(&mut self, cycle: &[u16]) {
+        let enable = read_signal_value(cycle, self.e_index);
+        let read_mode = self
+            .rw_index
+            .map(|signal_index| read_signal_value(cycle, signal_index))
+            .unwrap_or(false);
+
+        if self.prev_enable && !enable && !read_mode {
+            let rs = read_signal_value(cycle, self.rs_index);
+            let mut value = 0_u8;
+            for (bit_index, signal_index) in self.data_indices.iter().enumerate() {
+                if let Some(signal_index) = signal_index {
+                    if read_signal_value(cycle, *signal_index) {
+                        value |= 1 << bit_index;
+                    }
+                }
+            }
+
+            let maybe_byte = if matches!(self.bus_mode, CanvasHd44780BusMode::EightBit) {
+                Some(value)
+            } else if let Some(high_nibble) = self.pending_high_nibble.take() {
+                Some((high_nibble << 4) | (value & 0x0f))
+            } else {
+                self.pending_high_nibble = Some(value & 0x0f);
+                None
+            };
+
+            if let Some(byte) = maybe_byte {
+                if rs {
+                    self.write_char(byte);
+                } else {
+                    self.execute_command(byte);
+                }
+            }
+        }
+
+        self.prev_enable = enable;
+    }
+
+    fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntryV1 {
+        let text_lines = hd44780_text_lines(&self.ddram, self.columns, self.rows);
+        HardwareCanvasDeviceTelemetryEntryV1 {
+            device_id: self.device_id.clone(),
+            latest: text_lines.iter().any(|line| !line.trim_end().is_empty()),
+            high_ratio: 0.0,
+            segment_mask: None,
+            digit_segment_masks: Vec::new(),
+            pixel_columns: 0,
+            pixel_rows: 0,
+            pixels: Vec::new(),
+            bit_values: Vec::new(),
+            text_lines,
+            text_log: String::new(),
+            memory_words: Vec::new(),
+            sample_values: Vec::new(),
+            audio_edge_count: 0,
+            audio_sample_count: 0,
+            audio_period_samples: 0.0,
+            memory_word_count: 0,
+            memory_preview_start: 0,
+            memory_address: 0,
+            memory_output_word: 0,
+        }
+    }
+}
+
+impl Hd44780LcdOutputDecoder {
+    fn execute_command(&mut self, command: u8) {
+        match command {
+            0x01 => {
+                self.ddram.fill(b' ');
+                self.cursor_addr = 0;
+            }
+            0x02 => {
+                self.cursor_addr = 0;
+            }
+            0x80..=0xff => {
+                self.cursor_addr = command & 0x7f;
+            }
+            _ => {}
+        }
+    }
+
+    fn write_char(&mut self, byte: u8) {
+        if let Some(index) = hd44780_ddram_index(self.cursor_addr) {
+            if let Some(cell) = self.ddram.get_mut(index) {
+                *cell = if byte.is_ascii() && !byte.is_ascii_control() {
+                    byte
+                } else {
+                    b' '
+                };
+            }
+        }
+        self.cursor_addr = self.cursor_addr.wrapping_add(1);
+    }
+}
+
+fn hd44780_ddram_index(address: u8) -> Option<usize> {
+    match address {
+        0x00..=0x27 => Some(address as usize),
+        0x40..=0x67 => Some((address - 0x40) as usize + 40),
+        _ => None,
+    }
+}
+
+fn hd44780_text_lines(ddram: &[u8], columns: usize, rows: usize) -> Vec<String> {
+    let row_starts = [0x00_u8, 0x40_u8, 0x14_u8, 0x54_u8];
+    (0..rows)
+        .map(|row| {
+            let start = row_starts.get(row).copied().unwrap_or(0x00);
+            (0..columns)
+                .map(|offset| {
+                    hd44780_ddram_index(start.wrapping_add(offset as u8))
+                        .and_then(|index| ddram.get(index).copied())
+                        .unwrap_or(b' ') as char
+                })
+                .collect()
+        })
+        .collect()
 }
 
 fn read_signal_value(cycle: &[u16], signal_index: usize) -> bool {

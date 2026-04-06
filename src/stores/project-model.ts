@@ -7,6 +7,7 @@ import type {
   ImplementationReportV1,
   SynthesisReportV1,
 } from '../lib/hardware-client'
+import { deviceReceivesSignal } from '../lib/canvas-devices'
 
 import { normalizeFpgaDeviceId, type FpgaDeviceId } from '../lib/fpga-device-catalog'
 import {
@@ -115,12 +116,14 @@ function isCanvasDeviceType(value: unknown): value is CanvasDeviceType {
     value === 'led' ||
     value === 'switch' ||
     value === 'button' ||
-    value === 'keypad' ||
-    value === 'small_keypad' ||
-    value === 'rotary_button' ||
-    value === 'ps2_keyboard' ||
-    value === 'text_lcd' ||
-    value === 'graphic_lcd' ||
+    value === 'dip_switch_bank' ||
+    value === 'led_bar' ||
+    value === 'audio_pwm' ||
+    value === 'quadrature_encoder' ||
+    value === 'matrix_keypad' ||
+    value === 'uart_terminal' ||
+    value === 'hd44780_lcd' ||
+    value === 'memory' ||
     value === 'vga_display' ||
     value === 'segment_display' ||
     value === 'led_matrix'
@@ -151,47 +154,110 @@ function isCanvasDeviceConfigSnapshot(value: unknown): value is CanvasDeviceConf
     return false
   }
 
-  if (value.kind === 'none') {
-    return true
+  switch (value.kind) {
+    case 'none':
+      return true
+    case 'button':
+      return value.active_low === undefined || typeof value.active_low === 'boolean'
+    case 'segment_display':
+      return (
+        typeof value.digits === 'number' &&
+        Number.isFinite(value.digits) &&
+        (value.active_low === undefined || typeof value.active_low === 'boolean')
+      )
+    case 'led_matrix':
+    case 'matrix_keypad':
+      return (
+        typeof value.rows === 'number' &&
+        Number.isFinite(value.rows) &&
+        typeof value.columns === 'number' &&
+        Number.isFinite(value.columns) &&
+        (value.kind !== 'matrix_keypad' ||
+          value.active_low === undefined ||
+          typeof value.active_low === 'boolean')
+      )
+    case 'vga_display':
+      return (
+        typeof value.rows === 'number' &&
+        Number.isFinite(value.rows) &&
+        typeof value.columns === 'number' &&
+        Number.isFinite(value.columns) &&
+        (value.color_mode === 'mono' ||
+          value.color_mode === 'rgb111' ||
+          value.color_mode === 'rgb332' ||
+          value.color_mode === 'rgb444' ||
+          value.color_mode === 'rgb565' ||
+          value.color_mode === 'rgb888')
+      )
+    case 'dip_switch_bank':
+    case 'led_bar':
+      return (
+        typeof value.width === 'number' &&
+        Number.isFinite(value.width) &&
+        (value.kind !== 'led_bar' ||
+          value.active_low === undefined ||
+          typeof value.active_low === 'boolean')
+      )
+    case 'quadrature_encoder':
+      return value.has_button === undefined || typeof value.has_button === 'boolean'
+    case 'uart_terminal':
+      return (
+        typeof value.cycles_per_bit === 'number' &&
+        Number.isFinite(value.cycles_per_bit) &&
+        (value.mode === 'tx' || value.mode === 'rx' || value.mode === 'tx_rx')
+      )
+    case 'hd44780_lcd':
+      return (
+        typeof value.columns === 'number' &&
+        Number.isFinite(value.columns) &&
+        typeof value.rows === 'number' &&
+        Number.isFinite(value.rows) &&
+        (value.bus_mode === '4bit' || value.bus_mode === '8bit')
+      )
+    case 'memory':
+      return (
+        (value.mode === 'rom' || value.mode === 'ram') &&
+        typeof value.address_width === 'number' &&
+        Number.isFinite(value.address_width) &&
+        typeof value.data_width === 'number' &&
+        Number.isFinite(value.data_width)
+      )
+    default:
+      return false
+  }
+}
+
+function isCanvasDeviceDataSnapshot(value: unknown): boolean {
+  if (!isRecord(value) || typeof value.kind !== 'string') {
+    return false
   }
 
-  if (value.kind === 'button') {
-    return value.active_low === undefined || typeof value.active_low === 'boolean'
+  switch (value.kind) {
+    case 'none':
+      return true
+    case 'bitset':
+      return Array.isArray(value.bits) && value.bits.every((bit) => typeof bit === 'boolean')
+    case 'quadrature_encoder':
+      return typeof value.phase === 'number' && typeof value.button_pressed === 'boolean'
+    case 'matrix_keypad':
+      return (
+        (value.pressed_row === null || typeof value.pressed_row === 'number') &&
+        (value.pressed_column === null || typeof value.pressed_column === 'number')
+      )
+    case 'queued_bytes':
+      return Array.isArray(value.bytes) && value.bytes.every((byte) => typeof byte === 'number')
+    case 'memory':
+      return (
+        Array.isArray(value.words) &&
+        value.words.every((word) => typeof word === 'number') &&
+        (value.source_path === null ||
+          value.source_path === undefined ||
+          typeof value.source_path === 'string') &&
+        (value.preview_offset === undefined || typeof value.preview_offset === 'number')
+      )
+    default:
+      return false
   }
-
-  if (value.kind === 'segment_display') {
-    return (
-      typeof value.digits === 'number' &&
-      Number.isFinite(value.digits) &&
-      (value.active_low === undefined || typeof value.active_low === 'boolean')
-    )
-  }
-
-  if (value.kind === 'led_matrix') {
-    return (
-      typeof value.rows === 'number' &&
-      Number.isFinite(value.rows) &&
-      typeof value.columns === 'number' &&
-      Number.isFinite(value.columns)
-    )
-  }
-
-  if (value.kind === 'vga_display') {
-    return (
-      typeof value.rows === 'number' &&
-      Number.isFinite(value.rows) &&
-      typeof value.columns === 'number' &&
-      Number.isFinite(value.columns) &&
-      (value.color_mode === 'mono' ||
-        value.color_mode === 'rgb111' ||
-        value.color_mode === 'rgb332' ||
-        value.color_mode === 'rgb444' ||
-        value.color_mode === 'rgb565' ||
-        value.color_mode === 'rgb888')
-    )
-  }
-
-  return false
 }
 
 function isCanvasDeviceStateSnapshot(value: unknown): value is CanvasDeviceStateSnapshot {
@@ -200,7 +266,8 @@ function isCanvasDeviceStateSnapshot(value: unknown): value is CanvasDeviceState
     typeof value.is_on === 'boolean' &&
     (value.color === null || typeof value.color === 'string') &&
     isCanvasDeviceBindingSnapshot(value.binding) &&
-    isCanvasDeviceConfigSnapshot(value.config)
+    isCanvasDeviceConfigSnapshot(value.config) &&
+    isCanvasDeviceDataSnapshot(value.data)
   )
 }
 
@@ -218,83 +285,16 @@ function isCanvasDeviceSnapshot(value: unknown): value is CanvasDeviceSnapshot {
   )
 }
 
-function cloneCanvasDeviceBindingSnapshot(
-  binding: CanvasDeviceBindingSnapshot,
-): CanvasDeviceBindingSnapshot {
-  return binding.kind === 'single'
-    ? {
-        kind: 'single',
-        signal: binding.signal ?? null,
-      }
-    : {
-        kind: 'slots',
-        signals: [...binding.signals],
-      }
-}
-
-function cloneCanvasDeviceConfigSnapshot(
-  config: CanvasDeviceConfigSnapshot,
-): CanvasDeviceConfigSnapshot {
-  if (config.kind === 'button') {
-    return {
-      kind: 'button',
-      active_low: config.active_low ?? false,
-    }
-  }
-
-  if (config.kind === 'segment_display') {
-    return {
-      kind: 'segment_display',
-      digits: config.digits,
-      active_low: config.active_low ?? false,
-    }
-  }
-
-  if (config.kind === 'led_matrix') {
-    return {
-      kind: 'led_matrix',
-      rows: config.rows,
-      columns: config.columns,
-    }
-  }
-
-  if (config.kind === 'vga_display') {
-    return {
-      kind: 'vga_display',
-      rows: config.rows,
-      columns: config.columns,
-      color_mode: config.color_mode,
-    }
-  }
-
-  return {
-    kind: 'none',
-  }
-}
-
-function cloneCanvasDeviceStateSnapshot(
-  state: CanvasDeviceStateSnapshot,
-): CanvasDeviceStateSnapshot {
-  return {
-    // Device power levels are runtime telemetry, not persisted project configuration.
-    is_on: false,
-    color: state.color ?? null,
-    binding: cloneCanvasDeviceBindingSnapshot(state.binding),
-    config: cloneCanvasDeviceConfigSnapshot(state.config),
-  }
-}
-
 export function cloneProjectCanvasDevices(
   devices: readonly CanvasDeviceSnapshot[] = [],
 ): CanvasDeviceSnapshot[] {
-  return devices.map((device) => ({
-    id: device.id,
-    type: device.type,
-    x: device.x,
-    y: device.y,
-    label: device.label,
-    state: cloneCanvasDeviceStateSnapshot(device.state),
-  }))
+  const cloned = JSON.parse(JSON.stringify(devices)) as CanvasDeviceSnapshot[]
+  for (const device of cloned) {
+    if (deviceReceivesSignal(device.type)) {
+      device.state.is_on = false
+    }
+  }
+  return cloned
 }
 
 export function normalizeProjectCanvasDevices(value: unknown): CanvasDeviceSnapshot[] {

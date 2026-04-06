@@ -56,6 +56,16 @@ abc -lut {}\n\
 opt\n\
 wreduce\n\
 clean\n\
+maccmap -unmap\n\
+techmap\n\
+simplemap\n\
+opt\n\
+wreduce\n\
+clean\n\
+abc -lut {}\n\
+opt\n\
+wreduce\n\
+clean\n\
 techmap -map {}\n\
 opt\n\
 check\n\
@@ -65,6 +75,7 @@ write_json {}\n",
         quote_yosys_path(fde_simlib),
         quote_yosys_path(fde_techmap),
         quote_yosys_path(fde_cells_map),
+        FDE_LUT_WIDTH,
         FDE_LUT_WIDTH,
         quote_yosys_path(fde_cells_map),
         quote_yosys_path(edif_path),

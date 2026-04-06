@@ -10,12 +10,19 @@ import {
 } from 'vue'
 
 import BaseDevice from '../devices/BaseDevice.vue'
+import AudioPwmDevice from '../devices/AudioPwmDevice.vue'
 import ButtonDevice from '../devices/ButtonDevice.vue'
-import GenericPanelDevice from '../devices/GenericPanelDevice.vue'
+import DipSwitchBankDevice from '../devices/DipSwitchBankDevice.vue'
+import Hd44780LcdDevice from '../devices/Hd44780LcdDevice.vue'
+import LedBarDevice from '../devices/LedBarDevice.vue'
 import LedDevice from '../devices/LedDevice.vue'
 import LedMatrixDevice from '../devices/LedMatrixDevice.vue'
+import MatrixKeypadDevice from '../devices/MatrixKeypadDevice.vue'
+import MemoryDevice from '../devices/MemoryDevice.vue'
+import QuadratureEncoderDevice from '../devices/QuadratureEncoderDevice.vue'
 import SegmentDisplayDevice from '../devices/SegmentDisplayDevice.vue'
 import SwitchDevice from '../devices/SwitchDevice.vue'
+import UartTerminalDevice from '../devices/UartTerminalDevice.vue'
 import VgaDisplayDevice from '../devices/VgaDisplayDevice.vue'
 import WireLayer from './WireLayer.vue'
 import type { CanvasDeviceSnapshot, CanvasDeviceType } from '@/lib/hardware-client'
@@ -30,12 +37,24 @@ import {
 import {
   canvasDeviceEmitsToggle,
   createCanvasDeviceSnapshot,
+  deviceDrivesSignal,
   deviceReceivesSignal,
+  getCanvasBitsetData,
   getCanvasDeviceBoundSignal,
   getCanvasDeviceBoundSignalCount,
+  getCanvasDeviceBoundSignals,
   getCanvasDeviceRendererProps,
   getCanvasDeviceShellSize,
+  getCanvasDipSwitchBankConfig,
+  getCanvasHd44780LcdConfig,
+  getCanvasLedBarConfig,
   getCanvasMatrixDimensions,
+  getCanvasMatrixKeypadConfig,
+  getCanvasMatrixKeypadData,
+  getCanvasMemoryConfig,
+  getCanvasMemoryData,
+  getCanvasQuadratureEncoderConfig,
+  getCanvasQuadratureEncoderData,
   getCanvasSegmentDisplayConfig,
   getCanvasVgaDisplayConfig,
   isCanvasMatrixDevice,
@@ -107,12 +126,14 @@ const deviceRendererByType: Record<CanvasDeviceType, Component> = {
   led: LedDevice,
   switch: SwitchDevice,
   button: ButtonDevice,
-  keypad: GenericPanelDevice,
-  small_keypad: GenericPanelDevice,
-  rotary_button: GenericPanelDevice,
-  ps2_keyboard: GenericPanelDevice,
-  text_lcd: GenericPanelDevice,
-  graphic_lcd: GenericPanelDevice,
+  dip_switch_bank: DipSwitchBankDevice,
+  led_bar: LedBarDevice,
+  audio_pwm: AudioPwmDevice,
+  quadrature_encoder: QuadratureEncoderDevice,
+  matrix_keypad: MatrixKeypadDevice,
+  uart_terminal: UartTerminalDevice,
+  hd44780_lcd: Hd44780LcdDevice,
+  memory: MemoryDevice,
   vga_display: VgaDisplayDevice,
   segment_display: SegmentDisplayDevice,
   led_matrix: LedMatrixDevice,
@@ -594,8 +615,98 @@ function toggleSwitch(device: CanvasDeviceSnapshot, value: boolean) {
   void hardwareStore.setCanvasSwitchState(device.id, value)
 }
 
+function updateDevice(
+  device: CanvasDeviceSnapshot,
+  updater: (device: CanvasDeviceSnapshot) => CanvasDeviceSnapshot,
+) {
+  void hardwareStore.upsertCanvasDevice(updater(device))
+}
+
+function enqueueAsciiText(device: CanvasDeviceSnapshot, value: string) {
+  const bytes = Array.from(new TextEncoder().encode(value))
+  updateDevice(device, (current) => {
+    const existing = current.state.data.kind === 'queued_bytes' ? current.state.data.bytes : []
+    return {
+      ...current,
+      state: {
+        ...current.state,
+        data: {
+          kind: 'queued_bytes',
+          bytes: [...existing, ...bytes],
+        },
+      },
+    }
+  })
+}
+
+function setBitsetValue(device: CanvasDeviceSnapshot, index: number, value: boolean) {
+  const config = getCanvasDipSwitchBankConfig(device)
+  const width = config?.width ?? 1
+  const bits = getCanvasBitsetData(device, width)
+  bits[index] = value
+  updateDevice(device, (current) => ({
+    ...current,
+    state: {
+      ...current.state,
+      data: {
+        kind: 'bitset',
+        bits,
+      },
+    },
+  }))
+}
+
+function rotateEncoder(device: CanvasDeviceSnapshot, delta: number) {
+  const data = getCanvasQuadratureEncoderData(device)
+  const nextPhase = (((data.phase + delta) % 4) + 4) % 4
+  updateDevice(device, (current) => ({
+    ...current,
+    state: {
+      ...current.state,
+      data: {
+        kind: 'quadrature_encoder',
+        phase: nextPhase,
+        button_pressed: data.buttonPressed,
+      },
+    },
+  }))
+}
+
+function setEncoderButton(device: CanvasDeviceSnapshot, value: boolean) {
+  const data = getCanvasQuadratureEncoderData(device)
+  updateDevice(device, (current) => ({
+    ...current,
+    state: {
+      ...current.state,
+      data: {
+        kind: 'quadrature_encoder',
+        phase: data.phase,
+        button_pressed: value,
+      },
+    },
+  }))
+}
+
+function setMatrixKey(device: CanvasDeviceSnapshot, row: number | null, column: number | null) {
+  updateDevice(device, (current) => ({
+    ...current,
+    state: {
+      ...current.state,
+      data: {
+        kind: 'matrix_keypad',
+        pressed_row: row,
+        pressed_column: column,
+      },
+    },
+  }))
+}
+
 function renderedDevice(device: CanvasDeviceSnapshot): CanvasDeviceSnapshot {
   if (!streamRunning.value) {
+    if (!deviceReceivesSignal(device.type) || deviceDrivesSignal(device.type)) {
+      return device
+    }
+
     return {
       ...device,
       state: {
@@ -667,21 +778,165 @@ function rendererProps(device: CanvasDeviceSnapshot) {
     }
   }
 
+  if (device.type === 'dip_switch_bank') {
+    const config = getCanvasDipSwitchBankConfig(resolvedDevice)
+    return {
+      ...getCanvasDeviceRendererProps(resolvedDevice),
+      width: config?.width ?? 8,
+      bits: getCanvasBitsetData(resolvedDevice, config?.width ?? 8),
+    }
+  }
+
+  if (device.type === 'led_bar') {
+    const config = getCanvasLedBarConfig(resolvedDevice)
+    if (!streamRunning.value) {
+      return {
+        ...getCanvasDeviceRendererProps(resolvedDevice),
+        width: config?.width ?? 8,
+        bits: Array.from({ length: config?.width ?? 8 }, () => false),
+      }
+    }
+    const telemetryBits =
+      streamRunning.value && telemetry?.bit_values?.length
+        ? telemetry.bit_values.map((value) => Boolean(value))
+        : null
+    const fallbackBits = getCanvasDeviceBoundSignals(device).map((signal) => {
+      if (!signal) {
+        return false
+      }
+      const rawLevel = hardwareStore.signalTelemetry.value[signal]?.latest ?? false
+      return config?.activeLow ? !rawLevel : rawLevel
+    })
+    return {
+      ...getCanvasDeviceRendererProps(resolvedDevice),
+      width: config?.width ?? 8,
+      bits: telemetryBits ?? fallbackBits,
+    }
+  }
+
+  if (device.type === 'audio_pwm') {
+    const sampleRateHz =
+      hardwareStore.dataStreamStatus.value.actual_hz ||
+      hardwareStore.dataStreamStatus.value.target_hz
+    const periodSamples = telemetry?.audio_period_samples ?? 0
+    const frequencyHz =
+      streamRunning.value && sampleRateHz > 0 && periodSamples > 0
+        ? sampleRateHz / periodSamples
+        : 0
+    return {
+      frequencyHz,
+      dutyRatio: telemetry?.high_ratio ?? 0,
+      sampleRateHz,
+      edgeCount: telemetry?.audio_edge_count ?? 0,
+      isOn: telemetry?.latest ?? false,
+    }
+  }
+
+  if (device.type === 'quadrature_encoder') {
+    const config = getCanvasQuadratureEncoderConfig(resolvedDevice)
+    const data = getCanvasQuadratureEncoderData(resolvedDevice)
+    return {
+      ...getCanvasDeviceRendererProps(resolvedDevice),
+      hasButton: config?.hasButton ?? true,
+      phase: data.phase,
+      buttonPressed: data.buttonPressed,
+    }
+  }
+
+  if (device.type === 'matrix_keypad') {
+    const config = getCanvasMatrixKeypadConfig(resolvedDevice)
+    const data = getCanvasMatrixKeypadData(resolvedDevice)
+    return {
+      ...getCanvasDeviceRendererProps(resolvedDevice),
+      rows: config?.rows ?? 4,
+      columns: config?.columns ?? 4,
+      pressedRow: data.pressedRow,
+      pressedColumn: data.pressedColumn,
+    }
+  }
+
+  if (device.type === 'uart_terminal') {
+    return {
+      textLog: telemetry?.text_log ?? '',
+    }
+  }
+
+  if (device.type === 'hd44780_lcd') {
+    const config = getCanvasHd44780LcdConfig(resolvedDevice)
+    return {
+      ...getCanvasDeviceRendererProps(resolvedDevice),
+      columns: config?.columns ?? 16,
+      rows: config?.rows ?? 2,
+      lines: telemetry?.text_lines ?? Array.from({ length: config?.rows ?? 2 }, () => ''),
+    }
+  }
+
+  if (device.type === 'memory') {
+    const config = getCanvasMemoryConfig(resolvedDevice)
+    const data = getCanvasMemoryData(device, 1 << Math.min(config?.addressWidth ?? 8, 16))
+    return {
+      ...getCanvasDeviceRendererProps(resolvedDevice),
+      mode: config?.mode ?? 'ram',
+      addressWidth: config?.addressWidth ?? 8,
+      dataWidth: config?.dataWidth ?? 8,
+      wordCount:
+        streamRunning.value && telemetry?.memory_word_count
+          ? telemetry.memory_word_count
+          : data.words.length,
+      sourcePath: data.sourcePath,
+      liveAddress:
+        streamRunning.value && typeof telemetry?.memory_address === 'number'
+          ? telemetry.memory_address
+          : null,
+      liveOutputWord:
+        streamRunning.value && typeof telemetry?.memory_output_word === 'number'
+          ? telemetry.memory_output_word
+          : null,
+    }
+  }
+
   return getCanvasDeviceRendererProps(resolvedDevice)
 }
 
 function rendererListeners(
   device: CanvasDeviceSnapshot,
-): Record<string, (value: boolean) => void> | undefined {
-  if (!canvasDeviceEmitsToggle(device.type)) {
-    return undefined
+): Record<string, (...args: any[]) => void> | undefined {
+  const listeners: Record<string, (...args: any[]) => void> = {}
+
+  if (canvasDeviceEmitsToggle(device.type)) {
+    listeners.toggle = (value: boolean) => {
+      toggleSwitch(device, value)
+    }
   }
 
-  return {
-    toggle: (value: boolean) => {
-      toggleSwitch(device, value)
-    },
+  if (device.type === 'dip_switch_bank') {
+    listeners['toggle-bit'] = (index: number, value: boolean) => {
+      setBitsetValue(device, index, value)
+    }
   }
+
+  if (device.type === 'quadrature_encoder') {
+    listeners.rotate = (delta: number) => {
+      rotateEncoder(device, delta)
+    }
+    listeners['toggle-button'] = (value: boolean) => {
+      setEncoderButton(device, value)
+    }
+  }
+
+  if (device.type === 'matrix_keypad') {
+    listeners['press-key'] = (row: number | null, column: number | null) => {
+      setMatrixKey(device, row, column)
+    }
+  }
+
+  if (device.type === 'uart_terminal') {
+    listeners['queue-text'] = (value: string) => {
+      enqueueAsciiText(device, value)
+    }
+  }
+
+  return Object.keys(listeners).length > 0 ? listeners : undefined
 }
 
 function boundSignalsCount(device: CanvasDeviceSnapshot) {

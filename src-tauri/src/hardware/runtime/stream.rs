@@ -37,10 +37,11 @@ struct StreamScheduleAnchor {
 
 impl HardwareRuntime {
     fn io_settings_from_stream_config(config: &HardwareDataStreamConfigV1) -> IoSettings {
-        let mut settings = IoSettings::default();
-        settings.clock_high_delay = config.vericomm_clock_high_delay;
-        settings.clock_low_delay = config.vericomm_clock_low_delay;
-        settings
+        IoSettings {
+            clock_high_delay: config.vericomm_clock_high_delay,
+            clock_low_delay: config.vericomm_clock_low_delay,
+            ..IoSettings::default()
+        }
     }
 
     pub(super) fn run_data_stream_loop(
@@ -129,7 +130,6 @@ impl HardwareRuntime {
             target_hz: DATA_DEFAULT_TARGET_HZ,
         };
         let mut write_buffer = vec![0u16; fifo_words];
-        let mut cycle_words = vec![0u16; fifo_words];
         let dropped_samples = 0_u64;
         let mut input_encoders: Vec<Box<dyn InputDeviceEncoder>> = Vec::new();
 
@@ -277,14 +277,12 @@ impl HardwareRuntime {
                 }
                 output_decoder_signature = next_output_decoder_signature;
             }
-            Self::fill_write_frame(
+            Self::fill_write_buffer(
                 &state_snapshot,
                 &input_encoders,
-                &mut cycle_words[..words_per_cycle],
-            );
-            Self::repeat_frame_into_buffer(
-                &cycle_words[..words_per_cycle],
                 &mut write_buffer[..batch_words],
+                words_per_cycle,
+                batch_cycles,
             );
             let mut read_buffer = Self::acquire_decode_buffer(&free_buffer_rx, fifo_words);
             read_buffer[..batch_words].fill(0);
@@ -685,16 +683,5 @@ impl HardwareRuntime {
             cycle_delta as f64 / elapsed_seconds,
             transfer_delta as f64 / elapsed_seconds,
         )
-    }
-
-    fn repeat_frame_into_buffer(frame_words: &[u16], buffer: &mut [u16]) {
-        let words_per_cycle = frame_words.len();
-        if words_per_cycle == 0 {
-            return;
-        }
-
-        for chunk in buffer.chunks_exact_mut(words_per_cycle) {
-            chunk.copy_from_slice(frame_words);
-        }
     }
 }

@@ -2,9 +2,15 @@ use std::collections::HashMap;
 
 use crate::hardware::types::{CanvasDeviceSnapshot, CanvasDeviceType};
 
-use super::input::{compile_single_bit_input, InputDeviceEncoder};
+use super::input::{
+    compile_bitset_input, compile_matrix_keypad_input, compile_memory_input,
+    compile_quadrature_encoder_input, compile_single_bit_input, compile_uart_terminal_input,
+    InputDeviceEncoder,
+};
 use super::output::{
-    compile_led_matrix_output, compile_led_output, compile_segment_display_output,
+    compile_audio_pwm_output, compile_hd44780_lcd_output, compile_led_bar_output,
+    compile_led_matrix_output, compile_led_output, compile_matrix_keypad_output,
+    compile_memory_output, compile_segment_display_output, compile_uart_terminal_output,
     compile_vga_display_output, OutputDeviceDecoder,
 };
 
@@ -33,7 +39,7 @@ struct DeviceRegistration {
     output_compiler: Option<OutputCompiler>,
 }
 
-const DEVICE_REGISTRATIONS: [DeviceRegistration; 12] = [
+const DEVICE_REGISTRATIONS: [DeviceRegistration; 14] = [
     DeviceRegistration {
         device_type: CanvasDeviceType::Led,
         capabilities: DeviceCapabilities {
@@ -62,58 +68,76 @@ const DEVICE_REGISTRATIONS: [DeviceRegistration; 12] = [
         output_compiler: None,
     },
     DeviceRegistration {
-        device_type: CanvasDeviceType::Keypad,
+        device_type: CanvasDeviceType::DipSwitchBank,
         capabilities: DeviceCapabilities {
             drives_signal: true,
             receives_signal: false,
         },
-        input_compiler: Some(compile_single_bit_input),
+        input_compiler: Some(compile_bitset_input),
         output_compiler: None,
     },
     DeviceRegistration {
-        device_type: CanvasDeviceType::SmallKeypad,
-        capabilities: DeviceCapabilities {
-            drives_signal: true,
-            receives_signal: false,
-        },
-        input_compiler: Some(compile_single_bit_input),
-        output_compiler: None,
-    },
-    DeviceRegistration {
-        device_type: CanvasDeviceType::RotaryButton,
-        capabilities: DeviceCapabilities {
-            drives_signal: true,
-            receives_signal: false,
-        },
-        input_compiler: Some(compile_single_bit_input),
-        output_compiler: None,
-    },
-    DeviceRegistration {
-        device_type: CanvasDeviceType::Ps2Keyboard,
-        capabilities: DeviceCapabilities {
-            drives_signal: true,
-            receives_signal: false,
-        },
-        input_compiler: Some(compile_single_bit_input),
-        output_compiler: None,
-    },
-    DeviceRegistration {
-        device_type: CanvasDeviceType::TextLcd,
+        device_type: CanvasDeviceType::LedBar,
         capabilities: DeviceCapabilities {
             drives_signal: false,
             receives_signal: true,
         },
         input_compiler: None,
-        output_compiler: None,
+        output_compiler: Some(compile_led_bar_output),
     },
     DeviceRegistration {
-        device_type: CanvasDeviceType::GraphicLcd,
+        device_type: CanvasDeviceType::AudioPwm,
         capabilities: DeviceCapabilities {
             drives_signal: false,
             receives_signal: true,
         },
         input_compiler: None,
+        output_compiler: Some(compile_audio_pwm_output),
+    },
+    DeviceRegistration {
+        device_type: CanvasDeviceType::QuadratureEncoder,
+        capabilities: DeviceCapabilities {
+            drives_signal: true,
+            receives_signal: false,
+        },
+        input_compiler: Some(compile_quadrature_encoder_input),
         output_compiler: None,
+    },
+    DeviceRegistration {
+        device_type: CanvasDeviceType::MatrixKeypad,
+        capabilities: DeviceCapabilities {
+            drives_signal: true,
+            receives_signal: true,
+        },
+        input_compiler: Some(compile_matrix_keypad_input),
+        output_compiler: Some(compile_matrix_keypad_output),
+    },
+    DeviceRegistration {
+        device_type: CanvasDeviceType::UartTerminal,
+        capabilities: DeviceCapabilities {
+            drives_signal: true,
+            receives_signal: true,
+        },
+        input_compiler: Some(compile_uart_terminal_input),
+        output_compiler: Some(compile_uart_terminal_output),
+    },
+    DeviceRegistration {
+        device_type: CanvasDeviceType::Hd44780Lcd,
+        capabilities: DeviceCapabilities {
+            drives_signal: false,
+            receives_signal: true,
+        },
+        input_compiler: None,
+        output_compiler: Some(compile_hd44780_lcd_output),
+    },
+    DeviceRegistration {
+        device_type: CanvasDeviceType::Memory,
+        capabilities: DeviceCapabilities {
+            drives_signal: true,
+            receives_signal: true,
+        },
+        input_compiler: Some(compile_memory_input),
+        output_compiler: Some(compile_memory_output),
     },
     DeviceRegistration {
         device_type: CanvasDeviceType::VgaDisplay,
