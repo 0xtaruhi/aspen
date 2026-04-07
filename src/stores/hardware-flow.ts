@@ -296,16 +296,6 @@ async function runImplementation(
   }
 }
 
-function resetImplementationState() {
-  applyPersistedImplementationState(null)
-  projectStore.setImplementationCache(null)
-}
-
-function resetSynthesisState() {
-  applyPersistedSynthesisState(null)
-  projectStore.setSynthesisCache(null)
-}
-
 watch(
   () => projectStore.synthesisCache,
   (snapshot) => {
@@ -335,6 +325,4 @@ export const hardwareFlowStore = {
   implementationMessage: readonly(implementationMessage),
   runSynthesis,
   runImplementation,
-  resetSynthesisState,
-  resetImplementationState,
 }

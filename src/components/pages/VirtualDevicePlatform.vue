@@ -37,10 +37,8 @@ let displayedHzTimer: ReturnType<typeof setInterval> | null = null
 const { t } = useI18n()
 
 const availableSignalCount = computed(() => signalCatalogStore.signals.value.length)
-const hasAnySynthesisSignals = computed(() =>
-  Boolean(signalCatalogStore.latestSynthesisReport.value),
-)
-const hasStaleSynthesisSignals = signalCatalogStore.hasStaleSynthesisReport
+const hasAnySynthesisSignals = signalCatalogStore.hasSignalSourceReport
+const hasStaleSynthesisSignals = signalCatalogStore.hasStaleSignalSourceReport
 const streamSignalNames = computed(() => {
   return signalCatalogStore.signals.value.slice(0, STREAM_SIGNAL_LIMIT).map((signal) => signal.name)
 })

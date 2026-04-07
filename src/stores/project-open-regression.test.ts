@@ -159,7 +159,7 @@ describe('project open regression', () => {
     expect(designContextStore.hardwareBuildFiles.value).toHaveLength(1)
     expect(designContextStore.primaryModule.value).toBe('Dino_Top')
     expect(synthesisCatalogStore.currentSynthesisReport.value?.success).toBe(true)
-    expect(signalCatalogStore.currentSynthesisReport.value?.success).toBe(true)
+    expect(signalCatalogStore.signalSourceReport.value?.success).toBe(true)
     expect(implementationCatalogStore.currentImplementationReport.value?.success).toBe(true)
     expect(programmingCatalogStore.defaultBitstreamPath.value).toBe('/tmp/impl/top.bit')
   })

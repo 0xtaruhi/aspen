@@ -225,6 +225,4 @@ export const hardwareStore = {
   setCanvasSwitchState,
   clearError,
   disconnectView,
-  resetSynthesisState: hardwareFlowStore.resetSynthesisState,
-  resetImplementationState: hardwareFlowStore.resetImplementationState,
 }

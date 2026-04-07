@@ -19,14 +19,13 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useI18n } from '@/lib/i18n'
 import { getProjectRootDirectory } from '@/lib/project-layout'
-import { buildConstraintXml, resolveCurrentProjectPinConstraints } from '@/lib/project-constraints'
-import { CURRENT_SYNTHESIS_ARTIFACT_FLOW_REVISION } from '@/lib/synthesis-artifact-flow'
 import { importProjectFiles, openProject } from '@/lib/project-io'
 import { designContextStore } from '@/stores/design-context'
 import { hardwareStore } from '@/stores/hardware'
 import { implementationCatalogStore } from '@/stores/implementation-catalog'
 import { projectStore } from '@/stores/project'
 import { signalCatalogStore } from '@/stores/signal-catalog'
+import { synthesisCatalogStore } from '@/stores/synthesis-catalog'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -44,34 +43,20 @@ const implementationMessage = hardwareStore.implementationMessage
 const implementationReport = implementationCatalogStore.currentImplementationReport
 const projectName = computed(() => projectStore.toSnapshot().name)
 
-const synthesisReport = signalCatalogStore.currentSynthesisReport
-const hasCurrentSynthesis = computed(() => Boolean(synthesisReport.value))
+const hasCurrentSynthesis = synthesisCatalogStore.hasCurrentSuccessfulSynthesisReport
 const hasDesignSource = computed(() => Boolean(designContextStore.selectedSource.value))
 const implementationProjectFiles = designContextStore.projectBuildFiles
 const implementationHardwareFiles = designContextStore.hardwareBuildFiles
 
 const reusableSynthesizedEdifPath = computed(() => {
-  const artifacts = synthesisReport.value?.artifacts
-  if (!artifacts?.edif_path) {
-    return null
-  }
-
-  if (artifacts.flow_revision !== CURRENT_SYNTHESIS_ARTIFACT_FLOW_REVISION) {
-    return null
-  }
-
-  return artifacts.edif_path
+  return synthesisCatalogStore.currentReusableSynthesizedEdifPath.value || null
 })
 
-const hasReusableSynthesisArtifact = computed(() => Boolean(reusableSynthesizedEdifPath.value))
-
-const currentConstraintAssignments = computed(() => {
-  return resolveCurrentProjectPinConstraints(
-    projectStore.pinConstraints,
-    projectStore.topFileId,
-    signalCatalogStore.signals.value,
-  )
+const hasReusableSynthesisArtifact = computed(() => {
+  return Boolean(synthesisCatalogStore.currentReusableSynthesizedEdifPath.value)
 })
+
+const currentConstraintAssignments = implementationCatalogStore.currentConstraintAssignments
 
 const fullyMapped = computed(() => {
   const topSignals = signalCatalogStore.signals.value
@@ -82,12 +67,7 @@ const fullyMapped = computed(() => {
   return currentConstraintAssignments.value.length === topSignals.length
 })
 
-const implementationConstraintXml = computed(() => {
-  return buildConstraintXml(
-    designContextStore.primaryModule.value,
-    currentConstraintAssignments.value,
-  )
-})
+const implementationConstraintXml = implementationCatalogStore.currentConstraintXml
 
 const canRunImplementation = computed(() => {
   return (

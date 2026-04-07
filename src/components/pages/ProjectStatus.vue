@@ -13,7 +13,7 @@ import { useI18n } from '@/lib/i18n'
 import { importProjectFiles, openProject } from '@/lib/project-io'
 import { designContextStore } from '@/stores/design-context'
 import { projectStore } from '@/stores/project'
-import { signalCatalogStore } from '@/stores/signal-catalog'
+import { synthesisCatalogStore } from '@/stores/synthesis-catalog'
 
 const signalSummary = designContextStore.signalSummary
 const activeFileName = designContextStore.sourceName
@@ -55,13 +55,13 @@ function summarizeResources(counts: readonly SynthesisCellTypeCountV1[]) {
   return { lut, ff, bram, dsp }
 }
 
-const synthesisReport = signalCatalogStore.currentSynthesisReport
-
 const synthesizedResources = computed(() => {
-  return summarizeResources(synthesisReport.value?.stats.cell_type_counts ?? [])
+  return summarizeResources(
+    synthesisCatalogStore.currentSuccessfulSynthesisReport.value?.stats.cell_type_counts ?? [],
+  )
 })
 
-const hasCurrentSynthesis = computed(() => Boolean(synthesisReport.value))
+const hasCurrentSynthesis = synthesisCatalogStore.hasCurrentSuccessfulSynthesisReport
 
 const summaryCards = computed(() => {
   return [

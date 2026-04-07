@@ -3,16 +3,13 @@ import type { ExpandedVerilogPortBit } from '@/lib/verilog-port-bits'
 import { computed, readonly } from 'vue'
 
 import { getFpgaBoardDescriptor } from '@/lib/fpga-board-catalog'
-import { createFlowReportSelection } from '@/lib/flow-report-selection'
 import {
   buildPhysicalSignalSlotOrder,
   resolveCurrentProjectPinConstraints,
 } from '@/lib/project-constraints'
-import { buildSynthesisInputSignature } from '@/lib/synthesis-request-signature'
 import { expandVerilogPorts } from '@/lib/verilog-port-bits'
-import { designContextStore } from '@/stores/design-context'
-import { hardwareStore } from '@/stores/hardware'
 import { projectStore } from '@/stores/project'
+import { synthesisCatalogStore } from '@/stores/synthesis-catalog'
 
 export type SignalCatalogEntry = ExpandedVerilogPortBit & {
   name: string
@@ -69,6 +66,21 @@ const signals = computed<readonly SignalCatalogEntry[]>(() => {
 
 const targetBoard = computed(() => getFpgaBoardDescriptor(projectStore.targetBoardId))
 
+const signalSourceReport = computed(() => {
+  return (
+    synthesisCatalogStore.currentSuccessfulSynthesisReport.value ??
+    synthesisCatalogStore.latestSuccessfulSynthesisReport.value
+  )
+})
+
+const hasSignalSourceReport = computed(() => {
+  return Boolean(signalSourceReport.value)
+})
+
+const hasStaleSignalSourceReport = computed(() => {
+  return synthesisCatalogStore.hasStaleSuccessfulSynthesisReport.value
+})
+
 const expandedSignalBits = computed(() => {
   const report = signalSourceReport.value
   return report?.success ? expandVerilogPorts(report.top_ports) : []
@@ -80,27 +92,6 @@ const currentConstraintAssignments = computed(() => {
     projectStore.topFileId,
     expandedSignalBits.value,
   )
-})
-
-const currentSynthesisSignature = computed(() => {
-  return buildSynthesisInputSignature(
-    designContextStore.primaryModule.value,
-    designContextStore.projectBuildFiles.value,
-  )
-})
-
-const synthesisReportSelection = createFlowReportSelection({
-  latestReport: hardwareStore.synthesisReport,
-  latestSignature: hardwareStore.synthesisReportSignature,
-  currentSignature: currentSynthesisSignature,
-  acceptReport: (report) => report.success,
-})
-
-const currentSynthesisReport = synthesisReportSelection.currentReport
-const latestSynthesisReport = synthesisReportSelection.latestReport
-
-const signalSourceReport = computed(() => {
-  return currentSynthesisReport.value ?? latestSynthesisReport.value
 })
 
 const streamInputSignalOrder = computed(() => {
@@ -120,9 +111,9 @@ const streamOutputSignalOrder = computed(() => {
 })
 
 export const signalCatalogStore = {
-  currentSynthesisReport: readonly(currentSynthesisReport),
-  latestSynthesisReport: readonly(latestSynthesisReport),
-  hasStaleSynthesisReport: synthesisReportSelection.hasStaleReport,
+  signalSourceReport: readonly(signalSourceReport),
+  hasSignalSourceReport: readonly(hasSignalSourceReport),
+  hasStaleSignalSourceReport: readonly(hasStaleSignalSourceReport),
   signals: readonly(signals),
   streamInputSignalOrder: readonly(streamInputSignalOrder),
   streamOutputSignalOrder: readonly(streamOutputSignalOrder),

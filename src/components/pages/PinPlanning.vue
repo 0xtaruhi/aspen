@@ -33,6 +33,7 @@ import { importProjectFiles, openProject } from '@/lib/project-io'
 import { designContextStore } from '@/stores/design-context'
 import { projectStore } from '@/stores/project'
 import { signalCatalogStore, type SignalCatalogEntry } from '@/stores/signal-catalog'
+import { synthesisCatalogStore } from '@/stores/synthesis-catalog'
 
 const UNASSIGNED_PIN = '__unassigned__'
 
@@ -49,9 +50,9 @@ const boardDescriptor = computed(() => getFpgaBoardDescriptor(projectStore.targe
 const expandedPorts = computed<readonly SignalCatalogEntry[]>(
   () => signalCatalogStore.signals.value,
 )
-const currentSynthesisReport = signalCatalogStore.currentSynthesisReport
-const hasCurrentSynthesis = computed(() => Boolean(currentSynthesisReport.value))
-const hasStaleSynthesis = signalCatalogStore.hasStaleSynthesisReport
+const currentSynthesisReport = synthesisCatalogStore.currentSuccessfulSynthesisReport
+const hasCurrentSynthesis = synthesisCatalogStore.hasCurrentSuccessfulSynthesisReport
+const hasStaleSynthesis = synthesisCatalogStore.hasStaleSuccessfulSynthesisReport
 
 const currentAssignments = computed(() => {
   return resolveCurrentProjectPinConstraints(

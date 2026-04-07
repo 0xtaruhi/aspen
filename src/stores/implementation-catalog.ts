@@ -1,9 +1,9 @@
 import { computed, readonly } from 'vue'
 
 import { buildImplementationInputSignature } from '@/lib/implementation-request-signature'
-import { createFlowReportSelection } from '@/lib/flow-report-selection'
 import { buildConstraintXml, resolveCurrentProjectPinConstraints } from '@/lib/project-constraints'
 import { designContextStore } from '@/stores/design-context'
+import { createFlowCatalog } from '@/stores/flow-catalog'
 import { hardwareStore } from '@/stores/hardware'
 import { projectStore } from '@/stores/project'
 import { signalCatalogStore } from '@/stores/signal-catalog'
@@ -33,29 +33,30 @@ const currentImplementationSignature = computed(() => {
   )
 })
 
-const implementationReportSelection = createFlowReportSelection({
+const implementationCatalog = createFlowCatalog({
   latestReport: hardwareStore.implementationReport,
   latestSignature: hardwareStore.implementationReportSignature,
   currentSignature: currentImplementationSignature,
 })
 
-const latestImplementationReport = implementationReportSelection.latestReport
-const currentImplementationReport = implementationReportSelection.currentReport
-
 const latestImplementationBitstreamPath = computed(() => {
-  return latestImplementationReport.value?.artifacts.bitstream_path?.trim() ?? ''
+  return implementationCatalog.latestReport.value?.artifacts.bitstream_path?.trim() ?? ''
 })
 
-const hasStaleImplementationReport = implementationReportSelection.hasStaleReport
-
 const currentImplementationBitstreamPath = computed(() => {
-  return currentImplementationReport.value?.artifacts.bitstream_path?.trim() ?? ''
+  return implementationCatalog.currentReport.value?.artifacts.bitstream_path?.trim() ?? ''
 })
 
 export const implementationCatalogStore = {
-  currentImplementationReport: readonly(currentImplementationReport),
-  latestImplementationReport: readonly(latestImplementationReport),
+  currentConstraintAssignments: readonly(currentConstraintAssignments),
+  currentConstraintXml: readonly(currentConstraintXml),
+  currentImplementationSignature: implementationCatalog.currentSignature,
+  latestImplementationSignature: implementationCatalog.latestSignature,
+  currentImplementationReport: implementationCatalog.currentReport,
+  latestImplementationReport: implementationCatalog.latestReport,
+  hasCurrentImplementationReport: implementationCatalog.hasCurrentReport,
+  hasLatestImplementationReport: implementationCatalog.hasLatestReport,
+  hasStaleImplementationReport: implementationCatalog.hasStaleReport,
   latestImplementationBitstreamPath: readonly(latestImplementationBitstreamPath),
   currentImplementationBitstreamPath: readonly(currentImplementationBitstreamPath),
-  hasStaleImplementationReport: readonly(hasStaleImplementationReport),
 }
