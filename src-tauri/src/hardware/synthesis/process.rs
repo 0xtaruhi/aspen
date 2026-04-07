@@ -42,18 +42,18 @@ opt -full\n\
 techmap -map {}\n\
 simplemap\n\
 dfflegalize \\\n\
-  -cell $_DFF_N_ x \\\n\
-  -cell $_DFF_P_ x \\\n\
-  -cell $_DFFE_PP_ x \\\n\
-  -cell $_DFFE_PN_ x \\\n\
-  -cell $_DFF_PN0_ x \\\n\
-  -cell $_DFF_PN1_ x \\\n\
-  -cell $_DFF_PP0_ x \\\n\
-  -cell $_DFF_PP1_ x \\\n\
-  -cell $_DFF_NN0_ x \\\n\
-  -cell $_DFF_NN1_ x \\\n\
-  -cell $_DFF_NP0_ x \\\n\
-  -cell $_DFF_NP1_ x\n\
+  -cell $_DFF_N_ 01 \\\n\
+  -cell $_DFF_P_ 01 \\\n\
+  -cell $_DFFE_PP_ 01 \\\n\
+  -cell $_DFFE_PN_ 01 \\\n\
+  -cell $_DFF_PN0_ r \\\n\
+  -cell $_DFF_PN1_ r \\\n\
+  -cell $_DFF_PP0_ r \\\n\
+  -cell $_DFF_PP1_ r \\\n\
+  -cell $_DFF_NN0_ r \\\n\
+  -cell $_DFF_NN1_ r \\\n\
+  -cell $_DFF_NP0_ r \\\n\
+  -cell $_DFF_NP1_ r\n\
 techmap -D NO_LUT -map {}\n\
 opt\n\
 wreduce\n\

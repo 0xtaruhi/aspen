@@ -280,6 +280,66 @@ endmodule
 }
 
 #[test]
+fn yosys_smoke_test_preserves_initialized_ff_properties() {
+    let Some(toolchain) = bundled_synthesis_toolchain() else {
+        return;
+    };
+
+    let request = SynthesisRequestV1 {
+        op_id: "test-ff-init-op".to_string(),
+        project_name: Some("test-ff-init-project".to_string()),
+        project_dir: None,
+        top_module: "top".to_string(),
+        files: vec![SynthesisSourceFileV1 {
+            path: "top.v".to_string(),
+            content: r#"
+module top(
+    input wire clk,
+    output reg q0,
+    output reg q1
+);
+    initial q0 = 1'b0;
+    initial q1 = 1'b1;
+
+    always @(posedge clk) begin
+        q0 <= ~q0;
+        q1 <= ~q1;
+    end
+endmodule
+"#
+            .trim()
+            .to_string(),
+        }],
+    };
+    let generated_at_ms = now_millis().unwrap();
+    let (workdir, _) = resolve_workdir(&request, generated_at_ms).unwrap();
+
+    let report = run_yosys_in_workdir(
+        &toolchain,
+        &workdir,
+        &request,
+        generated_at_ms,
+        Instant::now(),
+        |_| {},
+    )
+    .unwrap();
+
+    assert!(report.success, "{}", report.log);
+
+    let edif_path = report
+        .artifacts
+        .as_ref()
+        .and_then(|artifacts| artifacts.edif_path.as_ref())
+        .map(PathBuf::from)
+        .expect("edif path");
+    let edif = fs::read_to_string(&edif_path).expect("read synthesized edif");
+    let _ = fs::remove_dir_all(&workdir);
+
+    assert!(edif.contains("(property INIT (integer 0))"), "{edif}");
+    assert!(edif.contains("(property INIT (integer 1))"), "{edif}");
+}
+
+#[test]
 fn build_yosys_script_runs_bram_mapping_before_memory_map() {
     let script = process::build_yosys_script(
         PathBuf::from("/tmp/fdesimlib.v").as_path(),
