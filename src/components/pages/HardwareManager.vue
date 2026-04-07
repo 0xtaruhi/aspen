@@ -321,14 +321,14 @@ async function pickBitstream() {
 }
 
 onMounted(() => {
-  hardwareStore.start().catch((err) => {
+  hardwareStore.acquireView().catch((err) => {
     programMessageTone.value = 'error'
     programMessage.value = t('hardwareWatchFailed', { message: getErrorMessage(err) })
   })
 })
 
 onBeforeUnmount(() => {
-  hardwareStore.stop().catch(() => undefined)
+  hardwareStore.releaseView().catch(() => undefined)
 })
 </script>
 

@@ -362,7 +362,7 @@ onMounted(() => {
   streamMessage.value = ''
 
   hardwareStore
-    .start()
+    .acquireView()
     .then(() => syncStreamConfig())
     .catch((err) => {
       streamMessage.value = t('hardwareRuntimeUnavailable', { message: getErrorMessage(err) })
@@ -379,7 +379,7 @@ onBeforeUnmount(() => {
 
   clearStreamStatusPollTimer()
   clearDisplayedHzTimer()
-  hardwareStore.stop().catch(() => undefined)
+  hardwareStore.releaseView().catch(() => undefined)
 })
 </script>
 

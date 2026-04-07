@@ -26,6 +26,7 @@ import {
   startHardwareDataStream,
   stopHardwareDataStream,
 } from '@/lib/hardware-client'
+import { createAsyncViewLifecycle } from '@/lib/async-view-lifecycle'
 import { translate } from '@/lib/i18n'
 
 type HotplugPayload = {
@@ -108,6 +109,12 @@ let pendingDataBatchMeta: Pick<
 > | null = null
 
 const hardwareStateListeners = new Set<(state: HardwareStateV1) => void>()
+
+const runtimeViewLifecycle = createAsyncViewLifecycle({
+  start: startRuntimeSession,
+  stop: stopRuntimeSession,
+  isStarted: () => isStarted.value,
+})
 
 function extractRuntimeState(nextState: HardwareStateV1): RuntimeState {
   const { canvas_devices: _canvasDevices, ...runtimeOnlyState } = nextState
@@ -439,7 +446,7 @@ export async function dispatch(action: HardwareActionV1): Promise<HardwareStateV
   }
 }
 
-export async function start() {
+async function startRuntimeSession() {
   if (isStarted.value) {
     return
   }
@@ -509,7 +516,7 @@ export async function start() {
   }
 }
 
-export async function stop() {
+async function stopRuntimeSession() {
   if (!isStarted.value) {
     return
   }
@@ -543,6 +550,22 @@ export async function stop() {
     resetRuntimeViewState()
     isStarted.value = false
   }
+}
+
+export async function acquireView() {
+  return runtimeViewLifecycle.acquire()
+}
+
+export async function releaseView() {
+  return runtimeViewLifecycle.release()
+}
+
+export async function start() {
+  return startRuntimeSession()
+}
+
+export async function stop() {
+  return stopRuntimeSession()
 }
 
 export async function configureDataStream(
@@ -692,4 +715,6 @@ export const hardwareRuntimeStore = {
   disconnectView,
   subscribeHardwareState,
   isTauriUnavailable,
+  acquireView,
+  releaseView,
 }
