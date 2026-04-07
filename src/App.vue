@@ -20,6 +20,7 @@ import { useI18n } from '@/lib/i18n'
 import { openProject, saveProject, saveProjectAs } from '@/lib/project-io'
 import ThemeToggleButton from '@/components/ThemeToggleButton.vue'
 import { routeLabelMap, type AppRouteName } from '@/router'
+import { hardwareWorkbenchStore } from '@/stores/hardware-workbench'
 import { projectStore } from '@/stores/project'
 import { uiStore } from '@/stores/ui'
 
@@ -138,6 +139,10 @@ onMounted(() => {
     window.addEventListener('keydown', handleGlobalKeydown, { capture: true })
   }
 
+  void hardwareWorkbenchStore.boot().catch((err) => {
+    console.error('Failed to boot Aspen hardware runtime', err)
+  })
+
   if (!isTauri()) {
     return
   }
@@ -158,6 +163,8 @@ onUnmounted(() => {
     unlistenAppMenu()
     unlistenAppMenu = null
   }
+
+  void hardwareWorkbenchStore.shutdown().catch(() => undefined)
 })
 </script>
 

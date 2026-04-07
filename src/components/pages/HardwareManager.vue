@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, computed, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import {
   Server,
@@ -319,17 +319,6 @@ async function pickBitstream() {
     bitstreamFile.value = selected
   }
 }
-
-onMounted(() => {
-  hardwareStore.acquireView().catch((err) => {
-    programMessageTone.value = 'error'
-    programMessage.value = t('hardwareWatchFailed', { message: getErrorMessage(err) })
-  })
-})
-
-onBeforeUnmount(() => {
-  hardwareStore.releaseView().catch(() => undefined)
-})
 </script>
 
 <template>

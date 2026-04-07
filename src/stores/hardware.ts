@@ -7,9 +7,7 @@ import {
   dispatch as dispatchRuntimeAction,
   disconnectView as disconnectRuntimeView,
   hardwareRuntimeStore,
-  acquireView as acquireRuntimeView,
   refreshDataStreamStatus as refreshRuntimeDataStreamStatus,
-  releaseView as releaseRuntimeView,
   setDataStreamRate as setRuntimeDataStreamRate,
   startDataStream as startRuntimeDataStream,
   start as startRuntime,
@@ -153,14 +151,6 @@ async function stop() {
   return stopRuntime()
 }
 
-async function acquireView() {
-  return acquireRuntimeView()
-}
-
-async function releaseView() {
-  return releaseRuntimeView()
-}
-
 async function configureDataStream(
   inputSignalOrder: readonly string[],
   outputSignalOrder: readonly string[],
@@ -211,8 +201,6 @@ export const hardwareStore = {
   implementationReportSignature: hardwareFlowStore.implementationReportSignature,
   implementationLiveLog: hardwareFlowStore.implementationLiveLog,
   implementationMessage: hardwareFlowStore.implementationMessage,
-  acquireView,
-  releaseView,
   start,
   stop,
   configureDataStream,

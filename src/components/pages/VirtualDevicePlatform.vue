@@ -13,13 +13,12 @@ import { confirmAction } from '@/lib/confirm-action'
 import { useI18n } from '@/lib/i18n'
 import { designContextStore } from '@/stores/design-context'
 import { hardwareStore } from '@/stores/hardware'
+import { HARDWARE_STREAM_CLOCK_DELAY, hardwareWorkbenchStore } from '@/stores/hardware-workbench'
 import { signalCatalogStore } from '@/stores/signal-catalog'
 import { settingsStore } from '@/stores/settings'
 
-const STREAM_WORDS_PER_CYCLE = 4
-const STREAM_SIGNAL_LIMIT = STREAM_WORDS_PER_CYCLE * 16
+const STREAM_SIGNAL_LIMIT = 4 * 16
 const DISPLAY_UPDATE_INTERVAL_MS = 1000
-const FIXED_VERICOMM_CLOCK_DELAY = 4
 
 const showGallery = ref(false)
 const selectedDeviceId = ref<string | null>(null)
@@ -41,12 +40,6 @@ const hasAnySynthesisSignals = computed(() =>
 const hasStaleSynthesisSignals = signalCatalogStore.hasStaleSynthesisReport
 const streamSignalNames = computed(() => {
   return signalCatalogStore.signals.value.slice(0, STREAM_SIGNAL_LIMIT).map((signal) => signal.name)
-})
-const streamInputSignalOrderKey = computed(() => {
-  return signalCatalogStore.streamInputSignalOrder.value.join('\u0000')
-})
-const streamOutputSignalOrderKey = computed(() => {
-  return signalCatalogStore.streamOutputSignalOrder.value.join('\u0000')
 })
 const streamSignalOverflow = computed(() => {
   return Math.max(0, availableSignalCount.value - streamSignalNames.value.length)
@@ -154,15 +147,7 @@ function parseRequestedRate() {
 }
 
 async function syncStreamConfig() {
-  await hardwareStore.configureDataStream(
-    signalCatalogStore.streamInputSignalOrder.value,
-    signalCatalogStore.streamOutputSignalOrder.value,
-    {
-      wordsPerCycle: STREAM_WORDS_PER_CYCLE,
-      vericommClockHighDelay: FIXED_VERICOMM_CLOCK_DELAY,
-      vericommClockLowDelay: FIXED_VERICOMM_CLOCK_DELAY,
-    },
-  )
+  await hardwareWorkbenchStore.syncStreamSignalMap()
 }
 
 async function applyStreamSettings() {
@@ -172,8 +157,8 @@ async function applyStreamSettings() {
   try {
     const nextRate = parseRequestedRate()
     const timingChanged =
-      streamStatus.value.vericomm_clock_high_delay !== FIXED_VERICOMM_CLOCK_DELAY ||
-      streamStatus.value.vericomm_clock_low_delay !== FIXED_VERICOMM_CLOCK_DELAY
+      streamStatus.value.vericomm_clock_high_delay !== HARDWARE_STREAM_CLOCK_DELAY ||
+      streamStatus.value.vericomm_clock_low_delay !== HARDWARE_STREAM_CLOCK_DELAY
     await syncStreamConfig()
     await hardwareStore.setDataStreamRate(nextRate)
 
@@ -343,33 +328,10 @@ watch(
   { immediate: true },
 )
 
-watch([streamInputSignalOrderKey, streamOutputSignalOrderKey], () => {
-  if (!hardwareStore.isStarted.value) {
-    return
-  }
-
-  void syncStreamConfig().catch((err) => {
-    streamMessage.value = t('failedToUpdateSignalMap', { message: getErrorMessage(err) })
-  })
-})
-
 onMounted(() => {
   if (typeof window !== 'undefined') {
     window.addEventListener('keydown', handleGlobalKeydown, { capture: true })
   }
-
-  streamBusy.value = true
-  streamMessage.value = ''
-
-  hardwareStore
-    .acquireView()
-    .then(() => syncStreamConfig())
-    .catch((err) => {
-      streamMessage.value = t('hardwareRuntimeUnavailable', { message: getErrorMessage(err) })
-    })
-    .finally(() => {
-      streamBusy.value = false
-    })
 })
 
 onBeforeUnmount(() => {
@@ -379,7 +341,6 @@ onBeforeUnmount(() => {
 
   clearStreamStatusPollTimer()
   clearDisplayedHzTimer()
-  hardwareStore.releaseView().catch(() => undefined)
 })
 </script>
 
