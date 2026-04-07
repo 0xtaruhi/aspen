@@ -636,7 +636,7 @@ watch(
           :disabled="!canRunImplementation"
           @click="runImplementation"
         >
-          {{ isBusy ? t('runningEllipsis') : t('runImplementation') }}
+          {{ isBusy ? t('implementationRunningEllipsis') : t('runImplementation') }}
           <ArrowRight class="ml-2 h-4 w-4" />
         </Button>
       </div>

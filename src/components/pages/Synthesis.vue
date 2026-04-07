@@ -214,7 +214,7 @@ watch(
           {{ t('viewLog') }}
         </Button>
         <Button type="button" size="sm" :disabled="!canRunSynthesis" @click="runSynthesis">
-          {{ isBusy ? t('runningEllipsis') : t('runSynthesis') }}
+          {{ isBusy ? t('synthesisRunningEllipsis') : t('runSynthesis') }}
           <ArrowRight class="ml-2 h-4 w-4" />
         </Button>
       </div>
