@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { invoke } from '@tauri-apps/api/core'
-import type { ImplementationRequestV1, SynthesisSourceFileV1 } from '@/lib/hardware-client'
+import type { ImplementationRequestV1 } from '@/lib/hardware-client'
 
 import { ArrowRight, CheckCircle2, TriangleAlert } from 'lucide-vue-next'
 import { computed, ref, watch } from 'vue'
@@ -41,13 +41,8 @@ const projectName = computed(() => projectStore.toSnapshot().name)
 const synthesisReport = signalCatalogStore.currentSynthesisReport
 const hasCurrentSynthesis = computed(() => Boolean(synthesisReport.value))
 const hasDesignSource = computed(() => Boolean(designContextStore.selectedSource.value))
-
-const implementationSources = computed<SynthesisSourceFileV1[]>(() => {
-  return designContextStore.hardwareSources.value.map((source) => ({
-    path: source.path,
-    content: source.code,
-  }))
-})
+const implementationProjectFiles = designContextStore.projectBuildFiles
+const implementationHardwareFiles = designContextStore.hardwareBuildFiles
 
 const reusableSynthesizedEdifPath = computed(() => {
   const artifacts = synthesisReport.value?.artifacts
@@ -94,7 +89,7 @@ const canRunImplementation = computed(() => {
     hasCurrentSynthesis.value &&
     hasReusableSynthesisArtifact.value &&
     fullyMapped.value &&
-    implementationSources.value.length > 0 &&
+    implementationHardwareFiles.value.length > 0 &&
     designContextStore.primaryModule.value.trim().length > 0
   )
 })
@@ -317,7 +312,7 @@ async function runImplementation() {
     constraint_xml: implementationConstraintXml.value,
     place_mode: projectStore.implementationSettings.placeMode,
     synthesized_edif_path: reusableSynthesizedEdifPath.value,
-    files: implementationSources.value,
+    files: implementationProjectFiles.value,
   }
 
   try {
@@ -378,7 +373,7 @@ watch(
   [
     () => designContextStore.primaryModule.value,
     () =>
-      implementationSources.value
+      implementationProjectFiles.value
         .map((source) => `${source.path}\u0000${source.content}`)
         .join('\u0001'),
     () => implementationConstraintXml.value,

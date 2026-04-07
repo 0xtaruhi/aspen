@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import type { SynthesisSourceFileV1 } from '@/lib/hardware-client'
-
 import { ArrowRight } from 'lucide-vue-next'
 import { computed, ref, watch } from 'vue'
 
@@ -26,15 +24,13 @@ const synthesisReport = hardwareStore.synthesisReport
 const synthesisLiveLog = hardwareStore.synthesisLiveLog
 const reportDialogOpen = ref(false)
 
-const synthesisSources = computed<SynthesisSourceFileV1[]>(() => {
-  return designContextStore.hardwareSources.value.map((source) => ({
-    path: source.path,
-    content: source.code,
-  }))
-})
+const synthesisProjectFiles = designContextStore.projectBuildFiles
+const synthesisHardwareFiles = designContextStore.hardwareBuildFiles
 
 const canRunSynthesis = computed(() => {
-  return !isBusy.value && synthesisSources.value.length > 0 && topModule.value.trim().length > 0
+  return (
+    !isBusy.value && synthesisHardwareFiles.value.length > 0 && topModule.value.trim().length > 0
+  )
 })
 
 const synthesisStatus = computed(() => {
@@ -46,7 +42,7 @@ const synthesisStatus = computed(() => {
     return synthesisReport.value.success ? t('completed') : t('failed')
   }
 
-  return synthesisSources.value.length > 0 ? t('ready') : t('noSource')
+  return synthesisHardwareFiles.value.length > 0 ? t('ready') : t('noSource')
 })
 
 const synthesisErrorMessage = computed(() => {
@@ -86,7 +82,7 @@ const summaryCards = computed(() => {
     },
     {
       title: t('sources'),
-      value: synthesisSources.value.length,
+      value: synthesisReport.value?.source_count ?? synthesisHardwareFiles.value.length,
       hint: t('topModuleHint', { name: topModule.value }),
     },
   ]
@@ -137,7 +133,7 @@ async function runSynthesis() {
       project_name: projectStore.toSnapshot().name,
       project_dir: projectDirectory(),
       top_module: topModule.value,
-      files: synthesisSources.value,
+      files: synthesisProjectFiles.value,
     })
   } catch {
     // The store publishes synthesisMessage for the page to render.
@@ -152,7 +148,7 @@ watch(
   [
     topModule,
     () =>
-      synthesisSources.value
+      synthesisProjectFiles.value
         .map((source) => `${source.path}\u0000${source.content}`)
         .join('\u0001'),
   ],
@@ -179,8 +175,9 @@ watch(
         <p class="text-muted-foreground">
           {{
             t('synthesisDescription', {
-              count: synthesisSources.length,
-              suffix: synthesisSources.length === 1 ? '' : 's',
+              count: synthesisReport?.source_count ?? synthesisHardwareFiles.length,
+              suffix:
+                (synthesisReport?.source_count ?? synthesisHardwareFiles.length) === 1 ? '' : 's',
               top: topModule,
             })
           }}
@@ -188,7 +185,10 @@ watch(
       </div>
       <div class="flex gap-2 items-center flex-wrap justify-end">
         <Badge variant="outline">{{ t('topModuleHint', { name: topModule }) }}</Badge>
-        <Badge variant="outline">{{ t('sourceFiles') }} · {{ synthesisSources.length }}</Badge>
+        <Badge variant="outline">
+          {{ t('sourceFiles') }} ·
+          {{ synthesisReport?.source_count ?? synthesisHardwareFiles.length }}
+        </Badge>
         <Badge
           variant="outline"
           :class="

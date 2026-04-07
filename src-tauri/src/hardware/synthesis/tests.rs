@@ -4,6 +4,49 @@ use std::{fs, path::PathBuf, time::Instant};
 
 use crate::hardware::types::{SynthesisRequestV1, SynthesisSourceFileV1};
 
+fn bundled_synthesis_toolchain() -> Option<toolchain::SynthesisToolchainPaths<'static>> {
+    let yosys_bin = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(BUNDLED_YOSYS_DIR)
+        .join("bin")
+        .join(toolchain::yosys_executable_name());
+    let fde_simlib = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(FDE_RESOURCE_DIR)
+        .join(FDE_SIMLIB_FILE);
+    let fde_bram_lib = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(FDE_RESOURCE_DIR)
+        .join(FDE_BRAM_LIB_FILE);
+    let fde_bram_map = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(FDE_RESOURCE_DIR)
+        .join(FDE_BRAM_MAP_FILE);
+    let fde_techmap = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(FDE_RESOURCE_DIR)
+        .join(FDE_TECHMAP_FILE);
+    let fde_cells_map = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(FDE_RESOURCE_DIR)
+        .join(FDE_CELLS_MAP_FILE);
+
+    if !yosys_bin.is_file()
+        || !fde_simlib.is_file()
+        || !fde_bram_lib.is_file()
+        || !fde_bram_map.is_file()
+        || !fde_techmap.is_file()
+        || !fde_cells_map.is_file()
+    {
+        return None;
+    }
+
+    let toolchain = toolchain::SynthesisToolchainPaths {
+        yosys_bin: Box::leak(Box::new(yosys_bin)).as_path(),
+        fde_simlib: Box::leak(Box::new(fde_simlib)).as_path(),
+        fde_bram_lib: Box::leak(Box::new(fde_bram_lib)).as_path(),
+        fde_bram_map: Box::leak(Box::new(fde_bram_map)).as_path(),
+        fde_techmap: Box::leak(Box::new(fde_techmap)).as_path(),
+        fde_cells_map: Box::leak(Box::new(fde_cells_map)).as_path(),
+    };
+
+    Some(toolchain)
+}
+
 #[test]
 fn sanitize_source_path_discards_parent_components() {
     let path = artifacts::sanitize_source_path("../rtl/top.v", 0);
@@ -39,25 +82,9 @@ fn create_workdir_generates_unique_paths_for_same_timestamp() {
 
 #[test]
 fn yosys_smoke_test_runs_when_bundled_toolchain_is_available() {
-    let yosys_bin = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join(BUNDLED_YOSYS_DIR)
-        .join("bin")
-        .join(toolchain::yosys_executable_name());
-    let fde_simlib = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join(FDE_RESOURCE_DIR)
-        .join(FDE_SIMLIB_FILE);
-    let fde_techmap = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join(FDE_RESOURCE_DIR)
-        .join(FDE_TECHMAP_FILE);
-    let fde_cells_map = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join(FDE_RESOURCE_DIR)
-        .join(FDE_CELLS_MAP_FILE);
-    if !yosys_bin.is_file() {
+    let Some(toolchain) = bundled_synthesis_toolchain() else {
         return;
-    }
-    if !fde_simlib.is_file() || !fde_techmap.is_file() || !fde_cells_map.is_file() {
-        return;
-    }
+    };
 
     let request = SynthesisRequestV1 {
         op_id: "test-op".to_string(),
@@ -103,12 +130,7 @@ endmodule
     let (workdir, _) = resolve_workdir(&request, generated_at_ms).unwrap();
 
     let report = run_yosys_in_workdir(
-        &toolchain::SynthesisToolchainPaths {
-            yosys_bin: &yosys_bin,
-            fde_simlib: &fde_simlib,
-            fde_techmap: &fde_techmap,
-            fde_cells_map: &fde_cells_map,
-        },
+        &toolchain,
         &workdir,
         &request,
         generated_at_ms,
@@ -156,25 +178,9 @@ endmodule
 
 #[test]
 fn yosys_smoke_test_lowers_division_and_modulo_into_supported_cells() {
-    let yosys_bin = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join(BUNDLED_YOSYS_DIR)
-        .join("bin")
-        .join(toolchain::yosys_executable_name());
-    let fde_simlib = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join(FDE_RESOURCE_DIR)
-        .join(FDE_SIMLIB_FILE);
-    let fde_techmap = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join(FDE_RESOURCE_DIR)
-        .join(FDE_TECHMAP_FILE);
-    let fde_cells_map = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join(FDE_RESOURCE_DIR)
-        .join(FDE_CELLS_MAP_FILE);
-    if !yosys_bin.is_file() {
+    let Some(toolchain) = bundled_synthesis_toolchain() else {
         return;
-    }
-    if !fde_simlib.is_file() || !fde_techmap.is_file() || !fde_cells_map.is_file() {
-        return;
-    }
+    };
 
     let request = SynthesisRequestV1 {
         op_id: "test-div-mod-op".to_string(),
@@ -211,12 +217,7 @@ endmodule
     let (workdir, _) = resolve_workdir(&request, generated_at_ms).unwrap();
 
     let report = run_yosys_in_workdir(
-        &toolchain::SynthesisToolchainPaths {
-            yosys_bin: &yosys_bin,
-            fde_simlib: &fde_simlib,
-            fde_techmap: &fde_techmap,
-            fde_cells_map: &fde_cells_map,
-        },
+        &toolchain,
         &workdir,
         &request,
         generated_at_ms,
@@ -254,6 +255,168 @@ endmodule
             .cell_type_counts
             .iter()
             .all(|entry| !entry.cell_type.starts_with('$')),
+        "{}",
+        report.log
+    );
+
+    let _ = fs::remove_dir_all(&workdir);
+}
+
+#[test]
+fn build_yosys_script_runs_bram_mapping_before_memory_map() {
+    let script = process::build_yosys_script(
+        PathBuf::from("/tmp/fdesimlib.v").as_path(),
+        PathBuf::from("/tmp/brams.txt").as_path(),
+        PathBuf::from("/tmp/brams_map.v").as_path(),
+        PathBuf::from("/tmp/techmap.v").as_path(),
+        PathBuf::from("/tmp/cells_map.v").as_path(),
+        &[PathBuf::from("/tmp/top.v")],
+        "top",
+        PathBuf::from("/tmp/out.json").as_path(),
+        PathBuf::from("/tmp/out.edf").as_path(),
+    );
+
+    let memory_nomap = script.find("memory -nomap").unwrap();
+    let memory_libmap = script.find("memory_libmap -lib").unwrap();
+    let bram_techmap = script.find("techmap -map \"/tmp/brams_map.v\"").unwrap();
+    let memory_map = script.find("memory_map").unwrap();
+
+    assert!(memory_nomap < memory_libmap);
+    assert!(memory_libmap < bram_techmap);
+    assert!(bram_techmap < memory_map);
+}
+
+#[test]
+fn yosys_smoke_test_infers_bram_and_stages_memory_init_assets() {
+    let Some(toolchain) = bundled_synthesis_toolchain() else {
+        return;
+    };
+
+    let request = SynthesisRequestV1 {
+        op_id: "test-bram-op".to_string(),
+        project_name: Some("test-bram-project".to_string()),
+        project_dir: None,
+        top_module: "top".to_string(),
+        files: vec![
+            SynthesisSourceFileV1 {
+                path: "rtl/top.v".to_string(),
+                content: r#"
+module top(
+    input wire clk,
+    input wire we,
+    input wire [7:0] addr,
+    input wire [15:0] din,
+    output reg [15:0] dout
+);
+    reg [15:0] mem [0:255];
+
+    initial begin
+        $readmemh("init.mem", mem);
+    end
+
+    always @(posedge clk) begin
+        if (we)
+            mem[addr] <= din;
+        dout <= mem[addr];
+    end
+endmodule
+"#
+                .trim()
+                .to_string(),
+            },
+            SynthesisSourceFileV1 {
+                path: "rtl/init.mem".to_string(),
+                content: [
+                    "1234", "5678", "9abc", "def0", "0001", "0002", "0003", "0004",
+                ]
+                .join("\n"),
+            },
+        ],
+    };
+    let generated_at_ms = now_millis().unwrap();
+    let (workdir, _) = resolve_workdir(&request, generated_at_ms).unwrap();
+
+    let report = run_yosys_in_workdir(
+        &toolchain,
+        &workdir,
+        &request,
+        generated_at_ms,
+        Instant::now(),
+        |_| {},
+    )
+    .unwrap();
+
+    assert!(report.success, "{}", report.log);
+    assert_eq!(report.source_count, 1);
+    assert!(
+        report
+            .stats
+            .cell_type_counts
+            .iter()
+            .any(|entry| entry.cell_type == "RAMB4_S16"),
+        "{}",
+        report.log
+    );
+
+    let _ = fs::remove_dir_all(&workdir);
+}
+
+#[test]
+fn yosys_smoke_test_preserves_explicit_ramb4_primitives() {
+    let Some(toolchain) = bundled_synthesis_toolchain() else {
+        return;
+    };
+
+    let request = SynthesisRequestV1 {
+        op_id: "test-explicit-bram-op".to_string(),
+        project_name: Some("test-explicit-bram-project".to_string()),
+        project_dir: None,
+        top_module: "top".to_string(),
+        files: vec![SynthesisSourceFileV1 {
+            path: "top.v".to_string(),
+            content: r#"
+module top(
+    input wire clk,
+    input wire we,
+    input wire [7:0] addr,
+    input wire [15:0] din,
+    output wire [15:0] dout
+);
+    RAMB4_S16 u_ram (
+        .DO(dout),
+        .ADDR(addr),
+        .DI(din),
+        .EN(1'b1),
+        .CLK(clk),
+        .WE(we),
+        .RST(1'b0)
+    );
+endmodule
+"#
+            .trim()
+            .to_string(),
+        }],
+    };
+    let generated_at_ms = now_millis().unwrap();
+    let (workdir, _) = resolve_workdir(&request, generated_at_ms).unwrap();
+
+    let report = run_yosys_in_workdir(
+        &toolchain,
+        &workdir,
+        &request,
+        generated_at_ms,
+        Instant::now(),
+        |_| {},
+    )
+    .unwrap();
+
+    assert!(report.success, "{}", report.log);
+    assert!(
+        report
+            .stats
+            .cell_type_counts
+            .iter()
+            .any(|entry| entry.cell_type == "RAMB4_S16"),
         "{}",
         report.log
     );

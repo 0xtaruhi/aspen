@@ -1,3 +1,4 @@
+import type { SynthesisSourceFileV1 } from '@/lib/hardware-client'
 import type { VerilogPort } from '../lib/verilog-parser'
 
 import { computed, ref, watch } from 'vue'
@@ -78,6 +79,13 @@ function collectDesignSources(
   return sources
 }
 
+function toSynthesisSourceFile(source: DesignSource): SynthesisSourceFileV1 {
+  return {
+    path: source.path,
+    content: source.code,
+  }
+}
+
 const selectedSource = computed<DesignSource | null>(() => {
   const topFile = projectStore.topFile
   if (!topFile || topFile.type !== 'file') {
@@ -99,6 +107,12 @@ const sourceCode = computed(() => selectedSource.value?.code ?? '')
 const projectSources = computed(() => collectDesignSources(projectStore.files))
 const hardwareSources = computed(() => {
   return projectSources.value.filter((source) => source.isHardwareSource)
+})
+const projectBuildFiles = computed<SynthesisSourceFileV1[]>(() => {
+  return projectSources.value.map((source) => toSynthesisSourceFile(source))
+})
+const hardwareBuildFiles = computed<SynthesisSourceFileV1[]>(() => {
+  return hardwareSources.value.map((source) => toSynthesisSourceFile(source))
 })
 
 const moduleSources = computed<DesignModuleSource[]>(() => {
@@ -228,6 +242,8 @@ export const designContextStore = {
   sourceCode,
   projectSources,
   hardwareSources,
+  projectBuildFiles,
+  hardwareBuildFiles,
   moduleSources,
   moduleNames,
   moduleNamesStale,

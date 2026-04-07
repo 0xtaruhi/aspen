@@ -30,7 +30,7 @@ use self::{
 };
 use super::types::{
     ImplementationReportV1, ImplementationRequestV1, ImplementationStageKindV1,
-    ImplementationStageResultV1,
+    ImplementationStageResultV1, SynthesisSourceFileV1,
 };
 
 const FDE_RESOURCE_DIR: &str = "resource/fde/hw_lib";
@@ -305,7 +305,7 @@ where
         success: true,
         timing_success,
         top_module: request.top_module.clone(),
-        source_count: request.files.len().min(usize::from(u16::MAX)) as u16,
+        source_count: count_verilog_sources(&request.files).min(usize::from(u16::MAX)) as u16,
         elapsed_ms: started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
         log: std::mem::take(sink.combined_log),
         stages: stage_results,
@@ -362,6 +362,20 @@ fn now_millis() -> Result<u64, String> {
         .map_err(|err| err.to_string())?
         .as_millis()
         .min(u128::from(u64::MAX)) as u64)
+}
+
+pub(super) fn count_verilog_sources(files: &[SynthesisSourceFileV1]) -> usize {
+    files
+        .iter()
+        .filter(|file| {
+            Path::new(&file.path)
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| {
+                    extension.eq_ignore_ascii_case("v") || extension.eq_ignore_ascii_case("sv")
+                })
+        })
+        .count()
 }
 
 struct ImplementationRunContext<'a, 'sink, F> {

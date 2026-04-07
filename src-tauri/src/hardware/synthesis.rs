@@ -27,10 +27,12 @@ use super::types::{SynthesisLogChunkV1, SynthesisReportV1, SynthesisRequestV1, S
 const BUNDLED_YOSYS_DIR: &str = "vendor/yosys";
 const FDE_RESOURCE_DIR: &str = "resource/yosys-fde";
 const FDE_SIMLIB_FILE: &str = "fdesimlib.v";
+const FDE_BRAM_LIB_FILE: &str = "brams.txt";
+const FDE_BRAM_MAP_FILE: &str = "brams_map.v";
 const FDE_TECHMAP_FILE: &str = "techmap.v";
 const FDE_CELLS_MAP_FILE: &str = "cells_map.v";
 const FDE_LUT_WIDTH: u8 = 4;
-const SYNTHESIS_ARTIFACT_FLOW_REVISION: &str = "fde-yosys-edif-v2";
+const SYNTHESIS_ARTIFACT_FLOW_REVISION: &str = "fde-yosys-edif-v3";
 
 pub fn run_yosys_synthesis(
     app: &AppHandle,
@@ -40,11 +42,15 @@ pub fn run_yosys_synthesis(
 
     let yosys_bin = resolve_yosys_binary(app)?;
     let fde_simlib = resolve_fde_support_file(app, FDE_SIMLIB_FILE)?;
+    let fde_bram_lib = resolve_fde_support_file(app, FDE_BRAM_LIB_FILE)?;
+    let fde_bram_map = resolve_fde_support_file(app, FDE_BRAM_MAP_FILE)?;
     let fde_techmap = resolve_fde_support_file(app, FDE_TECHMAP_FILE)?;
     let fde_cells_map = resolve_fde_support_file(app, FDE_CELLS_MAP_FILE)?;
     let toolchain = SynthesisToolchainPaths {
         yosys_bin: &yosys_bin,
         fde_simlib: &fde_simlib,
+        fde_bram_lib: &fde_bram_lib,
+        fde_bram_map: &fde_bram_map,
         fde_techmap: &fde_techmap,
         fde_cells_map: &fde_cells_map,
     };
@@ -80,17 +86,24 @@ where
     fs::create_dir_all(&sources_dir).map_err(|err| err.to_string())?;
     let artifacts = plan_synthesis_artifacts(workdir, request);
 
-    let mut source_paths = Vec::with_capacity(request.files.len());
+    let mut verilog_source_paths = Vec::new();
     for (index, file) in request.files.iter().enumerate() {
         let source_path = write_source_file(&sources_dir, file, index)?;
-        source_paths.push(source_path);
+        if is_verilog_source_path(&source_path) {
+            verilog_source_paths.push(source_path.clone());
+        }
+    }
+    if verilog_source_paths.is_empty() {
+        return Err("At least one Verilog/SystemVerilog source file is required".to_string());
     }
 
     let script = build_yosys_script(
         toolchain.fde_simlib,
+        toolchain.fde_bram_lib,
+        toolchain.fde_bram_map,
         toolchain.fde_techmap,
         toolchain.fde_cells_map,
-        &source_paths,
+        &verilog_source_paths,
         &request.top_module,
         &artifacts.netlist_path,
         &artifacts.edif_path,
@@ -146,7 +159,7 @@ where
             op_id: request.op_id.clone(),
             success: false,
             top_module: request.top_module.clone(),
-            source_count: request.files.len().min(usize::from(u16::MAX)) as u16,
+            source_count: verilog_source_paths.len().min(usize::from(u16::MAX)) as u16,
             tool_path: toolchain.yosys_bin.to_string_lossy().to_string(),
             elapsed_ms,
             warnings,
@@ -165,7 +178,7 @@ where
         op_id: request.op_id.clone(),
         success: true,
         top_module: request.top_module.clone(),
-        source_count: request.files.len().min(usize::from(u16::MAX)) as u16,
+        source_count: verilog_source_paths.len().min(usize::from(u16::MAX)) as u16,
         tool_path: toolchain.yosys_bin.to_string_lossy().to_string(),
         elapsed_ms,
         warnings,
@@ -188,10 +201,17 @@ fn validate_request(request: &SynthesisRequestV1) -> Result<(), String> {
     }
 
     if request.files.is_empty() {
-        return Err("At least one Verilog/SystemVerilog source file is required".to_string());
+        return Err("At least one project source or synthesis asset file is required".to_string());
     }
 
     Ok(())
+}
+
+fn is_verilog_source_path(path: &Path) -> bool {
+    matches!(
+        path.extension().and_then(|extension| extension.to_str()),
+        Some(extension) if extension.eq_ignore_ascii_case("v") || extension.eq_ignore_ascii_case("sv")
+    )
 }
 
 fn now_millis() -> Result<u64, String> {

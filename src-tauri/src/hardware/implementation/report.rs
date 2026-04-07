@@ -6,7 +6,7 @@ use super::super::types::{
     ImplementationReportV1, ImplementationRequestV1, ImplementationStageKindV1,
     ImplementationStageResultV1,
 };
-use super::artifacts::PlannedArtifacts;
+use super::{artifacts::PlannedArtifacts, count_verilog_sources};
 
 pub(super) struct StageLogSink<'a, F> {
     pub(super) on_log_chunk: &'a mut F,
@@ -183,7 +183,7 @@ pub(super) fn build_failure_report(
         success: false,
         timing_success,
         top_module: request.top_module.clone(),
-        source_count: request.files.len().min(usize::from(u16::MAX)) as u16,
+        source_count: count_verilog_sources(&request.files).min(usize::from(u16::MAX)) as u16,
         elapsed_ms,
         log,
         stages,

@@ -13,6 +13,8 @@ use std::{
 const TEST_BUNDLED_YOSYS_DIR: &str = "vendor/yosys";
 const TEST_YOSYS_SUPPORT_DIR: &str = "resource/yosys-fde";
 const TEST_FDE_SIMLIB_FILE: &str = "fdesimlib.v";
+const TEST_FDE_BRAM_LIB_FILE: &str = "brams.txt";
+const TEST_FDE_BRAM_MAP_FILE: &str = "brams_map.v";
 const TEST_FDE_TECHMAP_FILE: &str = "techmap.v";
 const TEST_FDE_CELLS_MAP_FILE: &str = "cells_map.v";
 
@@ -61,6 +63,12 @@ fn prepare_test_synthesized_edif_with_source(
     let fde_simlib = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join(TEST_YOSYS_SUPPORT_DIR)
         .join(TEST_FDE_SIMLIB_FILE);
+    let fde_bram_lib = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(TEST_YOSYS_SUPPORT_DIR)
+        .join(TEST_FDE_BRAM_LIB_FILE);
+    let fde_bram_map = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(TEST_YOSYS_SUPPORT_DIR)
+        .join(TEST_FDE_BRAM_MAP_FILE);
     let fde_techmap = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join(TEST_YOSYS_SUPPORT_DIR)
         .join(TEST_FDE_TECHMAP_FILE);
@@ -70,6 +78,8 @@ fn prepare_test_synthesized_edif_with_source(
 
     if !yosys_bin.is_file()
         || !fde_simlib.is_file()
+        || !fde_bram_lib.is_file()
+        || !fde_bram_map.is_file()
         || !fde_techmap.is_file()
         || !fde_cells_map.is_file()
     {
@@ -89,6 +99,11 @@ read_verilog -sv {}\n\
 hierarchy -check -top top\n\
 proc\n\
 flatten -noscopeinfo\n\
+memory -nomap\n\
+opt_clean\n\
+memory_libmap -lib {}\n\
+techmap -map {}\n\
+opt\n\
 memory_map\n\
 opt -fast\n\
 opt -full\n\
@@ -120,6 +135,8 @@ check\n\
 write_edif {}\n",
             quote_test_yosys_path(&fde_simlib),
             quote_test_yosys_path(&top_path),
+            quote_test_yosys_path(&fde_bram_lib),
+            quote_test_yosys_path(&fde_bram_map),
             quote_test_yosys_path(&fde_techmap),
             quote_test_yosys_path(&fde_cells_map),
             quote_test_yosys_path(&fde_cells_map),

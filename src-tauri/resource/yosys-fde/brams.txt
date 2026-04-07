@@ -1,0 +1,32 @@
+ram block $__FDE_RAMB4_SP_ {
+	abits 12;
+	widths 1 2 4 8 16 per_port;
+	cost 128;
+	byte 1;
+	init any;
+	port srsw "A" {
+		clock posedge;
+		clken;
+		rdsrst zero gated_clken;
+		rdinit zero;
+		rdwr old;
+		optional_rw;
+	}
+}
+
+ram block $__FDE_RAMB4_DP_ {
+	abits 12;
+	widths 1 2 4 8 16 per_port;
+	cost 128;
+	byte 1;
+	init any;
+	port srsw "A" "B" {
+		width mix;
+		clock posedge;
+		clken;
+		rdsrst zero gated_clken;
+		rdinit zero;
+		rdwr old;
+		optional_rw;
+	}
+}

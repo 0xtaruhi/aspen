@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { SynthesisCellTypeCountV1, SynthesisSourceFileV1 } from '@/lib/hardware-client'
+import type { SynthesisCellTypeCountV1 } from '@/lib/hardware-client'
 
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -24,12 +24,7 @@ const { t } = useI18n()
 const targetDevice = computed(() => getFpgaDeviceDescriptor(projectStore.targetDeviceId))
 const showNewProjectDialog = ref(false)
 const hasDesignSource = computed(() => Boolean(designContextStore.selectedSource.value))
-const synthesisSources = computed<SynthesisSourceFileV1[]>(() => {
-  return designContextStore.hardwareSources.value.map((source) => ({
-    path: source.path,
-    content: source.code,
-  }))
-})
+const synthesisSources = designContextStore.projectBuildFiles
 
 const currentSynthesisSignature = computed(() => {
   return buildSynthesisInputSignature(topModule.value, synthesisSources.value)

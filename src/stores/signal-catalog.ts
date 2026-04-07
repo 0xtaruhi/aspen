@@ -84,10 +84,7 @@ const currentConstraintAssignments = computed(() => {
 const currentSynthesisSignature = computed(() => {
   return buildSynthesisInputSignature(
     designContextStore.primaryModule.value,
-    designContextStore.hardwareSources.value.map((source) => ({
-      path: source.path,
-      content: source.code,
-    })),
+    designContextStore.projectBuildFiles.value,
   )
 })
 

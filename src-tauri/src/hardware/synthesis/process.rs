@@ -10,6 +10,8 @@ use super::{artifacts::quote_yosys_path, now_millis, SynthesisLogChunkV1, FDE_LU
 
 pub(super) fn build_yosys_script(
     fde_simlib: &Path,
+    fde_bram_lib: &Path,
+    fde_bram_map: &Path,
     fde_techmap: &Path,
     fde_cells_map: &Path,
     source_paths: &[PathBuf],
@@ -29,6 +31,11 @@ read_verilog -sv {quoted_sources}\n\
 hierarchy -check -top {top_module}\n\
 proc\n\
 flatten -noscopeinfo\n\
+memory -nomap\n\
+opt_clean\n\
+memory_libmap -lib {}\n\
+techmap -map {}\n\
+opt\n\
 memory_map\n\
 opt -fast\n\
 opt -full\n\
@@ -73,13 +80,15 @@ stat\n\
 write_edif {}\n\
 write_json {}\n",
         quote_yosys_path(fde_simlib),
+        quote_yosys_path(fde_bram_lib),
+        quote_yosys_path(fde_bram_map),
         quote_yosys_path(fde_techmap),
         quote_yosys_path(fde_cells_map),
         FDE_LUT_WIDTH,
         FDE_LUT_WIDTH,
         quote_yosys_path(fde_cells_map),
         quote_yosys_path(edif_path),
-        quote_yosys_path(netlist_path)
+        quote_yosys_path(netlist_path),
     )
 }
 

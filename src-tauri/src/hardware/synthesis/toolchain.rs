@@ -11,6 +11,8 @@ use super::{BUNDLED_YOSYS_DIR, FDE_RESOURCE_DIR};
 pub(super) struct SynthesisToolchainPaths<'a> {
     pub yosys_bin: &'a Path,
     pub fde_simlib: &'a Path,
+    pub fde_bram_lib: &'a Path,
+    pub fde_bram_map: &'a Path,
     pub fde_techmap: &'a Path,
     pub fde_cells_map: &'a Path,
 }
