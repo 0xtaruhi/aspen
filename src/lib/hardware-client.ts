@@ -180,21 +180,24 @@ export interface ImplementationReportV1 {
   generated_at_ms: number
 }
 
-export type CanvasDeviceType =
-  | 'led'
-  | 'switch'
-  | 'button'
-  | 'dip_switch_bank'
-  | 'led_bar'
-  | 'audio_pwm'
-  | 'quadrature_encoder'
-  | 'matrix_keypad'
-  | 'uart_terminal'
-  | 'hd44780_lcd'
-  | 'memory'
-  | 'vga_display'
-  | 'segment_display'
-  | 'led_matrix'
+export const CANVAS_DEVICE_TYPES = [
+  'led',
+  'switch',
+  'button',
+  'dip_switch_bank',
+  'led_bar',
+  'audio_pwm',
+  'quadrature_encoder',
+  'matrix_keypad',
+  'uart_terminal',
+  'hd44780_lcd',
+  'memory',
+  'vga_display',
+  'segment_display',
+  'led_matrix',
+] as const
+
+export type CanvasDeviceType = (typeof CANVAS_DEVICE_TYPES)[number]
 
 export type CanvasVgaColorMode = 'mono' | 'rgb111' | 'rgb332' | 'rgb444' | 'rgb565' | 'rgb888'
 export type CanvasHd44780BusMode = '4bit' | '8bit'

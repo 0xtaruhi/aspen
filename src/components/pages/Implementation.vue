@@ -7,7 +7,7 @@ import type {
 } from '@/lib/hardware-client'
 
 import { ArrowRight, CheckCircle2, TriangleAlert } from 'lucide-vue-next'
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import TextReportDialog from '@/components/flow/TextReportDialog.vue'
@@ -24,6 +24,7 @@ import { CURRENT_SYNTHESIS_ARTIFACT_FLOW_REVISION } from '@/lib/synthesis-artifa
 import { importProjectFiles, openProject } from '@/lib/project-io'
 import { designContextStore } from '@/stores/design-context'
 import { hardwareStore } from '@/stores/hardware'
+import { implementationCatalogStore } from '@/stores/implementation-catalog'
 import { projectStore } from '@/stores/project'
 import { signalCatalogStore } from '@/stores/signal-catalog'
 
@@ -38,9 +39,9 @@ const reportDialogContent = ref('')
 const reportDialogEmptyText = ref('')
 
 const isBusy = hardwareStore.implementationRunning
-const implementationReport = hardwareStore.implementationReport
 const implementationLiveLog = hardwareStore.implementationLiveLog
 const implementationMessage = hardwareStore.implementationMessage
+const implementationReport = implementationCatalogStore.currentImplementationReport
 const projectName = computed(() => projectStore.toSnapshot().name)
 
 const synthesisReport = signalCatalogStore.currentSynthesisReport
@@ -584,22 +585,6 @@ function openTimingReport() {
   reportDialogEmptyText.value = t('noTimingReportAvailable')
   reportDialogOpen.value = true
 }
-
-watch(
-  [
-    () => designContextStore.primaryModule.value,
-    () =>
-      implementationProjectFiles.value
-        .map((source) => `${source.path}\u0000${source.content}`)
-        .join('\u0001'),
-    () => implementationConstraintXml.value,
-    () => projectStore.targetDeviceId,
-    () => projectStore.implementationSettings.placeMode,
-  ],
-  () => {
-    hardwareStore.resetImplementationState()
-  },
-)
 </script>
 
 <template>

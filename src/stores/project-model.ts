@@ -1,11 +1,12 @@
-import type {
-  CanvasDeviceBindingSnapshot,
-  CanvasDeviceConfigSnapshot,
-  CanvasDeviceSnapshot,
-  CanvasDeviceStateSnapshot,
-  CanvasDeviceType,
-  ImplementationReportV1,
-  SynthesisReportV1,
+import {
+  CANVAS_DEVICE_TYPES,
+  type CanvasDeviceBindingSnapshot,
+  type CanvasDeviceConfigSnapshot,
+  type CanvasDeviceSnapshot,
+  type CanvasDeviceStateSnapshot,
+  type CanvasDeviceType,
+  type ImplementationReportV1,
+  type SynthesisReportV1,
 } from '../lib/hardware-client'
 import { deviceReceivesSignal } from '../lib/canvas-devices'
 
@@ -111,23 +112,10 @@ export function cloneProjectImplementationCacheSnapshot(
   }
 }
 
+const canvasDeviceTypeSet = new Set<string>(CANVAS_DEVICE_TYPES)
+
 function isCanvasDeviceType(value: unknown): value is CanvasDeviceType {
-  return (
-    value === 'led' ||
-    value === 'switch' ||
-    value === 'button' ||
-    value === 'dip_switch_bank' ||
-    value === 'led_bar' ||
-    value === 'audio_pwm' ||
-    value === 'quadrature_encoder' ||
-    value === 'matrix_keypad' ||
-    value === 'uart_terminal' ||
-    value === 'hd44780_lcd' ||
-    value === 'memory' ||
-    value === 'vga_display' ||
-    value === 'segment_display' ||
-    value === 'led_matrix'
-  )
+  return typeof value === 'string' && canvasDeviceTypeSet.has(value)
 }
 
 function isCanvasDeviceBindingSnapshot(value: unknown): value is CanvasDeviceBindingSnapshot {

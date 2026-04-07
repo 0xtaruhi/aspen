@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ArrowRight } from 'lucide-vue-next'
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 
 import TextReportDialog from '@/components/flow/TextReportDialog.vue'
 import { Badge } from '@/components/ui/badge'
@@ -13,6 +13,7 @@ import { resolveSynthesisLog } from '@/lib/synthesis-log'
 import { designContextStore } from '@/stores/design-context'
 import { hardwareStore } from '@/stores/hardware'
 import { projectStore } from '@/stores/project'
+import { synthesisCatalogStore } from '@/stores/synthesis-catalog'
 
 const activeFileName = designContextStore.sourceName
 const topModule = designContextStore.primaryModule
@@ -20,8 +21,8 @@ const { t } = useI18n()
 
 const isBusy = hardwareStore.synthesisRunning
 const synthesisMessage = hardwareStore.synthesisMessage
-const synthesisReport = hardwareStore.synthesisReport
 const synthesisLiveLog = hardwareStore.synthesisLiveLog
+const synthesisReport = synthesisCatalogStore.currentSynthesisReport
 const reportDialogOpen = ref(false)
 
 const synthesisProjectFiles = designContextStore.projectBuildFiles
@@ -143,19 +144,6 @@ async function runSynthesis() {
 function projectDirectory() {
   return getProjectRootDirectory(projectStore.projectPath)
 }
-
-watch(
-  [
-    topModule,
-    () =>
-      synthesisProjectFiles.value
-        .map((source) => `${source.path}\u0000${source.content}`)
-        .join('\u0001'),
-  ],
-  () => {
-    hardwareStore.resetSynthesisState()
-  },
-)
 </script>
 
 <template>

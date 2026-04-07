@@ -1,30 +1,13 @@
 <script setup lang="ts">
-import {
-  computed,
-  onMounted,
-  onUnmounted,
-  ref,
-  watch,
-  type Component,
-  type CSSProperties,
-} from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch, type CSSProperties } from 'vue'
 
 import BaseDevice from '../devices/BaseDevice.vue'
-import AudioPwmDevice from '../devices/AudioPwmDevice.vue'
-import ButtonDevice from '../devices/ButtonDevice.vue'
-import DipSwitchBankDevice from '../devices/DipSwitchBankDevice.vue'
-import Hd44780LcdDevice from '../devices/Hd44780LcdDevice.vue'
-import LedBarDevice from '../devices/LedBarDevice.vue'
-import LedDevice from '../devices/LedDevice.vue'
-import LedMatrixDevice from '../devices/LedMatrixDevice.vue'
-import MatrixKeypadDevice from '../devices/MatrixKeypadDevice.vue'
-import MemoryDevice from '../devices/MemoryDevice.vue'
-import QuadratureEncoderDevice from '../devices/QuadratureEncoderDevice.vue'
-import SegmentDisplayDevice from '../devices/SegmentDisplayDevice.vue'
-import SwitchDevice from '../devices/SwitchDevice.vue'
-import UartTerminalDevice from '../devices/UartTerminalDevice.vue'
-import VgaDisplayDevice from '../devices/VgaDisplayDevice.vue'
 import WireLayer from './WireLayer.vue'
+import {
+  buildCanvasDeviceRendererListeners,
+  buildCanvasDeviceRendererProps,
+  getCanvasDeviceRenderer,
+} from '@/components/virtual-device/registry'
 import type { CanvasDeviceSnapshot, CanvasDeviceType } from '@/lib/hardware-client'
 import {
   buildDraggedPositions,
@@ -42,23 +25,9 @@ import {
   getCanvasBitsetData,
   getCanvasDeviceBoundSignal,
   getCanvasDeviceBoundSignalCount,
-  getCanvasDeviceBoundSignals,
-  getCanvasDeviceRendererProps,
   getCanvasDeviceShellSize,
   getCanvasDipSwitchBankConfig,
-  getCanvasHd44780LcdConfig,
-  getCanvasLedBarConfig,
-  getCanvasMatrixDimensions,
-  getCanvasMatrixKeypadConfig,
-  getCanvasMatrixKeypadData,
-  getCanvasMemoryConfig,
-  getCanvasMemoryData,
-  getCanvasQuadratureEncoderConfig,
   getCanvasQuadratureEncoderData,
-  getCanvasSegmentDisplayConfig,
-  getCanvasVgaDisplayConfig,
-  isCanvasMatrixDevice,
-  isCanvasSegmentDisplayDevice,
 } from '@/lib/canvas-devices'
 import { hardwareStore } from '@/stores/hardware'
 import { consumePaletteDrop, paletteDragStore } from '@/stores/palette-drag'
@@ -111,6 +80,11 @@ const wires = ref<
 
 const devices = computed(() => hardwareStore.state.value.canvas_devices)
 const streamRunning = computed(() => hardwareStore.dataStreamStatus.value.running)
+const sampleRateHz = computed(() => {
+  return (
+    hardwareStore.dataStreamStatus.value.actual_hz || hardwareStore.dataStreamStatus.value.target_hz
+  )
+})
 const selectedDeviceIds = computed(() => {
   if (props.selectedDeviceIds !== undefined) {
     return props.selectedDeviceIds
@@ -126,23 +100,6 @@ const selectedDeviceIdSet = computed(() => new Set(selectedDeviceIds.value))
 const resolvedInteractionMode = computed<CanvasInteractionMode>(
   () => props.interactionMode ?? 'select',
 )
-
-const deviceRendererByType: Record<CanvasDeviceType, Component> = {
-  led: LedDevice,
-  switch: SwitchDevice,
-  button: ButtonDevice,
-  dip_switch_bank: DipSwitchBankDevice,
-  led_bar: LedBarDevice,
-  audio_pwm: AudioPwmDevice,
-  quadrature_encoder: QuadratureEncoderDevice,
-  matrix_keypad: MatrixKeypadDevice,
-  uart_terminal: UartTerminalDevice,
-  hd44780_lcd: Hd44780LcdDevice,
-  memory: MemoryDevice,
-  vga_display: VgaDisplayDevice,
-  segment_display: SegmentDisplayDevice,
-  led_matrix: LedMatrixDevice,
-}
 
 let dropIdCounter = 0
 const SNAP_GRID = 20
@@ -747,165 +704,12 @@ function renderedDevice(device: CanvasDeviceSnapshot): CanvasDeviceSnapshot {
 
 function rendererProps(device: CanvasDeviceSnapshot) {
   const resolvedDevice = renderedDevice(device)
-  const telemetry = streamRunning.value ? hardwareStore.deviceTelemetry.value[device.id] : undefined
-
-  if (isCanvasMatrixDevice(device.type)) {
-    const dimensions = getCanvasMatrixDimensions(resolvedDevice)
-    const baseProps = getCanvasDeviceRendererProps(resolvedDevice)
-    return {
-      ...baseProps,
-      columns: telemetry?.pixel_columns || dimensions?.columns || 8,
-      rows: telemetry?.pixel_rows || dimensions?.rows || 8,
-      pixels: streamRunning.value ? (telemetry?.pixels ?? []) : [],
-    }
-  }
-
-  if (isCanvasSegmentDisplayDevice(device.type)) {
-    const config = getCanvasSegmentDisplayConfig(resolvedDevice)
-    const baseProps = getCanvasDeviceRendererProps(resolvedDevice)
-    const digits = config?.digits || 1
-    return {
-      ...baseProps,
-      digitSegmentMasks: streamRunning.value
-        ? (telemetry?.digit_segment_masks ??
-          Array.from({ length: digits }, (_, index) => {
-            return index === 0 ? (telemetry?.segment_mask ?? 0) : 0
-          }))
-        : Array.from({ length: digits }, () => 0),
-      segmentMask: streamRunning.value ? (telemetry?.segment_mask ?? 0) : 0,
-    }
-  }
-
-  if (device.type === 'vga_display') {
-    const config = getCanvasVgaDisplayConfig(resolvedDevice)
-    const baseProps = getCanvasDeviceRendererProps(resolvedDevice)
-    return {
-      ...baseProps,
-      isOn: streamRunning.value ? Boolean(telemetry?.latest) : false,
-      columns: telemetry?.pixel_columns || config?.columns || 320,
-      rows: telemetry?.pixel_rows || config?.rows || 240,
-      pixels: streamRunning.value ? (telemetry?.pixels ?? []) : [],
-    }
-  }
-
-  if (device.type === 'dip_switch_bank') {
-    const config = getCanvasDipSwitchBankConfig(resolvedDevice)
-    return {
-      ...getCanvasDeviceRendererProps(resolvedDevice),
-      width: config?.width ?? 8,
-      bits: getCanvasBitsetData(resolvedDevice, config?.width ?? 8),
-    }
-  }
-
-  if (device.type === 'led_bar') {
-    const config = getCanvasLedBarConfig(resolvedDevice)
-    if (!streamRunning.value) {
-      return {
-        ...getCanvasDeviceRendererProps(resolvedDevice),
-        width: config?.width ?? 8,
-        bits: Array.from({ length: config?.width ?? 8 }, () => false),
-      }
-    }
-    const telemetryBits =
-      streamRunning.value && telemetry?.bit_values?.length
-        ? telemetry.bit_values.map((value) => Boolean(value))
-        : null
-    const fallbackBits = getCanvasDeviceBoundSignals(device).map((signal) => {
-      if (!signal) {
-        return false
-      }
-      const rawLevel = hardwareStore.signalTelemetry.value[signal]?.latest ?? false
-      return config?.activeLow ? !rawLevel : rawLevel
-    })
-    return {
-      ...getCanvasDeviceRendererProps(resolvedDevice),
-      width: config?.width ?? 8,
-      bits: telemetryBits ?? fallbackBits,
-    }
-  }
-
-  if (device.type === 'audio_pwm') {
-    const sampleRateHz =
-      hardwareStore.dataStreamStatus.value.actual_hz ||
-      hardwareStore.dataStreamStatus.value.target_hz
-    const periodSamples = telemetry?.audio_period_samples ?? 0
-    const frequencyHz =
-      streamRunning.value && sampleRateHz > 0 && periodSamples > 0
-        ? sampleRateHz / periodSamples
-        : 0
-    return {
-      frequencyHz,
-      dutyRatio: telemetry?.high_ratio ?? 0,
-      sampleRateHz,
-      edgeCount: telemetry?.audio_edge_count ?? 0,
-      isOn: telemetry?.latest ?? false,
-    }
-  }
-
-  if (device.type === 'quadrature_encoder') {
-    const config = getCanvasQuadratureEncoderConfig(resolvedDevice)
-    const data = getCanvasQuadratureEncoderData(resolvedDevice)
-    return {
-      ...getCanvasDeviceRendererProps(resolvedDevice),
-      hasButton: config?.hasButton ?? true,
-      phase: data.phase,
-      buttonPressed: data.buttonPressed,
-    }
-  }
-
-  if (device.type === 'matrix_keypad') {
-    const config = getCanvasMatrixKeypadConfig(resolvedDevice)
-    const data = getCanvasMatrixKeypadData(resolvedDevice)
-    return {
-      ...getCanvasDeviceRendererProps(resolvedDevice),
-      rows: config?.rows ?? 4,
-      columns: config?.columns ?? 4,
-      pressedRow: data.pressedRow,
-      pressedColumn: data.pressedColumn,
-    }
-  }
-
-  if (device.type === 'uart_terminal') {
-    return {
-      textLog: telemetry?.text_log ?? '',
-    }
-  }
-
-  if (device.type === 'hd44780_lcd') {
-    const config = getCanvasHd44780LcdConfig(resolvedDevice)
-    return {
-      ...getCanvasDeviceRendererProps(resolvedDevice),
-      columns: config?.columns ?? 16,
-      rows: config?.rows ?? 2,
-      lines: telemetry?.text_lines ?? Array.from({ length: config?.rows ?? 2 }, () => ''),
-    }
-  }
-
-  if (device.type === 'memory') {
-    const config = getCanvasMemoryConfig(resolvedDevice)
-    const data = getCanvasMemoryData(device, 1 << Math.min(config?.addressWidth ?? 8, 16))
-    return {
-      ...getCanvasDeviceRendererProps(resolvedDevice),
-      mode: config?.mode ?? 'ram',
-      addressWidth: config?.addressWidth ?? 8,
-      dataWidth: config?.dataWidth ?? 8,
-      wordCount:
-        streamRunning.value && telemetry?.memory_word_count
-          ? telemetry.memory_word_count
-          : data.words.length,
-      sourcePath: data.sourcePath,
-      liveAddress:
-        streamRunning.value && typeof telemetry?.memory_address === 'number'
-          ? telemetry.memory_address
-          : null,
-      liveOutputWord:
-        streamRunning.value && typeof telemetry?.memory_output_word === 'number'
-          ? telemetry.memory_output_word
-          : null,
-    }
-  }
-
-  return getCanvasDeviceRendererProps(resolvedDevice)
+  return buildCanvasDeviceRendererProps(resolvedDevice, {
+    streamRunning: streamRunning.value,
+    telemetry: streamRunning.value ? hardwareStore.deviceTelemetry.value[device.id] : undefined,
+    signalTelemetry: hardwareStore.signalTelemetry.value,
+    sampleRateHz: sampleRateHz.value,
+  })
 }
 
 function rendererListeners(
@@ -919,32 +723,17 @@ function rendererListeners(
     }
   }
 
-  if (device.type === 'dip_switch_bank') {
-    listeners['toggle-bit'] = (index: number, value: boolean) => {
-      setBitsetValue(device, index, value)
-    }
-  }
-
-  if (device.type === 'quadrature_encoder') {
-    listeners.rotate = (delta: number) => {
-      rotateEncoder(device, delta)
-    }
-    listeners['toggle-button'] = (value: boolean) => {
-      setEncoderButton(device, value)
-    }
-  }
-
-  if (device.type === 'matrix_keypad') {
-    listeners['press-key'] = (row: number | null, column: number | null) => {
-      setMatrixKey(device, row, column)
-    }
-  }
-
-  if (device.type === 'uart_terminal') {
-    listeners['queue-text'] = (value: string) => {
-      enqueueAsciiText(device, value)
-    }
-  }
+  Object.assign(
+    listeners,
+    buildCanvasDeviceRendererListeners(device, {
+      toggleSwitch,
+      setBitsetValue,
+      rotateEncoder,
+      setEncoderButton,
+      setMatrixKey,
+      enqueueAsciiText,
+    }) ?? {},
+  )
 
   return Object.keys(listeners).length > 0 ? listeners : undefined
 }
@@ -1073,7 +862,7 @@ onUnmounted(() => {
         @rename="renameDevice"
       >
         <component
-          :is="deviceRendererByType[device.type]"
+          :is="getCanvasDeviceRenderer(device.type)"
           v-bind="rendererProps(device)"
           v-on="rendererListeners(device)"
         />
@@ -1091,7 +880,7 @@ onUnmounted(() => {
         :preview="true"
       >
         <component
-          :is="deviceRendererByType[palettePreview.type]"
+          :is="getCanvasDeviceRenderer(palettePreview.type)"
           v-bind="rendererProps(palettePreview)"
         />
       </BaseDevice>
