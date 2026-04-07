@@ -64,6 +64,7 @@ import { hardwareStore } from '@/stores/hardware'
 import { consumePaletteDrop, paletteDragStore } from '@/stores/palette-drag'
 
 type DeviceSelectionMode = 'preserve' | 'replace' | 'toggle'
+type CanvasInteractionMode = 'select' | 'pan'
 
 type DragSelectionState = {
   append: boolean
@@ -84,6 +85,7 @@ const props = defineProps<{
   selectedDeviceId?: string | null
   selectedDeviceIds?: string[]
   blockedTopInset?: number
+  interactionMode?: CanvasInteractionMode
 }>()
 
 const emit = defineEmits<{
@@ -121,6 +123,9 @@ const selectedDeviceIds = computed(() => {
   return internalSelectedDeviceIds.value
 })
 const selectedDeviceIdSet = computed(() => new Set(selectedDeviceIds.value))
+const resolvedInteractionMode = computed<CanvasInteractionMode>(
+  () => props.interactionMode ?? 'select',
+)
 
 const deviceRendererByType: Record<CanvasDeviceType, Component> = {
   led: LedDevice,
@@ -243,6 +248,11 @@ function handleCanvasMouseDown(e: MouseEvent) {
   }
 
   e.preventDefault()
+  if (resolvedInteractionMode.value === 'pan') {
+    startPan(e)
+    return
+  }
+
   startSelection(e)
 }
 
@@ -1009,8 +1019,15 @@ onUnmounted(() => {
 <template>
   <div
     ref="canvasRef"
-    class="w-full h-full bg-background overflow-hidden relative cursor-default transition-colors"
-    :class="palettePreview ? 'ring-1 ring-primary/40 ring-inset' : ''"
+    class="w-full h-full bg-background overflow-hidden relative transition-colors"
+    :class="[
+      {
+        'cursor-grab': resolvedInteractionMode === 'pan' && !isDraggingCanvas,
+        'cursor-grabbing': isDraggingCanvas,
+        'cursor-default': resolvedInteractionMode === 'select' && !isDraggingCanvas,
+      },
+      palettePreview ? 'ring-1 ring-primary/40 ring-inset' : '',
+    ]"
     @wheel="handleWheel"
     @mousedown="handleCanvasMouseDown"
   >
@@ -1026,6 +1043,7 @@ onUnmounted(() => {
 
     <div
       class="absolute origin-top-left will-change-transform"
+      :class="resolvedInteractionMode === 'pan' ? 'pointer-events-none' : ''"
       :style="{
         transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
       }"
@@ -1080,7 +1098,7 @@ onUnmounted(() => {
     </div>
 
     <div
-      v-if="selectionOverlayStyle"
+      v-if="resolvedInteractionMode === 'select' && selectionOverlayStyle"
       class="pointer-events-none absolute rounded-md border border-primary/70 bg-primary/10"
       :style="selectionOverlayStyle"
     ></div>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { LayoutGrid, Play, Square, Trash2 } from 'lucide-vue-next'
+import { Hand, LayoutGrid, Play, ScanSearch, Square, Trash2 } from 'lucide-vue-next'
 
 import DeviceCanvas from '@/components/canvas/DeviceCanvas.vue'
 import ComponentGallery from '@/components/ComponentGallery.vue'
@@ -20,7 +20,10 @@ import { settingsStore } from '@/stores/settings'
 const STREAM_SIGNAL_LIMIT = 4 * 16
 const DISPLAY_UPDATE_INTERVAL_MS = 1000
 
+type CanvasInteractionMode = 'select' | 'pan'
+
 const showGallery = ref(false)
+const canvasInteractionMode = ref<CanvasInteractionMode>('select')
 const selectedDeviceId = ref<string | null>(null)
 const selectedDeviceIds = ref<string[]>([])
 const inspectorOpen = ref(false)
@@ -52,6 +55,31 @@ const canApplySettings = computed(() => !streamBusy.value)
 const actualHzLabel = computed(() => `${formatMetric(displayedActualHz.value)} Hz`)
 const galleryTitle = computed(() => {
   return showGallery.value ? t('hideComponentGallery') : t('openComponentGallery')
+})
+const effectiveStreamRateHz = computed(() => {
+  return Math.max(streamStatus.value.actual_hz, streamStatus.value.target_hz, 1)
+})
+const streamScheduleLagMs = computed(() => {
+  if (streamStatus.value.queue_fill <= 0) {
+    return 0
+  }
+
+  return (streamStatus.value.queue_fill / effectiveStreamRateHz.value) * 1000
+})
+const streamBacklogWarningThresholdMs = computed(() => {
+  const queueCapacity = streamStatus.value.queue_capacity
+  if (queueCapacity <= 0) {
+    return 50
+  }
+
+  const batchLagMs = (queueCapacity / effectiveStreamRateHz.value) * 1000
+  return Math.min(50, batchLagMs)
+})
+const shouldWarnStreamBacklog = computed(() => {
+  return (
+    streamStatus.value.queue_fill > 0 &&
+    streamScheduleLagMs.value >= streamBacklogWarningThresholdMs.value
+  )
 })
 const selectedDevice = computed(() => {
   if (!selectedDeviceId.value) {
@@ -347,17 +375,41 @@ onBeforeUnmount(() => {
 <template>
   <div class="h-full flex flex-col bg-background">
     <div class="h-12 border-b border-border bg-muted/20 px-4 flex items-center gap-3">
-      <Button
-        type="button"
-        size="icon"
-        variant="outline"
-        :title="galleryTitle"
-        :aria-label="t('toggleComponentGallery')"
-        @pointerdown.stop
-        @click.stop="toggleGallery"
-      >
-        <LayoutGrid class="w-4 h-4" />
-      </Button>
+      <div class="flex items-center gap-1">
+        <Button
+          type="button"
+          size="icon"
+          variant="outline"
+          :title="galleryTitle"
+          :aria-label="t('toggleComponentGallery')"
+          @pointerdown.stop
+          @click.stop="toggleGallery"
+        >
+          <LayoutGrid class="h-4 w-4" />
+        </Button>
+        <Button
+          type="button"
+          size="icon"
+          :variant="canvasInteractionMode === 'pan' ? 'default' : 'outline'"
+          :title="t('canvasPanTool')"
+          :aria-label="t('canvasPanTool')"
+          :aria-pressed="canvasInteractionMode === 'pan'"
+          @click="canvasInteractionMode = 'pan'"
+        >
+          <Hand class="h-4 w-4" />
+        </Button>
+        <Button
+          type="button"
+          size="icon"
+          :variant="canvasInteractionMode === 'select' ? 'default' : 'outline'"
+          :title="t('canvasSelectTool')"
+          :aria-label="t('canvasSelectTool')"
+          :aria-pressed="canvasInteractionMode === 'select'"
+          @click="canvasInteractionMode = 'select'"
+        >
+          <ScanSearch class="h-4 w-4" />
+        </Button>
+      </div>
       <Badge variant="outline">
         {{ streamRunning ? t('runningState') : t('stoppedState') }}
       </Badge>
@@ -431,7 +483,7 @@ onBeforeUnmount(() => {
         streamMessage ||
         streamStatus.last_error ||
         streamStatus.dropped_samples > 0 ||
-        streamStatus.queue_fill > 0 ||
+        shouldWarnStreamBacklog ||
         streamSignalOverflow > 0 ||
         (designContextStore.selectedSource.value && !hasAnySynthesisSignals) ||
         hasStaleSynthesisSignals
@@ -448,8 +500,8 @@ onBeforeUnmount(() => {
         <span v-if="streamStatus.dropped_samples > 0" class="text-amber-600">
           {{ t('streamDroppedWarning', { count: streamStatus.dropped_samples }) }}
         </span>
-        <span v-if="streamStatus.queue_fill > 0" class="text-amber-600">
-          {{ t('streamBacklogWarning', { count: streamStatus.queue_fill }) }}
+        <span v-if="shouldWarnStreamBacklog" class="text-amber-600">
+          {{ t('streamLagWarning', { ms: Math.round(streamScheduleLagMs) }) }}
         </span>
         <span v-if="streamSignalOverflow > 0" class="text-amber-600">
           {{ t('streamOverflowWarning', { count: streamSignalOverflow }) }}
@@ -472,6 +524,7 @@ onBeforeUnmount(() => {
         v-model:selected-device-id="selectedDeviceId"
         v-model:selected-device-ids="selectedDeviceIds"
         :blocked-top-inset="showGallery ? galleryDropBlockInset : 0"
+        :interaction-mode="canvasInteractionMode"
         @open-settings="openInspectorForDevice"
       />
     </div>
