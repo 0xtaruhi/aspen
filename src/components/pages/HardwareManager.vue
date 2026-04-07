@@ -29,7 +29,7 @@ import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/componen
 import { getFpgaDeviceDescriptor, resolveFpgaDeviceId } from '@/lib/fpga-device-catalog'
 import { useI18n } from '@/lib/i18n'
 import { hardwareStore } from '@/stores/hardware'
-import { implementationCatalogStore } from '@/stores/implementation-catalog'
+import { programmingCatalogStore } from '@/stores/programming-catalog'
 import { projectStore } from '@/stores/project'
 import type { HardwarePhase } from '@/lib/hardware-client'
 
@@ -125,20 +125,7 @@ const canOpenProgramDialog = computed(() => {
   return isDeviceConnected.value && !isBusy.value
 })
 
-const defaultBitstreamPath = computed(() => {
-  const implementationBitstreamPath =
-    implementationCatalogStore.currentImplementationBitstreamPath.value
-  if (implementationBitstreamPath) {
-    return implementationBitstreamPath
-  }
-
-  const artifactPath = hardwareState.value.artifact?.path?.trim()
-  if (artifactPath) {
-    return artifactPath
-  }
-
-  return ''
-})
+const defaultBitstreamPath = programmingCatalogStore.defaultBitstreamPath
 
 const flowLabel = computed(() => {
   switch (flowPhase.value) {
@@ -188,17 +175,6 @@ const flowBadgeClass = computed(() => {
   }
   return ''
 })
-
-watch(
-  () => hardwareState.value.artifact,
-  (artifact) => {
-    if (artifact) {
-      bitstreamFile.value = artifact.path
-      return
-    }
-  },
-  { immediate: true },
-)
 
 watch(
   targets,
@@ -325,10 +301,7 @@ function openProgramDialog() {
     return
   }
 
-  if (!bitstreamFile.value.trim()) {
-    bitstreamFile.value = defaultBitstreamPath.value
-  }
-
+  bitstreamFile.value = defaultBitstreamPath.value
   isProgramDialogOpen.value = true
 }
 

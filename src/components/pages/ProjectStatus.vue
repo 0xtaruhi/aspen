@@ -12,23 +12,16 @@ import { getFpgaDeviceDescriptor } from '@/lib/fpga-device-catalog'
 import { useI18n } from '@/lib/i18n'
 import { importProjectFiles, openProject } from '@/lib/project-io'
 import { designContextStore } from '@/stores/design-context'
-import { hardwareStore } from '@/stores/hardware'
 import { projectStore } from '@/stores/project'
-import { buildSynthesisInputSignature } from '../../lib/synthesis-request-signature'
+import { signalCatalogStore } from '@/stores/signal-catalog'
 
 const signalSummary = designContextStore.signalSummary
 const activeFileName = designContextStore.sourceName
-const topModule = designContextStore.primaryModule
 const router = useRouter()
 const { t } = useI18n()
 const targetDevice = computed(() => getFpgaDeviceDescriptor(projectStore.targetDeviceId))
 const showNewProjectDialog = ref(false)
 const hasDesignSource = computed(() => Boolean(designContextStore.selectedSource.value))
-const synthesisSources = designContextStore.projectBuildFiles
-
-const currentSynthesisSignature = computed(() => {
-  return buildSynthesisInputSignature(topModule.value, synthesisSources.value)
-})
 
 function summarizeResources(counts: readonly SynthesisCellTypeCountV1[]) {
   let lut = 0
@@ -62,18 +55,7 @@ function summarizeResources(counts: readonly SynthesisCellTypeCountV1[]) {
   return { lut, ff, bram, dsp }
 }
 
-const synthesisReport = computed(() => {
-  const report = hardwareStore.synthesisReport.value
-  if (!report?.success) {
-    return null
-  }
-
-  if (hardwareStore.synthesisReportSignature.value !== currentSynthesisSignature.value) {
-    return null
-  }
-
-  return report
-})
+const synthesisReport = signalCatalogStore.currentSynthesisReport
 
 const synthesizedResources = computed(() => {
   return summarizeResources(synthesisReport.value?.stats.cell_type_counts ?? [])

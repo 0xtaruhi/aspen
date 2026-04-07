@@ -3,6 +3,7 @@ import type { ExpandedVerilogPortBit } from '@/lib/verilog-port-bits'
 import { computed, readonly } from 'vue'
 
 import { getFpgaBoardDescriptor } from '@/lib/fpga-board-catalog'
+import { createFlowReportSelection } from '@/lib/flow-report-selection'
 import {
   buildPhysicalSignalSlotOrder,
   resolveCurrentProjectPinConstraints,
@@ -88,21 +89,15 @@ const currentSynthesisSignature = computed(() => {
   )
 })
 
-const currentSynthesisReport = computed(() => {
-  const report = hardwareStore.synthesisReport.value
-  if (!report?.success) {
-    return null
-  }
-
-  return hardwareStore.synthesisReportSignature.value === currentSynthesisSignature.value
-    ? report
-    : null
+const synthesisReportSelection = createFlowReportSelection({
+  latestReport: hardwareStore.synthesisReport,
+  latestSignature: hardwareStore.synthesisReportSignature,
+  currentSignature: currentSynthesisSignature,
+  acceptReport: (report) => report.success,
 })
 
-const latestSynthesisReport = computed(() => {
-  const report = hardwareStore.synthesisReport.value
-  return report?.success ? report : null
-})
+const currentSynthesisReport = synthesisReportSelection.currentReport
+const latestSynthesisReport = synthesisReportSelection.latestReport
 
 const signalSourceReport = computed(() => {
   return currentSynthesisReport.value ?? latestSynthesisReport.value
@@ -127,6 +122,7 @@ const streamOutputSignalOrder = computed(() => {
 export const signalCatalogStore = {
   currentSynthesisReport: readonly(currentSynthesisReport),
   latestSynthesisReport: readonly(latestSynthesisReport),
+  hasStaleSynthesisReport: synthesisReportSelection.hasStaleReport,
   signals: readonly(signals),
   streamInputSignalOrder: readonly(streamInputSignalOrder),
   streamOutputSignalOrder: readonly(streamOutputSignalOrder),

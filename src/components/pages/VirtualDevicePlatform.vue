@@ -38,9 +38,7 @@ const availableSignalCount = computed(() => signalCatalogStore.signals.value.len
 const hasAnySynthesisSignals = computed(() =>
   Boolean(signalCatalogStore.latestSynthesisReport.value),
 )
-const hasAuthoritativeSignals = computed(() =>
-  Boolean(signalCatalogStore.currentSynthesisReport.value),
-)
+const hasStaleSynthesisSignals = signalCatalogStore.hasStaleSynthesisReport
 const streamSignalNames = computed(() => {
   return signalCatalogStore.signals.value.slice(0, STREAM_SIGNAL_LIMIT).map((signal) => signal.name)
 })
@@ -475,7 +473,7 @@ onBeforeUnmount(() => {
         streamStatus.queue_fill > 0 ||
         streamSignalOverflow > 0 ||
         (designContextStore.selectedSource.value && !hasAnySynthesisSignals) ||
-        (hasAnySynthesisSignals && !hasAuthoritativeSignals)
+        hasStaleSynthesisSignals
       "
       class="border-b border-border bg-background px-4 py-2 text-xs text-muted-foreground"
     >
@@ -501,7 +499,7 @@ onBeforeUnmount(() => {
         >
           {{ t('workbenchRequiresSynthesisDescription') }}
         </span>
-        <span v-else-if="hasAnySynthesisSignals && !hasAuthoritativeSignals" class="text-amber-600">
+        <span v-else-if="hasStaleSynthesisSignals" class="text-amber-600">
           {{ t('workbenchSynthesisOutdatedDescription') }}
         </span>
       </div>

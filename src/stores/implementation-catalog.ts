@@ -1,6 +1,7 @@
 import { computed, readonly } from 'vue'
 
 import { buildImplementationInputSignature } from '@/lib/implementation-request-signature'
+import { createFlowReportSelection } from '@/lib/flow-report-selection'
 import { buildConstraintXml, resolveCurrentProjectPinConstraints } from '@/lib/project-constraints'
 import { designContextStore } from '@/stores/design-context'
 import { hardwareStore } from '@/stores/hardware'
@@ -32,24 +33,20 @@ const currentImplementationSignature = computed(() => {
   )
 })
 
-const latestImplementationReport = computed(() => {
-  return hardwareStore.implementationReport.value
+const implementationReportSelection = createFlowReportSelection({
+  latestReport: hardwareStore.implementationReport,
+  latestSignature: hardwareStore.implementationReportSignature,
+  currentSignature: currentImplementationSignature,
 })
 
-const currentImplementationReport = computed(() => {
-  const report = latestImplementationReport.value
-  if (!report) {
-    return null
-  }
+const latestImplementationReport = implementationReportSelection.latestReport
+const currentImplementationReport = implementationReportSelection.currentReport
 
-  return hardwareStore.implementationReportSignature.value === currentImplementationSignature.value
-    ? report
-    : null
+const latestImplementationBitstreamPath = computed(() => {
+  return latestImplementationReport.value?.artifacts.bitstream_path?.trim() ?? ''
 })
 
-const hasStaleImplementationReport = computed(() => {
-  return Boolean(latestImplementationReport.value) && !currentImplementationReport.value
-})
+const hasStaleImplementationReport = implementationReportSelection.hasStaleReport
 
 const currentImplementationBitstreamPath = computed(() => {
   return currentImplementationReport.value?.artifacts.bitstream_path?.trim() ?? ''
@@ -58,6 +55,7 @@ const currentImplementationBitstreamPath = computed(() => {
 export const implementationCatalogStore = {
   currentImplementationReport: readonly(currentImplementationReport),
   latestImplementationReport: readonly(latestImplementationReport),
+  latestImplementationBitstreamPath: readonly(latestImplementationBitstreamPath),
   currentImplementationBitstreamPath: readonly(currentImplementationBitstreamPath),
   hasStaleImplementationReport: readonly(hasStaleImplementationReport),
 }

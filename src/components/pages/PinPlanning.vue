@@ -31,7 +31,6 @@ import { getFpgaBoardDescriptor } from '@/lib/fpga-board-catalog'
 import { useI18n } from '@/lib/i18n'
 import { importProjectFiles, openProject } from '@/lib/project-io'
 import { designContextStore } from '@/stores/design-context'
-import { hardwareStore } from '@/stores/hardware'
 import { projectStore } from '@/stores/project'
 import { signalCatalogStore, type SignalCatalogEntry } from '@/stores/signal-catalog'
 
@@ -52,9 +51,7 @@ const expandedPorts = computed<readonly SignalCatalogEntry[]>(
 )
 const currentSynthesisReport = signalCatalogStore.currentSynthesisReport
 const hasCurrentSynthesis = computed(() => Boolean(currentSynthesisReport.value))
-const hasStaleSynthesis = computed(() => {
-  return Boolean(hardwareStore.synthesisReport.value?.success) && !hasCurrentSynthesis.value
-})
+const hasStaleSynthesis = signalCatalogStore.hasStaleSynthesisReport
 
 const currentAssignments = computed(() => {
   return resolveCurrentProjectPinConstraints(
