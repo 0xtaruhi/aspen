@@ -81,6 +81,23 @@ fn create_workdir_generates_unique_paths_for_same_timestamp() {
 }
 
 #[test]
+fn frontend_and_backend_synthesis_artifact_flow_revisions_match() {
+    let frontend_constant_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("src")
+        .join("lib")
+        .join("synthesis-artifact-flow.ts");
+    let frontend_source = fs::read_to_string(&frontend_constant_path)
+        .expect("frontend synthesis artifact flow constant must exist");
+
+    assert!(
+        frontend_source.contains(SYNTHESIS_ARTIFACT_FLOW_REVISION),
+        "frontend synthesis artifact flow revision is out of sync with backend: expected {SYNTHESIS_ARTIFACT_FLOW_REVISION} in {}",
+        frontend_constant_path.display()
+    );
+}
+
+#[test]
 fn yosys_smoke_test_runs_when_bundled_toolchain_is_available() {
     let Some(toolchain) = bundled_synthesis_toolchain() else {
         return;

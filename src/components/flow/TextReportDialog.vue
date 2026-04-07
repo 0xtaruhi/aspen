@@ -63,14 +63,17 @@ async function copyReportContent() {
 <template>
   <Dialog :open="props.open" @update:open="emit('update:open', $event)">
     <DialogScrollContent class="max-h-[85vh] p-0 sm:max-w-4xl">
-      <div class="flex flex-col">
+      <div class="flex min-w-0 flex-col">
         <div class="flex items-start justify-between gap-4 border-b border-border px-4 py-4">
-          <DialogHeader class="space-y-1">
+          <DialogHeader class="min-w-0 flex-1 space-y-1">
             <div class="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
               viewer
             </div>
-            <DialogTitle class="text-base">{{ props.title }}</DialogTitle>
-            <p v-if="props.description" class="text-sm text-muted-foreground">
+            <DialogTitle class="break-words text-base">{{ props.title }}</DialogTitle>
+            <p
+              v-if="props.description"
+              class="break-words text-sm text-muted-foreground [overflow-wrap:anywhere]"
+            >
               {{ props.description }}
             </p>
           </DialogHeader>
@@ -80,7 +83,7 @@ async function copyReportContent() {
             size="sm"
             variant="ghost"
             :disabled="displayContent.trim().length === 0"
-            class="rounded-md"
+            class="shrink-0 rounded-md"
             @click="copyReportContent"
           >
             <Check v-if="copied" class="mr-2 h-3.5 w-3.5" />
@@ -89,9 +92,9 @@ async function copyReportContent() {
           </Button>
         </div>
 
-        <div class="px-4 py-4">
+        <div class="min-w-0 px-4 py-4">
           <pre
-            class="allow-text-select max-h-[65vh] overflow-auto rounded-md border border-border bg-white px-3 py-3 font-mono text-[12px] leading-5 text-slate-950 dark:bg-black dark:text-white"
+            class="allow-text-select max-h-[65vh] min-w-0 max-w-full overflow-x-auto overflow-y-auto whitespace-pre rounded-md border border-border bg-white px-3 py-3 font-mono text-[12px] leading-5 text-slate-950 dark:bg-black dark:text-white"
             >{{ displayContent }}</pre
           >
         </div>

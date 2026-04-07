@@ -783,6 +783,8 @@ pub struct ImplementationStageResultV1 {
     pub success: bool,
     pub optional: bool,
     pub elapsed_ms: u64,
+    pub warning_count: u32,
+    pub error_count: u32,
     pub exit_code: Option<i32>,
     pub log_path: Option<String>,
     pub output_path: Option<String>,

@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { invoke } from '@tauri-apps/api/core'
-import type { ImplementationRequestV1 } from '@/lib/hardware-client'
+import type {
+  ImplementationRequestV1,
+  ImplementationStageKindV1,
+  ImplementationStageResultV1,
+} from '@/lib/hardware-client'
 
 import { ArrowRight, CheckCircle2, TriangleAlert } from 'lucide-vue-next'
 import { computed, ref, watch } from 'vue'
@@ -35,6 +39,7 @@ const reportDialogEmptyText = ref('')
 
 const isBusy = hardwareStore.implementationRunning
 const implementationReport = hardwareStore.implementationReport
+const implementationLiveLog = hardwareStore.implementationLiveLog
 const implementationMessage = hardwareStore.implementationMessage
 const projectName = computed(() => projectStore.toSnapshot().name)
 
@@ -122,30 +127,187 @@ const implementationErrorMessage = computed(() => {
   return ''
 })
 
-const visibleStageOrder = ['map', 'pack', 'place', 'route', 'sta', 'bitgen'] as const
+const visibleStageOrder = [
+  'map',
+  'pack',
+  'place',
+  'route',
+  'sta',
+  'bitgen',
+] as const satisfies readonly ImplementationStageKindV1[]
+
+type VisibleImplementationStage = (typeof visibleStageOrder)[number]
+
+type LiveStageProgress = {
+  started: boolean
+  running: boolean
+  completed: boolean
+  success: boolean | null
+  elapsedMs: number | null
+  warningCount: number
+  errorCount: number
+  liveLog: string
+}
+
+const optionalImplementationStages = new Set<ImplementationStageKindV1>(['sta'])
+
+function stageTitle(stage: VisibleImplementationStage) {
+  const keys = {
+    map: 'implementationStageMap',
+    pack: 'implementationStagePack',
+    place: 'implementationStagePlace',
+    route: 'implementationStageRoute',
+    sta: 'implementationStageSta',
+    bitgen: 'implementationStageBitgen',
+  } as const
+
+  return t(keys[stage])
+}
+
+function emptyLiveStageProgress(): LiveStageProgress {
+  return {
+    started: false,
+    running: false,
+    completed: false,
+    success: null,
+    elapsedMs: null,
+    warningCount: 0,
+    errorCount: 0,
+    liveLog: '',
+  }
+}
+
+function parseImplementationLiveStages(log: string) {
+  const stages = new Map<ImplementationStageKindV1, LiveStageProgress>()
+  const warningSectionByStage = new Map<ImplementationStageKindV1, boolean>()
+
+  const ensureStage = (stage: ImplementationStageKindV1) => {
+    const existing = stages.get(stage)
+    if (existing) {
+      return existing
+    }
+
+    const created = emptyLiveStageProgress()
+    stages.set(stage, created)
+    return created
+  }
+
+  for (const rawLine of log.split(/\r?\n/)) {
+    const match = rawLine.match(/^\[(map|pack|place|route|sta|bitgen)\]\s?(.*)$/)
+    if (!match) {
+      continue
+    }
+
+    const stage = match[1] as ImplementationStageKindV1
+    const line = match[2] ?? ''
+    const trimmed = line.trimStart()
+    const progress = ensureStage(stage)
+
+    progress.liveLog = progress.liveLog.length > 0 ? `${progress.liveLog}\n${line}` : line
+
+    if (trimmed.startsWith('>>> starting ')) {
+      progress.started = true
+      progress.running = true
+      progress.completed = false
+      progress.success = null
+      warningSectionByStage.set(stage, false)
+      continue
+    }
+
+    if (trimmed === 'warnings:') {
+      warningSectionByStage.set(stage, true)
+      continue
+    }
+
+    if (
+      trimmed === 'messages:' ||
+      trimmed === 'metrics:' ||
+      trimmed === 'artifacts:' ||
+      trimmed.startsWith('stage: ') ||
+      trimmed.startsWith('status: ') ||
+      trimmed.startsWith('elapsed_ms: ')
+    ) {
+      warningSectionByStage.set(stage, false)
+    }
+
+    if (warningSectionByStage.get(stage) && trimmed.startsWith('- ')) {
+      progress.warningCount += 1
+      continue
+    }
+
+    const elapsedMatch = trimmed.match(/^elapsed_ms:\s*(\d+)/)
+    if (elapsedMatch) {
+      progress.elapsedMs = Number(elapsedMatch[1])
+      continue
+    }
+
+    if (trimmed === 'status: success') {
+      progress.running = false
+      progress.completed = true
+      progress.success = true
+      continue
+    }
+
+    if (trimmed === 'status: skipped') {
+      progress.running = false
+      progress.completed = true
+      progress.success = true
+      continue
+    }
+
+    if (trimmed === 'status: failed' || /^stage\s+\w+\s+failed$/.test(trimmed)) {
+      progress.running = false
+      progress.completed = true
+      progress.success = false
+      warningSectionByStage.set(stage, false)
+      continue
+    }
+
+    if (/^error:/i.test(trimmed)) {
+      progress.errorCount += 1
+      progress.running = false
+      progress.completed = true
+      progress.success = false
+      warningSectionByStage.set(stage, false)
+    }
+  }
+
+  return stages
+}
+
+const liveStageProgress = computed(() => {
+  return parseImplementationLiveStages(implementationLiveLog.value)
+})
+
+function stageResultFor(stage: ImplementationStageKindV1): ImplementationStageResultV1 | null {
+  return implementationReport.value?.stages.find((entry) => entry.stage === stage) ?? null
+}
+
+function stageWarningCount(
+  stage: ImplementationStageKindV1,
+  result: ImplementationStageResultV1 | null,
+) {
+  return result?.warning_count ?? liveStageProgress.value.get(stage)?.warningCount ?? 0
+}
+
+function stageErrorCount(
+  stage: ImplementationStageKindV1,
+  result: ImplementationStageResultV1 | null,
+) {
+  return result?.error_count ?? liveStageProgress.value.get(stage)?.errorCount ?? 0
+}
 
 const stageCards = computed(() => {
-  const stageMap = new Map(
-    (implementationReport.value?.stages ?? []).map((stage) => [stage.stage, stage]),
-  )
-
   return visibleStageOrder.map((stage) => {
-    const result = stageMap.get(stage) ?? null
+    const result = stageResultFor(stage)
+    const live = liveStageProgress.value.get(stage) ?? null
     return {
       stage,
-      title: t(
-        (
-          {
-            map: 'implementationStageMap',
-            pack: 'implementationStagePack',
-            place: 'implementationStagePlace',
-            route: 'implementationStageRoute',
-            sta: 'implementationStageSta',
-            bitgen: 'implementationStageBitgen',
-          } as const
-        )[stage],
-      ),
+      title: stageTitle(stage),
       result,
+      live,
+      warningCount: stageWarningCount(stage, result),
+      errorCount: stageErrorCount(stage, result),
     }
   })
 })
@@ -263,15 +425,29 @@ const summaryStageCardRows = computed(() => {
     title: stage.title,
     statusLabel: stageStatusLabel(stage),
     statusDotClass: stageStatusDotClass(stage),
-    durationText: stage.result ? formatDuration(stage.result.elapsed_ms) : t('notRunYet'),
-    canViewLog: Boolean(stage.result?.log_path),
+    durationText: stageDurationText(stage),
+    warningCount: stage.warningCount,
+    errorCount: stage.errorCount,
+    canViewLog: Boolean(stage.result?.log_path) || (stage.live?.liveLog.trim().length ?? 0) > 0,
     canViewTiming:
       stage.stage === 'sta' && Boolean(implementationReport.value?.timing_report.trim().length),
   }))
 })
 
 function stageStatusLabel(stage: (typeof stageCards.value)[number]) {
+  if (stage.live?.running) {
+    return t('running')
+  }
+
   if (!stage.result) {
+    if (stage.live?.completed) {
+      if (stage.live.success) {
+        return t('completed')
+      }
+
+      return optionalImplementationStages.has(stage.stage) ? t('warnings') : t('failed')
+    }
+
     return t('pending')
   }
 
@@ -283,8 +459,28 @@ function stageStatusLabel(stage: (typeof stageCards.value)[number]) {
 }
 
 function stageStatusDotClass(stage: (typeof stageCards.value)[number]) {
+  if (stage.live?.running) {
+    return 'bg-blue-500 animate-pulse'
+  }
+
   if (!stage.result) {
+    if (stage.live?.completed) {
+      if (stage.live.success) {
+        return stage.warningCount > 0 ? 'bg-amber-500' : 'bg-emerald-500'
+      }
+
+      return optionalImplementationStages.has(stage.stage) ? 'bg-amber-500' : 'bg-destructive'
+    }
+
     return 'bg-muted-foreground/35'
+  }
+
+  if (stage.errorCount > 0 && !stage.result.success && !stage.result.optional) {
+    return 'bg-destructive'
+  }
+
+  if (stage.warningCount > 0 || stage.result.optional) {
+    return 'bg-amber-500'
   }
 
   if (stage.result.success) {
@@ -296,6 +492,22 @@ function stageStatusDotClass(stage: (typeof stageCards.value)[number]) {
   }
 
   return 'bg-destructive'
+}
+
+function stageDurationText(stage: (typeof stageCards.value)[number]) {
+  if (stage.result) {
+    return formatDuration(stage.result.elapsed_ms)
+  }
+
+  if (typeof stage.live?.elapsedMs === 'number') {
+    return formatDuration(stage.live.elapsedMs)
+  }
+
+  if (stage.live?.running) {
+    return `${t('running')}...`
+  }
+
+  return t('notRunYet')
 }
 
 async function runImplementation() {
@@ -337,10 +549,14 @@ async function openStageLog(stageKind: string) {
   }
 
   reportDialogTitle.value = `${stage.title} · ${t('viewLog')}`
-  reportDialogDescription.value = stage.result
-    ? `${stageStatusLabel(stage)} · ${formatDuration(stage.result.elapsed_ms)}`
-    : t('notRunYet')
+  reportDialogDescription.value = `${stageStatusLabel(stage)} · ${stageDurationText(stage)}`
   reportDialogEmptyText.value = t('noLogAvailable')
+
+  if (stage.live?.liveLog.trim().length && !stage.result?.log_path) {
+    reportDialogContent.value = stage.live.liveLog
+    reportDialogOpen.value = true
+    return
+  }
 
   if (!stage.result?.log_path) {
     reportDialogContent.value = ''
@@ -397,7 +613,9 @@ watch(
     @update:open="reportDialogOpen = $event"
   />
 
-  <div class="p-8 space-y-6 h-full flex flex-col animate-in fade-in duration-500">
+  <div
+    class="flex h-full min-h-0 flex-col gap-6 overflow-x-hidden overflow-y-auto p-8 animate-in fade-in duration-500"
+  >
     <div class="flex items-center justify-between shrink-0 gap-4">
       <div>
         <h2 class="text-3xl font-bold tracking-tight">{{ t('implementation') }}</h2>

@@ -252,6 +252,7 @@ async function runImplementation(
 ): Promise<ImplementationReportV1> {
   await ensureImplementationLogListener()
   implementationRunning.value = true
+  implementationReport.value = null
   implementationMessage.value = ''
   implementationLiveLog.value = ''
   implementationLogBuffer = ''

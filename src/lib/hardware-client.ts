@@ -157,6 +157,8 @@ export interface ImplementationStageResultV1 {
   success: boolean
   optional: boolean
   elapsed_ms: number
+  warning_count: number
+  error_count: number
   exit_code: number | null
   log_path: string | null
   output_path: string | null

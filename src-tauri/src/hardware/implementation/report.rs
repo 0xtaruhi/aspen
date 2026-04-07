@@ -53,6 +53,8 @@ pub(super) fn finish_success_stage(
         success,
         optional,
         elapsed_ms,
+        warning_count: u32::try_from(report.warnings.len()).unwrap_or(u32::MAX),
+        error_count: if success { 0 } else { 1 },
         exit_code: Some(if success { 0 } else { 1 }),
         log_path: Some(log_path.to_string_lossy().to_string()),
         output_path: output_path
@@ -91,6 +93,8 @@ pub(super) fn finish_failed_stage(
         success: false,
         optional,
         elapsed_ms,
+        warning_count: 0,
+        error_count: 1,
         exit_code: Some(1),
         log_path: Some(log_path.to_string_lossy().to_string()),
         output_path: output_path

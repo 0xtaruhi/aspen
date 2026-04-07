@@ -18,6 +18,8 @@ type SummaryCard = {
   statusLabel: string
   statusDotClass: string
   durationText: string
+  warningCount: number
+  errorCount: number
   canViewLog: boolean
   canViewTiming: boolean
 }
@@ -80,6 +82,29 @@ function iconFor(stage: string) {
       <div class="px-4 py-4">
         <div class="text-lg font-semibold tracking-tight">{{ card.statusLabel }}</div>
         <div class="mt-1 font-mono text-xs text-muted-foreground">{{ card.durationText }}</div>
+
+        <div class="mt-3 flex flex-wrap gap-2">
+          <span
+            class="rounded-md border px-2 py-1 font-mono text-[11px]"
+            :class="
+              card.warningCount > 0
+                ? 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                : 'border-border/70 bg-muted/30 text-muted-foreground'
+            "
+          >
+            W {{ card.warningCount }}
+          </span>
+          <span
+            class="rounded-md border px-2 py-1 font-mono text-[11px]"
+            :class="
+              card.errorCount > 0
+                ? 'border-destructive/30 bg-destructive/10 text-destructive'
+                : 'border-border/70 bg-muted/30 text-muted-foreground'
+            "
+          >
+            E {{ card.errorCount }}
+          </span>
+        </div>
 
         <div class="mt-4 flex flex-wrap gap-2">
           <Button
