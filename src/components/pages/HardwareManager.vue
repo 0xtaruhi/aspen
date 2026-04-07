@@ -27,10 +27,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable'
 import { getFpgaDeviceDescriptor, resolveFpgaDeviceId } from '@/lib/fpga-device-catalog'
-import { getImplementationBitstreamPath } from '@/lib/implementation-artifacts'
 import { useI18n } from '@/lib/i18n'
-import { getProjectOutputDirectory, joinPath } from '@/lib/project-layout'
 import { hardwareStore } from '@/stores/hardware'
+import { implementationCatalogStore } from '@/stores/implementation-catalog'
 import { projectStore } from '@/stores/project'
 import type { HardwarePhase } from '@/lib/hardware-client'
 
@@ -128,7 +127,7 @@ const canOpenProgramDialog = computed(() => {
 
 const defaultBitstreamPath = computed(() => {
   const implementationBitstreamPath =
-    hardwareStore.implementationReport.value?.artifacts.bitstream_path?.trim()
+    implementationCatalogStore.currentImplementationBitstreamPath.value
   if (implementationBitstreamPath) {
     return implementationBitstreamPath
   }
@@ -138,27 +137,7 @@ const defaultBitstreamPath = computed(() => {
     return artifactPath
   }
 
-  const projectPath = projectStore.projectPath
-  const inferredImplementationBitstream = getImplementationBitstreamPath(
-    projectPath,
-    projectStore.toSnapshot().name,
-    projectStore.topModuleName || 'top',
-  )
-  if (inferredImplementationBitstream) {
-    return inferredImplementationBitstream
-  }
-
-  if (!projectPath) {
-    return ''
-  }
-
-  const topFileName = projectStore.topFile?.name || 'top'
-  const projectDirectory = getProjectOutputDirectory(projectPath)
-  if (!projectDirectory) {
-    return `${stripFileExtension(topFileName)}.bit`
-  }
-
-  return joinPath(projectDirectory, `${stripFileExtension(topFileName)}.bit`)
+  return ''
 })
 
 const flowLabel = computed(() => {
@@ -291,10 +270,6 @@ function buildTargets(status: HardwareStatus): HardwareTarget[] {
       ],
     },
   ]
-}
-
-function stripFileExtension(filename: string) {
-  return filename.replace(/\.[^.]+$/, '') || filename
 }
 
 function getErrorMessage(err: unknown): string {
