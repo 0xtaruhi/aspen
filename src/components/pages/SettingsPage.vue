@@ -33,6 +33,7 @@ const fontSizeValue = computed(() => String(settingsStore.state.editorFontSize))
 const themeAccentInput = computed(() => normalizeThemeAccentColor(settingsStore.state.themeAccent))
 const themePresetOptions = Object.keys(APP_THEME_PRESET_COLORS) as AppThemePresetColor[]
 const updateState = appUpdateStore.state
+const showUpdateCard = computed(() => updateState.supported)
 
 const updateStatusLabel = computed(() => {
   switch (updateState.status) {
@@ -177,7 +178,7 @@ onMounted(() => {
 
       <div class="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
         <div class="grid gap-6">
-          <Card class="border-border/70">
+          <Card v-if="showUpdateCard" class="border-border/70">
             <CardHeader>
               <div class="flex items-center gap-3">
                 <div class="rounded-2xl border border-border bg-muted p-2">

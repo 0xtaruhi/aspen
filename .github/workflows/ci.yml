@@ -119,21 +119,12 @@ jobs:
               run_rust=true
             fi
 
-            if [ "${{ github.event_name }}" != "pull_request" ] && [ "$desktop" = true ]; then
-              run_packages=true
-            fi
-
-            if [ "$frontend" = true ] || [ "$run_packages" = true ]; then
+            if [ "$frontend" = true ]; then
               run_frontend=true
             fi
 
-            if [ "$run_rust" = true ] || [ "$run_packages" = true ]; then
+            if [ "$run_rust" = true ]; then
               run_toolchain_linux=true
-            fi
-
-            if [ "$run_packages" = true ]; then
-              run_toolchain_macos=true
-              run_toolchain_windows=true
             fi
           fi
 
