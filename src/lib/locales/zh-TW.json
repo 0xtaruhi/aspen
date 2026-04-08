@@ -151,6 +151,7 @@
   "topModuleSingleDetected": "Aspen 只檢測到一個模組，會自動使用它作為入口模組。",
   "topModuleChooseHint": "請選擇 Aspen 應該視為入口點的模組。",
   "topModuleStaleHint": "目前的編輯內容暫時不完整，Aspen 會沿用上一次有效的模組清單。",
+  "topFileNotSelected": "未選擇頂層檔案",
   "topModuleUnavailable": "不可用",
   "zeroCellExplanation": "頂層模組 {name} 綜合後只剩埠與直接連線。未被頂層實例化的模組會從結果中移除。",
   "synthesisLog": "綜合日誌",

@@ -68,6 +68,9 @@ const fullyMapped = computed(() => {
 })
 
 const implementationConstraintXml = implementationCatalogStore.currentConstraintXml
+const implementationSourceLabel = computed(() => {
+  return designContextStore.sourceName.value || t('topFileNotSelected')
+})
 
 const canRunImplementation = computed(() => {
   return (
@@ -397,7 +400,7 @@ const implementationStatusBadgeClass = computed(() => {
 const implementationHeaderMeta = computed(() => {
   return implementationReport.value
     ? formatDuration(implementationReport.value.elapsed_ms)
-    : designContextStore.sourceName.value || t('implementationFlowIdle')
+    : implementationSourceLabel.value
 })
 
 const summaryStageCardRows = computed(() => {
@@ -585,7 +588,7 @@ function openTimingReport() {
       <div>
         <h2 class="text-3xl font-bold tracking-tight">{{ t('implementation') }}</h2>
         <p class="text-muted-foreground">
-          {{ t('implementationDescription', { name: designContextStore.sourceName.value }) }}
+          {{ t('implementationDescription', { name: implementationSourceLabel }) }}
         </p>
       </div>
       <div class="flex gap-2 items-center flex-wrap justify-end">

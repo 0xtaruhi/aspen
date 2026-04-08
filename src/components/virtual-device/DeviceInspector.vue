@@ -60,7 +60,7 @@ const compatibleSignals = computed<readonly SignalCatalogEntry[]>(() => {
   const drives = deviceDrivesSignal(props.device.type)
   const receives = deviceReceivesSignal(props.device.type)
 
-  return signalCatalogStore.signals.value.filter((signal) => {
+  return signalCatalogStore.workbenchSignals.value.filter((signal) => {
     if (drives && !receives) {
       return signal.direction === 'input' || signal.direction === 'inout'
     }

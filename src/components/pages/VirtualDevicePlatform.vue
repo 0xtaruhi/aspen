@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogScrollContent, DialogTitle } from '@/components/ui/dialog'
+import { getCanvasDeviceBoundSignal, getCanvasDeviceBoundSignals } from '@/lib/canvas-devices'
 import { confirmAction } from '@/lib/confirm-action'
 import { useI18n } from '@/lib/i18n'
 import { designContextStore } from '@/stores/design-context'
@@ -44,14 +45,30 @@ const DeviceManual = defineAsyncComponent(
   () => import('@/components/virtual-device/DeviceManual.vue'),
 )
 
-const availableSignalCount = computed(() => signalCatalogStore.signals.value.length)
+const availableSignalCount = computed(() => signalCatalogStore.workbenchSignals.value.length)
 const hasAnySynthesisSignals = signalCatalogStore.hasSignalSourceReport
 const hasStaleSynthesisSignals = signalCatalogStore.hasStaleSignalSourceReport
 const streamSignalNames = computed(() => {
-  return signalCatalogStore.signals.value.slice(0, STREAM_SIGNAL_LIMIT).map((signal) => signal.name)
+  return signalCatalogStore.workbenchSignals.value
+    .slice(0, STREAM_SIGNAL_LIMIT)
+    .map((signal) => signal.name)
 })
 const streamSignalOverflow = computed(() => {
   return Math.max(0, availableSignalCount.value - streamSignalNames.value.length)
+})
+const workbenchSignalNameSet = computed(() => {
+  return new Set(signalCatalogStore.workbenchSignals.value.map((signal) => signal.name))
+})
+const canvasBindingSignature = computed(() => {
+  return hardwareStore.state.value.canvas_devices
+    .map((device) => {
+      if (device.state.binding.kind === 'single') {
+        return `${device.id}:single:${getCanvasDeviceBoundSignal(device) ?? ''}`
+      }
+
+      return `${device.id}:slots:${getCanvasDeviceBoundSignals(device).join('|')}`
+    })
+    .join('\u0000')
 })
 const hasCanvasDevices = computed(() => hardwareStore.state.value.canvas_devices.length > 0)
 const selectedDeviceCount = computed(() => selectedDeviceIds.value.length)
@@ -101,6 +118,27 @@ const manualDevice = computed(() => {
 
 function toggleGallery() {
   showGallery.value = !showGallery.value
+}
+
+async function sanitizeUnsupportedBindings() {
+  const allowedSignals = workbenchSignalNameSet.value
+
+  for (const device of hardwareStore.state.value.canvas_devices) {
+    if (device.state.binding.kind === 'single') {
+      const signal = getCanvasDeviceBoundSignal(device)
+      if (signal && !allowedSignals.has(signal)) {
+        await hardwareStore.bindCanvasSignal(device.id, null)
+      }
+      continue
+    }
+
+    const signals = getCanvasDeviceBoundSignals(device)
+    for (const [index, signal] of signals.entries()) {
+      if (signal && !allowedSignals.has(signal)) {
+        await hardwareStore.bindCanvasSignalSlot(device.id, index, null)
+      }
+    }
+  }
 }
 
 function clearStreamStatusPollTimer() {
@@ -367,6 +405,14 @@ watch(manualDevice, (device) => {
     reopenInspectorAfterManual.value = false
   }
 })
+
+watch(
+  [workbenchSignalNameSet, canvasBindingSignature],
+  () => {
+    void sanitizeUnsupportedBindings().catch(() => undefined)
+  },
+  { immediate: true },
+)
 
 watch(
   streamRunning,

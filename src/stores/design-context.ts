@@ -101,7 +101,7 @@ const selectedSource = computed<DesignSource | null>(() => {
   }
 })
 
-const sourceName = computed(() => selectedSource.value?.name ?? 'No top file selected')
+const sourceName = computed(() => selectedSource.value?.name ?? '')
 const sourcePath = computed(() => selectedSource.value?.path ?? '')
 const sourceCode = computed(() => selectedSource.value?.code ?? '')
 const projectSources = computed(() => collectDesignSources(projectStore.files))

@@ -77,6 +77,9 @@ describe('signal catalog regression', () => {
     expect(signalCatalogStore.hasSignalSourceReport.value).toBe(true)
     expect(signalCatalogStore.hasStaleSignalSourceReport.value).toBe(false)
     expect(signalCatalogStore.signals.value.map((signal) => signal.bitName)).toEqual(['clk', 'led'])
+    expect(signalCatalogStore.workbenchSignals.value.map((signal) => signal.bitName)).toEqual([
+      'led',
+    ])
 
     const topFile = projectStore.topFile
     if (!topFile || topFile.type !== 'file') {
@@ -90,6 +93,9 @@ describe('signal catalog regression', () => {
     expect(signalCatalogStore.hasSignalSourceReport.value).toBe(true)
     expect(signalCatalogStore.hasStaleSignalSourceReport.value).toBe(true)
     expect(signalCatalogStore.signals.value.map((signal) => signal.bitName)).toEqual(['clk', 'led'])
+    expect(signalCatalogStore.workbenchSignals.value.map((signal) => signal.bitName)).toEqual([
+      'led',
+    ])
     expect(signalCatalogStore.streamOutputSignalOrder.value).toContain('led')
   })
 })

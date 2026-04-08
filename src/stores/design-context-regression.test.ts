@@ -1,3 +1,4 @@
+import { nextTick } from 'vue'
 import { describe, expect, it } from 'vitest'
 
 import { designContextStore } from './design-context'
@@ -55,7 +56,15 @@ endmodule`,
     expect(designContextStore.primaryModule.value).toBe('actual_top')
   })
 
-  it('keeps the last valid module list while the current top file is temporarily invalid', () => {
+  it('keeps sourceName empty when no top file is selected', () => {
+    projectStore.createNewProject('NoTopFileProject', 'empty')
+    projectStore.topFileId = ''
+
+    expect(designContextStore.selectedSource.value).toBeNull()
+    expect(designContextStore.sourceName.value).toBe('')
+  })
+
+  it('keeps the last valid module list while the current top file is temporarily invalid', async () => {
     projectStore.createNewProject('TransientParseProject', 'empty')
     projectStore.files = [
       {
@@ -82,6 +91,7 @@ endmodule`,
     projectStore.topFileId = 'top-file'
     projectStore.activeFileId = 'top-file'
     projectStore.selectedNodeId = 'top-file'
+    await nextTick()
 
     expect(designContextStore.moduleNames.value).toEqual(['helper', 'actual_top'])
     expect(designContextStore.moduleNamesStale.value).toBe(false)
@@ -92,6 +102,7 @@ endmodule`,
     }
 
     topFile.content = '// editing in progress'
+    await nextTick()
 
     expect(designContextStore.moduleNames.value).toEqual(['helper', 'actual_top'])
     expect(designContextStore.moduleNamesStale.value).toBe(true)

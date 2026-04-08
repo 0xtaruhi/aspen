@@ -489,6 +489,16 @@ function pruneShareDirectory(shareDir) {
   }
 
   pruneChildren(shareDir, new Set(['terminfo', 'yosys']))
+
+  const yosysShareDir = join(shareDir, 'yosys')
+  if (!existsSync(yosysShareDir)) {
+    return
+  }
+
+  const pluginsDir = join(yosysShareDir, 'plugins')
+  if (existsSync(pluginsDir)) {
+    removeEntry(pluginsDir)
+  }
 }
 
 function pruneLibraryDirectories(bundleRoot, prunePlan) {

@@ -1,4 +1,5 @@
 import type { ExpandedVerilogPortBit } from '@/lib/verilog-port-bits'
+import type { FpgaBoardPinRole } from '@/lib/fpga-board-catalog'
 
 import { computed, readonly } from 'vue'
 
@@ -14,6 +15,7 @@ import { synthesisCatalogStore } from '@/stores/synthesis-catalog'
 export type SignalCatalogEntry = ExpandedVerilogPortBit & {
   name: string
   assignedPin: string | null
+  assignedPinRole: FpgaBoardPinRole | null
   boardFunction: string | null
   bindingLabel: string
 }
@@ -54,6 +56,7 @@ const signals = computed<readonly SignalCatalogEntry[]>(() => {
       ...signal,
       name: signal.bitName,
       assignedPin,
+      assignedPinRole: boardPin?.role ?? null,
       boardFunction,
       bindingLabel: buildBindingLabel({
         bitName: signal.bitName,
@@ -62,6 +65,10 @@ const signals = computed<readonly SignalCatalogEntry[]>(() => {
       }),
     }
   })
+})
+
+const workbenchSignals = computed<readonly SignalCatalogEntry[]>(() => {
+  return signals.value.filter((signal) => signal.assignedPinRole !== 'clock')
 })
 
 const targetBoard = computed(() => getFpgaBoardDescriptor(projectStore.targetBoardId))
@@ -115,6 +122,7 @@ export const signalCatalogStore = {
   hasSignalSourceReport: readonly(hasSignalSourceReport),
   hasStaleSignalSourceReport: readonly(hasStaleSignalSourceReport),
   signals: readonly(signals),
+  workbenchSignals: readonly(workbenchSignals),
   streamInputSignalOrder: readonly(streamInputSignalOrder),
   streamOutputSignalOrder: readonly(streamOutputSignalOrder),
 }

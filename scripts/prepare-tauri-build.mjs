@@ -16,6 +16,7 @@ const helperBinary = join(
   'aspen-driver-installer.exe',
 )
 const bundledHelper = join(resourceDir, 'aspen-driver-installer.exe')
+const packageManagerExecutable = process.env.npm_execpath?.trim()
 
 function run(command, args) {
   const result = spawnSync(command, args, {
@@ -23,12 +24,27 @@ function run(command, args) {
     stdio: 'inherit',
     shell: false,
   })
+  if (result.error) {
+    console.error(
+      `Failed to start ${command}: ${result.error instanceof Error ? result.error.message : String(result.error)}`,
+    )
+    process.exit(1)
+  }
   if (result.status !== 0) {
     process.exit(result.status ?? 1)
   }
 }
 
-run(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', ['build'])
+function runPackageManager(args) {
+  if (packageManagerExecutable) {
+    run(process.execPath, [packageManagerExecutable, ...args])
+    return
+  }
+
+  run(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', args)
+}
+
+runPackageManager(['build'])
 
 if (process.platform !== 'win32') {
   process.exit(0)

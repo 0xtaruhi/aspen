@@ -18,6 +18,7 @@ import { synthesisCatalogStore } from '@/stores/synthesis-catalog'
 const activeFileName = designContextStore.sourceName
 const topModule = designContextStore.primaryModule
 const { t } = useI18n()
+const activeFileLabel = computed(() => activeFileName.value || t('topFileNotSelected'))
 
 const isBusy = hardwareStore.synthesisRunning
 const synthesisMessage = hardwareStore.synthesisMessage
@@ -150,7 +151,7 @@ function projectDirectory() {
   <TextReportDialog
     :open="reportDialogOpen"
     :title="t('synthesisLog')"
-    :description="synthesisReport ? formatDuration(synthesisReport.elapsed_ms) : activeFileName"
+    :description="synthesisReport ? formatDuration(synthesisReport.elapsed_ms) : activeFileLabel"
     :content="synthesisLog"
     :empty-text="t('noLogAvailable')"
     @update:open="reportDialogOpen = $event"
@@ -190,7 +191,7 @@ function projectDirectory() {
           {{ synthesisStatus }}
         </Badge>
         <span class="text-sm text-muted-foreground">
-          {{ synthesisReport ? formatDuration(synthesisReport.elapsed_ms) : activeFileName }}
+          {{ synthesisReport ? formatDuration(synthesisReport.elapsed_ms) : activeFileLabel }}
         </span>
         <Button
           type="button"

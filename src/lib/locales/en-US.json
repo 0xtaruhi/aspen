@@ -151,6 +151,7 @@
   "topModuleSingleDetected": "Aspen detected a single module and uses it automatically.",
   "topModuleChooseHint": "Choose which module Aspen should treat as the entry point.",
   "topModuleStaleHint": "Current edits are incomplete, so Aspen is using the last valid module list.",
+  "topFileNotSelected": "No top file selected",
   "topModuleUnavailable": "Unavailable",
   "zeroCellExplanation": "Top module {name} synthesized to only ports and direct wiring. Modules that are not instantiated by the top module are removed from the result.",
   "synthesisLog": "Synthesis Log",
