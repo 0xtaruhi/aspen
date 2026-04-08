@@ -21,6 +21,12 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://github.com/0xtaruhi/aspen/releases/latest/download/latest.json"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlGMzFFQzIwNDFGNTI5RDIKUldUU0tmVkJJT3d4bnpJVjFtd0h6ZW9lRzEva2k0T2E1UEFiMy9QMFhVVG13WlZCOWdaUE1WVFIK"
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",

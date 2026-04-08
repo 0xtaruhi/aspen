@@ -8,18 +8,21 @@ use tauri::{AppHandle, Emitter};
 
 use super::{artifacts::quote_yosys_path, now_millis, SynthesisLogChunkV1, FDE_LUT_WIDTH};
 
-pub(super) fn build_yosys_script(
-    fde_simlib: &Path,
-    fde_bram_lib: &Path,
-    fde_bram_map: &Path,
-    fde_techmap: &Path,
-    fde_cells_map: &Path,
-    source_paths: &[PathBuf],
-    top_module: &str,
-    netlist_path: &Path,
-    edif_path: &Path,
-) -> String {
-    let quoted_sources = source_paths
+pub(super) struct YosysScriptInput<'a> {
+    pub fde_simlib: &'a Path,
+    pub fde_bram_lib: &'a Path,
+    pub fde_bram_map: &'a Path,
+    pub fde_techmap: &'a Path,
+    pub fde_cells_map: &'a Path,
+    pub source_paths: &'a [PathBuf],
+    pub top_module: &'a str,
+    pub netlist_path: &'a Path,
+    pub edif_path: &'a Path,
+}
+
+pub(super) fn build_yosys_script(input: YosysScriptInput<'_>) -> String {
+    let quoted_sources = input
+        .source_paths
         .iter()
         .map(|path| quote_yosys_path(path))
         .collect::<Vec<_>>()
@@ -28,7 +31,7 @@ pub(super) fn build_yosys_script(
     format!(
         "read_verilog -lib {}\n\
 read_verilog -sv {quoted_sources}\n\
-hierarchy -check -top {top_module}\n\
+hierarchy -check -top {}\n\
 proc\n\
 flatten -noscopeinfo\n\
 memory -nomap\n\
@@ -79,16 +82,17 @@ check\n\
 stat\n\
 write_edif {}\n\
 write_json {}\n",
-        quote_yosys_path(fde_simlib),
-        quote_yosys_path(fde_bram_lib),
-        quote_yosys_path(fde_bram_map),
-        quote_yosys_path(fde_techmap),
-        quote_yosys_path(fde_cells_map),
+        quote_yosys_path(input.fde_simlib),
+        input.top_module,
+        quote_yosys_path(input.fde_bram_lib),
+        quote_yosys_path(input.fde_bram_map),
+        quote_yosys_path(input.fde_techmap),
+        quote_yosys_path(input.fde_cells_map),
         FDE_LUT_WIDTH,
         FDE_LUT_WIDTH,
-        quote_yosys_path(fde_cells_map),
-        quote_yosys_path(edif_path),
-        quote_yosys_path(netlist_path),
+        quote_yosys_path(input.fde_cells_map),
+        quote_yosys_path(input.edif_path),
+        quote_yosys_path(input.netlist_path),
     )
 }
 

@@ -117,9 +117,7 @@ fn parse_plain_text_memory_image(text: &str, data_mask: u16) -> Vec<u16> {
 
     for raw_line in text.lines() {
         let line = strip_line_comment(strip_line_comment(raw_line, "//"), "#")
-            .replace(',', " ")
-            .replace(':', " ")
-            .replace(';', " ");
+            .replace([',', ':', ';'], " ");
 
         for token in line.split_whitespace() {
             if let Some(address) = token.strip_prefix('@') {
@@ -222,10 +220,9 @@ fn parse_coe_memory_image(text: &str, data_mask: u16) -> Vec<u16> {
 
 fn strip_mif_comments(text: &str) -> String {
     let mut result = String::with_capacity(text.len());
-    let mut chars = text.chars().peekable();
     let mut in_block_comment = false;
 
-    while let Some(ch) = chars.next() {
+    for ch in text.chars() {
         if ch == '%' {
             in_block_comment = !in_block_comment;
             continue;

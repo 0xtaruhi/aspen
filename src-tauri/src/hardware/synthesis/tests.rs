@@ -341,17 +341,17 @@ endmodule
 
 #[test]
 fn build_yosys_script_runs_bram_mapping_before_memory_map() {
-    let script = process::build_yosys_script(
-        PathBuf::from("/tmp/fdesimlib.v").as_path(),
-        PathBuf::from("/tmp/brams.txt").as_path(),
-        PathBuf::from("/tmp/brams_map.v").as_path(),
-        PathBuf::from("/tmp/techmap.v").as_path(),
-        PathBuf::from("/tmp/cells_map.v").as_path(),
-        &[PathBuf::from("/tmp/top.v")],
-        "top",
-        PathBuf::from("/tmp/out.json").as_path(),
-        PathBuf::from("/tmp/out.edf").as_path(),
-    );
+    let script = process::build_yosys_script(process::YosysScriptInput {
+        fde_simlib: PathBuf::from("/tmp/fdesimlib.v").as_path(),
+        fde_bram_lib: PathBuf::from("/tmp/brams.txt").as_path(),
+        fde_bram_map: PathBuf::from("/tmp/brams_map.v").as_path(),
+        fde_techmap: PathBuf::from("/tmp/techmap.v").as_path(),
+        fde_cells_map: PathBuf::from("/tmp/cells_map.v").as_path(),
+        source_paths: &[PathBuf::from("/tmp/top.v")],
+        top_module: "top",
+        netlist_path: PathBuf::from("/tmp/out.json").as_path(),
+        edif_path: PathBuf::from("/tmp/out.edf").as_path(),
+    });
 
     let memory_nomap = script.find("memory -nomap").unwrap();
     let memory_libmap = script.find("memory_libmap -lib").unwrap();

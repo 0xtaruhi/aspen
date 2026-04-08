@@ -16,7 +16,7 @@ use tauri::AppHandle;
 use self::{
     artifacts::{plan_synthesis_artifacts, resolve_workdir, write_source_file},
     netlist::parse_synthesized_netlist,
-    process::{build_yosys_script, emit_log_chunk, stream_output},
+    process::{build_yosys_script, emit_log_chunk, stream_output, YosysScriptInput},
     toolchain::{
         resolve_fde_support_file, resolve_yosys_binary, spawn_yosys_process,
         SynthesisToolchainPaths,
@@ -97,17 +97,17 @@ where
         return Err("At least one Verilog/SystemVerilog source file is required".to_string());
     }
 
-    let script = build_yosys_script(
-        toolchain.fde_simlib,
-        toolchain.fde_bram_lib,
-        toolchain.fde_bram_map,
-        toolchain.fde_techmap,
-        toolchain.fde_cells_map,
-        &verilog_source_paths,
-        &request.top_module,
-        &artifacts.netlist_path,
-        &artifacts.edif_path,
-    );
+    let script = build_yosys_script(YosysScriptInput {
+        fde_simlib: toolchain.fde_simlib,
+        fde_bram_lib: toolchain.fde_bram_lib,
+        fde_bram_map: toolchain.fde_bram_map,
+        fde_techmap: toolchain.fde_techmap,
+        fde_cells_map: toolchain.fde_cells_map,
+        source_paths: &verilog_source_paths,
+        top_module: &request.top_module,
+        netlist_path: &artifacts.netlist_path,
+        edif_path: &artifacts.edif_path,
+    });
     fs::write(&artifacts.script_path, script).map_err(|err| err.to_string())?;
 
     let mut child =

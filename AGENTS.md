@@ -7,6 +7,7 @@ Follow repository facts first, then these conventions.
 
 - Frontend stack: Vue 3 + TypeScript + Vite.
 - Desktop shell: Tauri v2 (Rust in `src-tauri/`).
+- Desktop self-updates: Tauri updater against signed GitHub Releases metadata.
 - FPGA synthesis: Yosys, invoked from the Tauri backend for the Synthesis page.
 - FPGA implementation/bitstream: Rust `fde` from crates.io (`fde = "1.0"`), invoked directly from the Tauri backend through staged function calls.
 - Runtime synthesis must use Aspen's bundled Yosys toolchain; do not fall back to a system `yosys` on `PATH`.
@@ -37,6 +38,7 @@ Follow repository facts first, then these conventions.
 - `src-tauri/resource/fde/hw_lib/`: packaged FDE XML architecture/library resources.
 - `src-tauri/tauri.conf.json`: Tauri build/dev config.
 - `src-tauri/tauri.yosys.conf.json`: optional Tauri bundle config used when packaging Aspen with the Yosys toolchain and FDE resources.
+- `src-tauri/tauri.release.conf.json`: tag-release bundle config that also enables updater artifacts.
 
 ## Source of Truth for Commands
 
@@ -62,6 +64,7 @@ Follow repository facts first, then these conventions.
 - Frontend format check: `pnpm format:check`
 - Tauri production build: `pnpm tauri build`
 - Tauri build with bundled FPGA toolchains/resources: `pnpm tauri build --no-bundle -c src-tauri/tauri.yosys.conf.json`
+- Updater manifest helper: `python3 scripts/generate_updater_manifest.py --assets-dir <dir> --repo 0xtaruhi/aspen --tag vX.Y.Z --out <latest.json>`
 - Standalone typecheck: `pnpm exec vue-tsc --noEmit`
 - Rust formatting: `cargo fmt --manifest-path src-tauri/Cargo.toml`
 - Rust tests: `cargo test --manifest-path src-tauri/Cargo.toml`

@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { Globe, MonitorCog, ShieldCheck } from 'lucide-vue-next'
+import { computed, onMounted } from 'vue'
+import { isTauri } from '@tauri-apps/api/core'
+import { openUrl } from '@tauri-apps/plugin-opener'
+import { ArrowDownToLine, Globe, MonitorCog, ShieldCheck } from 'lucide-vue-next'
 
 import ThemeToggleButton from '@/components/ThemeToggleButton.vue'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -20,13 +23,95 @@ import {
   normalizeThemeAccentColor,
   type AppThemePresetColor,
 } from '@/lib/theme-accent'
+import { appUpdateStore } from '@/stores/app-update'
 import { settingsStore, type AppLanguage } from '@/stores/settings'
+import { UPDATE_RELEASES_URL } from '@/lib/app-update'
 
 const { t } = useI18n()
 
 const fontSizeValue = computed(() => String(settingsStore.state.editorFontSize))
 const themeAccentInput = computed(() => normalizeThemeAccentColor(settingsStore.state.themeAccent))
 const themePresetOptions = Object.keys(APP_THEME_PRESET_COLORS) as AppThemePresetColor[]
+const updateState = appUpdateStore.state
+
+const updateStatusLabel = computed(() => {
+  switch (updateState.status) {
+    case 'unsupported':
+      return t('updateDesktopOnly')
+    case 'checking':
+      return t('checkingForUpdates')
+    case 'up-to-date':
+      return t('updateStatusUpToDate')
+    case 'available':
+      return updateState.latestVersion
+        ? t('updateStatusAvailable', { version: updateState.latestVersion })
+        : t('updateReady')
+    case 'installing':
+      return t('installingUpdate')
+    case 'error':
+      return t('updateStatusError')
+    case 'idle':
+    default:
+      return t('updateReadyToCheck')
+  }
+})
+
+const formattedLastChecked = computed(() => {
+  if (!updateState.lastCheckedAt) {
+    return t('neverChecked')
+  }
+
+  return new Intl.DateTimeFormat(settingsStore.state.language, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(updateState.lastCheckedAt)
+})
+
+const formattedReleaseDate = computed(() => {
+  if (!updateState.latestDate) {
+    return null
+  }
+
+  const parsed = Date.parse(updateState.latestDate)
+  if (Number.isNaN(parsed)) {
+    return updateState.latestDate
+  }
+
+  return new Intl.DateTimeFormat(settingsStore.state.language, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(parsed)
+})
+
+const updateDownloadProgress = computed(() => {
+  if (
+    updateState.status !== 'installing' ||
+    !updateState.totalBytes ||
+    updateState.totalBytes <= 0
+  ) {
+    return null
+  }
+
+  const percent = Math.max(
+    0,
+    Math.min(100, Math.round((updateState.downloadedBytes / updateState.totalBytes) * 100)),
+  )
+  return t('updateDownloadProgress', { percent })
+})
+
+const canCheckForUpdates = computed(
+  () =>
+    updateState.supported &&
+    updateState.status !== 'checking' &&
+    updateState.status !== 'installing',
+)
+
+const canInstallUpdate = computed(
+  () =>
+    updateState.supported &&
+    Boolean(updateState.latestVersion) &&
+    updateState.status !== 'installing',
+)
 
 function handleLanguageChange(value: unknown) {
   if (value === 'en-US' || value === 'zh-CN' || value === 'zh-TW') {
@@ -48,6 +133,29 @@ function applyThemeAccentPreset(color: AppThemePresetColor) {
 function handleThemeAccentInput(value: string) {
   settingsStore.setThemeAccent(value)
 }
+
+async function handleCheckForUpdates() {
+  await appUpdateStore.checkForUpdates()
+}
+
+async function handleInstallUpdate() {
+  await appUpdateStore.installUpdate()
+}
+
+async function handleOpenReleases() {
+  if (isTauri()) {
+    await openUrl(UPDATE_RELEASES_URL)
+    return
+  }
+
+  if (typeof window !== 'undefined') {
+    window.open(UPDATE_RELEASES_URL, '_blank', 'noopener,noreferrer')
+  }
+}
+
+onMounted(() => {
+  void appUpdateStore.initialize()
+})
 </script>
 
 <template>
@@ -212,33 +320,173 @@ function handleThemeAccentInput(value: string) {
           </Card>
         </div>
 
-        <Card class="border-border/70">
-          <CardHeader>
-            <div class="flex items-center gap-3">
-              <div class="rounded-2xl border border-border bg-muted p-2">
-                <ShieldCheck class="h-5 w-5" />
+        <div class="grid gap-6">
+          <Card class="border-border/70">
+            <CardHeader>
+              <div class="flex items-center gap-3">
+                <div class="rounded-2xl border border-border bg-muted p-2">
+                  <ArrowDownToLine class="h-5 w-5" />
+                </div>
+                <div>
+                  <CardTitle>{{ t('softwareUpdate') }}</CardTitle>
+                  <CardDescription>{{ t('softwareUpdateDescription') }}</CardDescription>
+                </div>
               </div>
-              <div>
-                <CardTitle>{{ t('safety') }}</CardTitle>
-                <CardDescription>{{ t('safetyDescription') }}</CardDescription>
+            </CardHeader>
+            <CardContent class="space-y-6">
+              <div class="grid gap-3">
+                <div
+                  class="grid gap-3 rounded-2xl border border-border bg-muted/30 px-4 py-3 sm:grid-cols-2"
+                >
+                  <div class="space-y-1">
+                    <p
+                      class="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground"
+                    >
+                      {{ t('currentVersion') }}
+                    </p>
+                    <p class="text-sm font-medium text-foreground">
+                      {{ updateState.currentVersion }}
+                    </p>
+                  </div>
+                  <div class="space-y-1">
+                    <p
+                      class="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground"
+                    >
+                      {{ t('updateStatus') }}
+                    </p>
+                    <p class="text-sm font-medium text-foreground">
+                      {{ updateStatusLabel }}
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  class="grid gap-3 rounded-2xl border border-border bg-background/70 px-4 py-3 sm:grid-cols-2"
+                >
+                  <div class="space-y-1">
+                    <p
+                      class="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground"
+                    >
+                      {{ t('lastChecked') }}
+                    </p>
+                    <p class="text-sm text-foreground">
+                      {{ formattedLastChecked }}
+                    </p>
+                  </div>
+                  <div class="space-y-1">
+                    <p
+                      class="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground"
+                    >
+                      {{ t('updateSource') }}
+                    </p>
+                    <p class="text-sm text-foreground">
+                      {{ t('signedGithubReleases') }}
+                    </p>
+                  </div>
+                </div>
               </div>
-            </div>
-          </CardHeader>
-          <CardContent class="space-y-6">
-            <div
-              class="flex items-center justify-between rounded-2xl border border-border bg-muted/30 px-4 py-3"
-            >
-              <div class="space-y-1">
-                <Label>{{ t('confirmDelete') }}</Label>
-                <p class="text-sm text-muted-foreground">{{ t('safetyDescription') }}</p>
+
+              <div
+                v-if="updateState.latestVersion"
+                class="space-y-3 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-4"
+              >
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p
+                      class="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground"
+                    >
+                      {{ t('latestVersion') }}
+                    </p>
+                    <p class="text-base font-semibold text-foreground">
+                      {{ updateState.latestVersion }}
+                    </p>
+                  </div>
+                  <div v-if="formattedReleaseDate" class="text-right">
+                    <p
+                      class="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground"
+                    >
+                      {{ t('releaseDate') }}
+                    </p>
+                    <p class="text-sm text-foreground">
+                      {{ formattedReleaseDate }}
+                    </p>
+                  </div>
+                </div>
+
+                <div v-if="updateState.latestBody" class="space-y-2">
+                  <p class="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                    {{ t('releaseNotes') }}
+                  </p>
+                  <div
+                    class="max-h-40 overflow-auto rounded-xl border border-border/80 bg-background px-3 py-2 text-sm text-muted-foreground"
+                  >
+                    <pre class="whitespace-pre-wrap font-sans">{{ updateState.latestBody }}</pre>
+                  </div>
+                </div>
               </div>
-              <Switch
-                :checked="settingsStore.state.confirmDelete"
-                @update:checked="settingsStore.setConfirmDelete"
-              />
-            </div>
-          </CardContent>
-        </Card>
+
+              <div
+                v-if="updateDownloadProgress || updateState.errorMessage"
+                class="rounded-2xl border border-border bg-background/70 px-4 py-3"
+              >
+                <p v-if="updateDownloadProgress" class="text-sm text-foreground">
+                  {{ updateDownloadProgress }}
+                </p>
+                <p v-if="updateState.errorMessage" class="text-sm text-destructive">
+                  {{ updateState.errorMessage }}
+                </p>
+              </div>
+
+              <div class="flex flex-wrap gap-3">
+                <Button :disabled="!canCheckForUpdates" @click="handleCheckForUpdates">
+                  {{
+                    updateState.status === 'checking'
+                      ? t('checkingForUpdates')
+                      : t('checkForUpdates')
+                  }}
+                </Button>
+                <Button
+                  variant="outline"
+                  :disabled="!canInstallUpdate"
+                  @click="handleInstallUpdate"
+                >
+                  {{ t('downloadAndInstall') }}
+                </Button>
+                <Button variant="ghost" @click="handleOpenReleases">
+                  {{ t('viewReleases') }}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card class="border-border/70">
+            <CardHeader>
+              <div class="flex items-center gap-3">
+                <div class="rounded-2xl border border-border bg-muted p-2">
+                  <ShieldCheck class="h-5 w-5" />
+                </div>
+                <div>
+                  <CardTitle>{{ t('safety') }}</CardTitle>
+                  <CardDescription>{{ t('safetyDescription') }}</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent class="space-y-6">
+              <div
+                class="flex items-center justify-between rounded-2xl border border-border bg-muted/30 px-4 py-3"
+              >
+                <div class="space-y-1">
+                  <Label>{{ t('confirmDelete') }}</Label>
+                  <p class="text-sm text-muted-foreground">{{ t('safetyDescription') }}</p>
+                </div>
+                <Switch
+                  :checked="settingsStore.state.confirmDelete"
+                  @update:checked="settingsStore.setConfirmDelete"
+                />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   </div>

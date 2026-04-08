@@ -1,0 +1,6 @@
+{
+  "bundle": {
+    "resources": ["vendor/yosys/**/*", "resource/yosys-fde/**/*", "resource/fde/**/*"],
+    "createUpdaterArtifacts": true
+  }
+}

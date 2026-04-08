@@ -1,5 +1,6 @@
 #[cfg(target_os = "macos")]
 mod app_menu;
+mod app_update;
 mod hardware;
 mod memory_image;
 
@@ -384,10 +385,18 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(
+            tauri_plugin_updater::Builder::new()
+                .pubkey(app_update::UPDATE_PUBLIC_KEY.trim())
+                .build(),
+        )
+        .manage(Arc::new(app_update::PendingUpdateState::default()))
         .manage(Arc::new(HotplugState::default()))
         .manage(Arc::new(HardwareRuntime::default()))
         .invoke_handler(tauri::generate_handler![
             greet,
+            app_update::app_check_for_updates,
+            app_update::app_install_update,
             hardware_get_state,
             hardware_dispatch,
             hardware_get_data_stream_status,

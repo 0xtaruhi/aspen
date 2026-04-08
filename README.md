@@ -7,6 +7,15 @@ This template should help get you started developing with Vue 3 and TypeScript i
 - Bundle Aspen's Yosys toolchain: `pnpm prepare:yosys-bundle`
 - Aspen links Rust `fde` directly from crates.io via `fde = "1.0"`.
 
+## Self-Updates
+
+- Aspen checks signed GitHub Releases metadata from `latest.json`.
+- Tagged CI releases build updater artifacts with `src-tauri/tauri.release.conf.json`.
+- Maintainers must provide:
+  - `TAURI_SIGNING_PRIVATE_KEY`
+  - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+- The release workflow generates `latest.json` with `scripts/generate_updater_manifest.py`.
+
 ## BRAM Notes
 
 - Aspen synthesis now keeps inferred memories intact long enough for Yosys BRAM mapping.

@@ -401,14 +401,56 @@ jobs:
       - name: Restore bundled toolchain execute permissions
         run: bash scripts/restore-bundled-toolchain-perms.sh
 
+      - name: Select Tauri config
+        id: tauri_config
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "path=src-tauri/tauri.release.conf.json" >> "$GITHUB_OUTPUT"
+          else
+            echo "path=src-tauri/tauri.yosys.conf.json" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build Aspen installer packages
-        run: pnpm tauri build --ci -v -b deb,rpm -c src-tauri/tauri.yosys.conf.json
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm tauri build --ci -v -b deb,rpm,appimage -c ${{ steps.tauri_config.outputs.path }}
+
+      - name: Record updater target metadata
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "${{ runner.arch }}" in
+            X64) arch="x86_64" ;;
+            ARM64) arch="aarch64" ;;
+            *) echo "Unsupported runner arch: ${{ runner.arch }}" >&2; exit 1 ;;
+          esac
+
+          asset=$(find src-tauri/target/release/bundle -type f -name '*.AppImage' -print -quit)
+          if [ -z "$asset" ]; then
+            echo "No AppImage updater asset found." >&2
+            exit 1
+          fi
+
+          mkdir -p release-metadata
+          cat > "release-metadata/linux-${arch}.json" <<EOF
+          {
+            "platform": "linux-${arch}",
+            "asset": "$(basename "$asset")"
+          }
+          EOF
 
       - name: Upload Aspen package artifacts
         uses: actions/upload-artifact@v4
         with:
           name: aspen-packages-ubuntu-22.04
           path: |
+            release-metadata/*.json
+            src-tauri/target/release/bundle/**/*.AppImage
+            src-tauri/target/release/bundle/**/*.AppImage.sig
             src-tauri/target/release/bundle/**/*.deb
             src-tauri/target/release/bundle/**/*.rpm
           if-no-files-found: error
@@ -450,8 +492,47 @@ jobs:
       - name: Restore bundled toolchain execute permissions
         run: bash scripts/restore-bundled-toolchain-perms.sh
 
+      - name: Select Tauri config
+        id: tauri_config
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "path=src-tauri/tauri.release.conf.json" >> "$GITHUB_OUTPUT"
+          else
+            echo "path=src-tauri/tauri.yosys.conf.json" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build Aspen installer packages
-        run: pnpm tauri build --ci -v -b dmg -c src-tauri/tauri.yosys.conf.json
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm tauri build --ci -v -b app,dmg -c ${{ steps.tauri_config.outputs.path }}
+
+      - name: Record updater target metadata
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "${{ runner.arch }}" in
+            X64) arch="x86_64" ;;
+            ARM64) arch="aarch64" ;;
+            *) echo "Unsupported runner arch: ${{ runner.arch }}" >&2; exit 1 ;;
+          esac
+
+          asset=$(find src-tauri/target/release/bundle -type f -name '*.app.tar.gz' -print -quit)
+          if [ -z "$asset" ]; then
+            echo "No macOS updater asset found." >&2
+            exit 1
+          fi
+
+          mkdir -p release-metadata
+          cat > "release-metadata/darwin-${arch}.json" <<EOF
+          {
+            "platform": "darwin-${arch}",
+            "asset": "$(basename "$asset")"
+          }
+          EOF
 
       - name: Verify Aspen macOS package
         shell: bash
@@ -481,6 +562,9 @@ jobs:
         with:
           name: aspen-packages-macos-latest
           path: |
+            release-metadata/*.json
+            src-tauri/target/release/bundle/**/*.app.tar.gz
+            src-tauri/target/release/bundle/**/*.app.tar.gz.sig
             src-tauri/target/release/bundle/**/*.dmg
           if-no-files-found: error
           retention-days: 7
@@ -518,16 +602,61 @@ jobs:
           name: bundled-fpga-toolchains-windows-latest
           path: src-tauri/vendor
 
+      - name: Select Tauri config
+        id: tauri_config
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "path=src-tauri/tauri.release.conf.json" >> "$GITHUB_OUTPUT"
+          else
+            echo "path=src-tauri/tauri.yosys.conf.json" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build Aspen installer packages
-        run: pnpm tauri build --ci -v -c src-tauri/tauri.yosys.conf.json
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm tauri build --ci -v -c ${{ steps.tauri_config.outputs.path }}
+
+      - name: Record updater target metadata
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "${{ runner.arch }}" in
+            X64) arch="x86_64" ;;
+            ARM64) arch="aarch64" ;;
+            *) echo "Unsupported runner arch: ${{ runner.arch }}" >&2; exit 1 ;;
+          esac
+
+          asset=$(find src-tauri/target/release/bundle -type f -name '*-setup.exe' -print -quit)
+          if [ -z "$asset" ]; then
+            asset=$(find src-tauri/target/release/bundle -type f -name '*.msi' -print -quit)
+          fi
+          if [ -z "$asset" ]; then
+            echo "No Windows updater asset found." >&2
+            exit 1
+          fi
+
+          mkdir -p release-metadata
+          cat > "release-metadata/windows-${arch}.json" <<EOF
+          {
+            "platform": "windows-${arch}",
+            "asset": "$(basename "$asset")"
+          }
+          EOF
 
       - name: Upload Aspen package artifacts
         uses: actions/upload-artifact@v4
         with:
           name: aspen-packages-windows-latest
           path: |
+            release-metadata/*.json
             src-tauri/target/release/bundle/**/*.exe
+            src-tauri/target/release/bundle/**/*.exe.sig
             src-tauri/target/release/bundle/**/*.msi
+            src-tauri/target/release/bundle/**/*.msi.sig
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
@@ -545,6 +674,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download Aspen package artifacts
         uses: actions/download-artifact@v4
         with:
@@ -554,6 +686,17 @@ jobs:
 
       - name: List release assets
         run: find release-assets -maxdepth 2 -type f | sort
+
+      - name: Generate updater manifest
+        run: |
+          python3 scripts/generate_updater_manifest.py \
+            --assets-dir release-assets \
+            --repo 0xtaruhi/aspen \
+            --tag "${GITHUB_REF_NAME}" \
+            --out release-assets/latest.json
+
+      - name: Show updater manifest
+        run: cat release-assets/latest.json
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
@@ -566,3 +709,7 @@ jobs:
             release-assets/**/*.rpm
             release-assets/**/*.msi
             release-assets/**/*.exe
+            release-assets/**/*.app.tar.gz
+            release-assets/**/*.AppImage
+            release-assets/**/*.sig
+            release-assets/latest.json
