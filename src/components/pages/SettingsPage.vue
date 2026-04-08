@@ -37,7 +37,9 @@ const updateState = appUpdateStore.state
 const updateStatusLabel = computed(() => {
   switch (updateState.status) {
     case 'unsupported':
-      return t('updateDesktopOnly')
+      return updateState.unsupportedReason === 'releaseOnly'
+        ? t('updateTaggedReleaseOnly')
+        : t('updateDesktopOnly')
     case 'checking':
       return t('checkingForUpdates')
     case 'up-to-date':

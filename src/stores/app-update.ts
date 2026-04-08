@@ -1,6 +1,5 @@
 import type { UnlistenFn } from '@tauri-apps/api/event'
 
-import { getVersion } from '@tauri-apps/api/app'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { reactive } from 'vue'
@@ -22,11 +21,18 @@ interface AppUpdateCheckResult {
   date: string | null
 }
 
+interface AppUpdateCapability {
+  currentVersion: string
+  enabled: boolean
+}
+
 interface AppUpdateProgressPayload {
   phase: 'downloading' | 'installing' | 'restarting'
   downloadedBytes: number | null
   totalBytes: number | null
 }
+
+type UnsupportedReason = 'desktopOnly' | 'releaseOnly' | null
 
 interface AppUpdateState {
   initialized: boolean
@@ -40,6 +46,7 @@ interface AppUpdateState {
   downloadedBytes: number
   totalBytes: number | null
   errorMessage: string | null
+  unsupportedReason: UnsupportedReason
 }
 
 const UPDATE_PROGRESS_EVENT = 'aspen://app-update-progress'
@@ -56,6 +63,7 @@ const state = reactive<AppUpdateState>({
   downloadedBytes: 0,
   totalBytes: null,
   errorMessage: null,
+  unsupportedReason: null,
 })
 
 let unlistenProgress: UnlistenFn | null = null
@@ -115,11 +123,20 @@ async function initialize() {
       state.initialized = true
       state.supported = false
       state.status = 'unsupported'
+      state.unsupportedReason = 'desktopOnly'
       return
     }
 
-    state.supported = true
-    state.currentVersion = await getVersion()
+    const capability = await invoke<AppUpdateCapability>('app_get_update_capability')
+    state.currentVersion = capability.currentVersion
+    state.supported = capability.enabled
+    state.unsupportedReason = capability.enabled ? null : 'releaseOnly'
+    if (!capability.enabled) {
+      state.initialized = true
+      state.status = 'unsupported'
+      return
+    }
+
     unlistenProgress = await listen<AppUpdateProgressPayload>(UPDATE_PROGRESS_EVENT, (event) => {
       handleProgress(event.payload)
     })

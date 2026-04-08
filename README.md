@@ -11,6 +11,7 @@ This template should help get you started developing with Vue 3 and TypeScript i
 
 - Aspen checks signed GitHub Releases metadata from `latest.json`.
 - Tagged CI releases build updater artifacts with `src-tauri/tauri.release.conf.json`.
+- In-app updates are enabled only for official tagged release builds (`ASPEN_ENABLE_UPDATER=1` during packaging).
 - Maintainers must provide:
   - `TAURI_SIGNING_PRIVATE_KEY`
   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`

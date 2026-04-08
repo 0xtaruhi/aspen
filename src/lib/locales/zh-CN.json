@@ -460,6 +460,7 @@
   "updateStatusAvailable": "发现新版本 {version}。",
   "updateStatusError": "检查更新失败。",
   "updateDesktopOnly": "只有打包后的桌面版支持更新。",
+  "updateTaggedReleaseOnly": "只有官方 tag 发布的 Aspen 构建才启用更新。",
   "installingUpdate": "正在安装更新…",
   "updateDownloadProgress": "已下载 {percent}%",
   "chinese": "简体中文",

@@ -395,6 +395,7 @@ pub fn run() {
         .manage(Arc::new(HardwareRuntime::default()))
         .invoke_handler(tauri::generate_handler![
             greet,
+            app_update::app_get_update_capability,
             app_update::app_check_for_updates,
             app_update::app_install_update,
             hardware_get_state,

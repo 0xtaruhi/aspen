@@ -460,6 +460,7 @@
   "updateStatusAvailable": "Version {version} is available.",
   "updateStatusError": "Update check failed.",
   "updateDesktopOnly": "Updates are available in the packaged desktop app only.",
+  "updateTaggedReleaseOnly": "Updates are enabled only in official tagged Aspen releases.",
   "installingUpdate": "Installing update…",
   "updateDownloadProgress": "{percent}% downloaded",
   "chinese": "Simplified Chinese",

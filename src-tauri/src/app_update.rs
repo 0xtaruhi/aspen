@@ -15,6 +15,13 @@ const UPDATE_MANIFEST_URL: &str =
 pub const UPDATE_PUBLIC_KEY: &str = include_str!("../updater/public-key.txt");
 pub const UPDATE_PROGRESS_EVENT: &str = "aspen://app-update-progress";
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppUpdateCapability {
+    pub current_version: String,
+    pub enabled: bool,
+}
+
 #[derive(Default)]
 pub struct PendingUpdateState {
     pending: Mutex<Option<Update>>,
@@ -77,11 +84,39 @@ fn emit_update_progress(app: &AppHandle, payload: AppUpdateProgressPayload) {
     let _ = app.emit(UPDATE_PROGRESS_EVENT, payload);
 }
 
+fn updater_enabled() -> bool {
+    option_env!("ASPEN_ENABLE_UPDATER")
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
+fn ensure_updater_enabled() -> Result<(), String> {
+    if updater_enabled() {
+        return Ok(());
+    }
+
+    Err("Updater is only enabled in official tagged Aspen releases".to_string())
+}
+
+#[tauri::command]
+pub fn app_get_update_capability(app: AppHandle) -> AppUpdateCapability {
+    AppUpdateCapability {
+        current_version: app.package_info().version.to_string(),
+        enabled: updater_enabled(),
+    }
+}
+
 #[tauri::command]
 pub async fn app_check_for_updates(
     app: AppHandle,
     pending_update: State<'_, Arc<PendingUpdateState>>,
 ) -> Result<AppUpdateCheckResult, String> {
+    ensure_updater_enabled()?;
     let current_version = app.package_info().version.to_string();
     let updater = app
         .updater_builder()
@@ -125,6 +160,7 @@ pub async fn app_install_update(
     app: AppHandle,
     pending_update: State<'_, Arc<PendingUpdateState>>,
 ) -> Result<(), String> {
+    ensure_updater_enabled()?;
     let update = pending_update.take()?;
     let downloaded_bytes = Arc::new(AtomicU64::new(0));
     let progress_app = app.clone();
@@ -169,4 +205,14 @@ pub async fn app_install_update(
     );
 
     app.restart();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::updater_enabled;
+
+    #[test]
+    fn updater_is_disabled_without_release_flag() {
+        assert!(!updater_enabled());
+    }
 }
