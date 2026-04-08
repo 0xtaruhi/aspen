@@ -4,17 +4,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::hardware::types::{
-    CanvasDeviceSnapshot, CanvasMemoryMode, CanvasUartMode, HardwareStateV1,
-};
+use crate::hardware::types::{CanvasDeviceSnapshot, CanvasUartMode, HardwareStateV1};
 
 use super::*;
 use super::{
     registry::{input_compiler_for_device_type, SignalIndexLookup},
-    shared::{
-        matrix_keypad_shared_state, memory_shared_state, MatrixKeypadRuntimeState,
-        MemoryRuntimeState,
-    },
+    shared::{matrix_keypad_shared_state, MatrixKeypadRuntimeState},
 };
 
 pub(super) trait InputDeviceEncoder: Send {
@@ -45,11 +40,6 @@ struct MatrixKeypadInputEncoder {
     device_index: usize,
     column_signal_indices: Vec<Option<usize>>,
     shared: Arc<Mutex<MatrixKeypadRuntimeState>>,
-}
-
-struct MemoryInputEncoder {
-    data_signal_indices: Vec<Option<usize>>,
-    shared: Arc<Mutex<MemoryRuntimeState>>,
 }
 
 impl HardwareRuntime {
@@ -247,36 +237,6 @@ pub(super) fn compile_matrix_keypad_input(
     }))
 }
 
-pub(super) fn compile_memory_input(
-    device: &CanvasDeviceSnapshot,
-    _device_index: usize,
-    signal_indices: &SignalIndexLookup<'_>,
-) -> Option<Box<dyn InputDeviceEncoder>> {
-    let (mode, address_width, data_width) = device.state.memory_config()?;
-    let slot_signals = device.state.slot_signals();
-    let data_out_offset = if matches!(mode, CanvasMemoryMode::Ram) {
-        address_width + data_width
-    } else {
-        address_width
-    };
-    let data_signal_indices = (0..data_width)
-        .map(|index| {
-            slot_signals
-                .get(data_out_offset + index)
-                .and_then(|signal| signal.as_deref())
-                .and_then(|signal| signal_indices.get(signal).copied())
-        })
-        .collect::<Vec<_>>();
-    if !data_signal_indices.iter().any(Option::is_some) {
-        return None;
-    }
-
-    Some(Box::new(MemoryInputEncoder {
-        data_signal_indices,
-        shared: memory_shared_state(device),
-    }))
-}
-
 impl InputDeviceEncoder for SingleBitInputEncoder {
     fn encode_cycle(&self, state: &HardwareStateV1, _cycle_index: usize, frame_words: &mut [u16]) {
         let Some(device) = state.canvas_devices.get(self.device_index) else {
@@ -371,30 +331,6 @@ impl InputDeviceEncoder for MatrixKeypadInputEncoder {
                 idle_level
             };
             set_signal_value(frame_words, *signal_index, level);
-        }
-    }
-}
-
-impl InputDeviceEncoder for MemoryInputEncoder {
-    fn encode_cycle(&self, _state: &HardwareStateV1, _cycle_index: usize, frame_words: &mut [u16]) {
-        let Ok(shared) = self.shared.lock() else {
-            return;
-        };
-        if !(shared.chip_selected && shared.read_enabled) {
-            return;
-        }
-        let active_bits = shared.data_width.min(self.data_signal_indices.len());
-        for (bit_index, signal_index) in self
-            .data_signal_indices
-            .iter()
-            .take(active_bits)
-            .enumerate()
-        {
-            let Some(signal_index) = signal_index else {
-                continue;
-            };
-            let value = ((shared.output_word >> bit_index) & 1) != 0;
-            set_signal_value(frame_words, *signal_index, value);
         }
     }
 }

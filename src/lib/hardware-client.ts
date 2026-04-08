@@ -34,12 +34,6 @@ export interface HardwareArtifactSnapshot {
   bytes: number
 }
 
-export interface LoadedMemoryImage {
-  format: 'text' | 'binary'
-  words: number[]
-  source_path: string
-}
-
 export interface SynthesisSourceFileV1 {
   path: string
   content: string
@@ -191,7 +185,6 @@ export const CANVAS_DEVICE_TYPES = [
   'matrix_keypad',
   'uart_terminal',
   'hd44780_lcd',
-  'memory',
   'vga_display',
   'segment_display',
   'led_matrix',
@@ -202,7 +195,6 @@ export type CanvasDeviceType = (typeof CANVAS_DEVICE_TYPES)[number]
 export type CanvasVgaColorMode = 'mono' | 'rgb111' | 'rgb332' | 'rgb444' | 'rgb565' | 'rgb888'
 export type CanvasHd44780BusMode = '4bit' | '8bit'
 export type CanvasUartMode = 'tx' | 'rx' | 'tx_rx'
-export type CanvasMemoryMode = 'rom' | 'ram'
 
 export type CanvasDeviceBindingSnapshot =
   | {
@@ -268,12 +260,6 @@ export type CanvasDeviceConfigSnapshot =
       rows: number
       bus_mode: CanvasHd44780BusMode
     }
-  | {
-      kind: 'memory'
-      mode: CanvasMemoryMode
-      address_width: number
-      data_width: number
-    }
 
 export type CanvasDeviceDataSnapshot =
   | {
@@ -296,12 +282,6 @@ export type CanvasDeviceDataSnapshot =
   | {
       kind: 'queued_bytes'
       bytes: number[]
-    }
-  | {
-      kind: 'memory'
-      words: number[]
-      source_path: string | null
-      preview_offset: number
     }
 
 export interface CanvasDeviceStateSnapshot {
@@ -498,13 +478,6 @@ export async function runHardwareImplementation(
   request: ImplementationRequestV1,
 ): Promise<ImplementationReportV1> {
   return invoke<ImplementationReportV1>('run_fde_implementation', { request })
-}
-
-export async function loadHardwareMemoryImage(
-  path: string,
-  dataWidth: number,
-): Promise<LoadedMemoryImage> {
-  return invoke<LoadedMemoryImage>('load_memory_image', { path, dataWidth })
 }
 
 export async function listenHardwareSynthesisLog(

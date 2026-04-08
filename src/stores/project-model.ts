@@ -202,14 +202,6 @@ function isCanvasDeviceConfigSnapshot(value: unknown): value is CanvasDeviceConf
         Number.isFinite(value.rows) &&
         (value.bus_mode === '4bit' || value.bus_mode === '8bit')
       )
-    case 'memory':
-      return (
-        (value.mode === 'rom' || value.mode === 'ram') &&
-        typeof value.address_width === 'number' &&
-        Number.isFinite(value.address_width) &&
-        typeof value.data_width === 'number' &&
-        Number.isFinite(value.data_width)
-      )
     default:
       return false
   }
@@ -234,15 +226,6 @@ function isCanvasDeviceDataSnapshot(value: unknown): boolean {
       )
     case 'queued_bytes':
       return Array.isArray(value.bytes) && value.bytes.every((byte) => typeof byte === 'number')
-    case 'memory':
-      return (
-        Array.isArray(value.words) &&
-        value.words.every((word) => typeof word === 'number') &&
-        (value.source_path === null ||
-          value.source_path === undefined ||
-          typeof value.source_path === 'string') &&
-        (value.preview_offset === undefined || typeof value.preview_offset === 'number')
-      )
     default:
       return false
   }

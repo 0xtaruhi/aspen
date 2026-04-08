@@ -2,7 +2,6 @@
 mod app_menu;
 mod app_update;
 mod hardware;
-mod memory_image;
 
 use std::{
     fs,
@@ -16,7 +15,6 @@ use hardware::{
     HardwareStatus, ImplementationReportV1, ImplementationRequestV1, SynthesisReportV1,
     SynthesisRequestV1,
 };
-use memory_image::MemoryImageLoadResult;
 use serde::Deserialize;
 use serde::Serialize;
 use tauri::Emitter;
@@ -184,15 +182,6 @@ async fn run_fde_implementation(
 #[tauri::command]
 fn read_project_file(path: String) -> Result<String, String> {
     fs::read_to_string(Path::new(&path)).map_err(|err| err.to_string())
-}
-
-#[tauri::command]
-async fn load_memory_image(path: String, data_width: u16) -> Result<MemoryImageLoadResult, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        memory_image::load_memory_image_from_path(Path::new(&path), data_width)
-    })
-    .await
-    .map_err(|err| err.to_string())?
 }
 
 #[tauri::command]
@@ -409,7 +398,6 @@ pub fn run() {
             run_yosys_synthesis,
             run_fde_implementation,
             read_project_file,
-            load_memory_image,
             write_project_file,
             write_project_bundle,
             inspect_project_directory,

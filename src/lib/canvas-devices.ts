@@ -5,7 +5,6 @@ import type {
   CanvasDeviceSnapshot,
   CanvasDeviceType,
   CanvasHd44780BusMode,
-  CanvasMemoryMode,
   CanvasUartMode,
   CanvasVgaColorMode,
 } from './hardware-client'
@@ -72,18 +71,6 @@ export type CanvasHd44780LcdConfig = {
   busMode: CanvasHd44780BusMode
 }
 
-export type CanvasMemoryConfig = {
-  mode: CanvasMemoryMode
-  addressWidth: number
-  dataWidth: number
-}
-
-export type CanvasMemoryData = {
-  words: number[]
-  sourcePath: string | null
-  previewOffset: number
-}
-
 export type CanvasDeviceShellSize = {
   width: number
   height: number
@@ -99,9 +86,6 @@ export const CANVAS_DEVICE_PRESET_COLORS: Record<CanvasDeviceColorOption, string
   orange: '#f97316',
   white: '#f4f4f5',
 }
-
-export const CANVAS_MEMORY_MAX_ADDRESS_WIDTH = 16
-export const CANVAS_MEMORY_PREVIEW_WORDS = 16
 
 type CanvasDeviceDefinition = {
   title: string
@@ -193,10 +177,6 @@ function defaultHd44780Config(): CanvasHd44780LcdConfig {
   return { columns: 16, rows: 2, busMode: '4bit' }
 }
 
-function defaultMemoryConfig(): CanvasMemoryConfig {
-  return { mode: 'ram', addressWidth: 8, dataWidth: 8 }
-}
-
 export const VGA_DISPLAY_RESOLUTION_PRESETS = [
   { columns: 160, rows: 120, key: 'qqvga' },
   { columns: 320, rows: 240, key: 'qvga' },
@@ -221,19 +201,6 @@ function normalizeVgaColorMode(value: string | null | undefined, fallback: Canva
   }
 
   return fallback
-}
-
-function defaultMemoryWords(config: CanvasMemoryConfig) {
-  const wordCount = 1 << Math.min(config.addressWidth, CANVAS_MEMORY_MAX_ADDRESS_WIDTH)
-  return Array.from({ length: wordCount }, () => 0)
-}
-
-function defaultMemoryData(config: CanvasMemoryConfig): CanvasMemoryData {
-  return {
-    words: defaultMemoryWords(config),
-    sourcePath: null,
-    previewOffset: 0,
-  }
 }
 
 function createBitset(length: number, fill = false) {
@@ -337,26 +304,6 @@ function uartBindingSlots(mode: CanvasUartMode) {
   return [
     { key: 'rx', label: 'RX' },
     { key: 'tx', label: 'TX' },
-  ]
-}
-
-function memoryBindingSlots(config: CanvasMemoryConfig) {
-  if (config.mode === 'rom') {
-    return [
-      ...createBusSlots('A', config.addressWidth),
-      ...createBusSlots('DOUT', config.dataWidth),
-      { key: 'cs', label: 'CS' },
-      { key: 'oe', label: 'OE' },
-    ]
-  }
-
-  return [
-    ...createBusSlots('A', config.addressWidth),
-    ...createBusSlots('DIN', config.dataWidth),
-    ...createBusSlots('DOUT', config.dataWidth),
-    { key: 'cs', label: 'CS' },
-    { key: 'oe', label: 'OE' },
-    { key: 'we', label: 'WE' },
   ]
 }
 
@@ -546,61 +493,6 @@ export function getCanvasHd44780LcdConfig(
   }
 }
 
-export function getCanvasMemoryConfig(
-  device: Pick<CanvasDeviceSnapshot, 'type' | 'state'>,
-): CanvasMemoryConfig | null {
-  if (device.type !== 'memory') {
-    return null
-  }
-
-  const defaults = defaultMemoryConfig()
-  if (device.state.config.kind !== 'memory') {
-    return defaults
-  }
-
-  return {
-    mode: device.state.config.mode,
-    addressWidth: clampInt(
-      device.state.config.address_width,
-      defaults.addressWidth,
-      1,
-      CANVAS_MEMORY_MAX_ADDRESS_WIDTH,
-    ),
-    dataWidth: clampInt(device.state.config.data_width, defaults.dataWidth, 1, 16),
-  }
-}
-
-export function getCanvasMemoryData(
-  device: Pick<CanvasDeviceSnapshot, 'type' | 'state'>,
-  fallbackCount?: number,
-): CanvasMemoryData {
-  const config =
-    device.type === 'memory' ? (getCanvasMemoryConfig(device) ?? defaultMemoryConfig()) : null
-  const fallbackWords = Array.from({ length: fallbackCount ?? 0 }, () => 0)
-
-  if (device.state.data.kind !== 'memory') {
-    return {
-      words: config ? defaultMemoryWords(config) : fallbackWords,
-      sourcePath: null,
-      previewOffset: 0,
-    }
-  }
-
-  const memoryData = device.state.data
-  const targetCount =
-    fallbackCount ??
-    (config ? 1 << Math.min(config.addressWidth, CANVAS_MEMORY_MAX_ADDRESS_WIDTH) : undefined) ??
-    memoryData.words.length
-  const words = Array.from({ length: targetCount }, (_, index) => memoryData.words[index] ?? 0)
-  const maxOffset = Math.max(0, words.length - 1)
-
-  return {
-    words,
-    sourcePath: memoryData.source_path ?? null,
-    previewOffset: clampInt(memoryData.preview_offset, 0, 0, maxOffset),
-  }
-}
-
 export function getCanvasDeviceBoundSignal(
   device: Pick<CanvasDeviceSnapshot, 'state'>,
 ): string | null {
@@ -673,13 +565,6 @@ export function getCanvasQueuedBytesData(device: Pick<CanvasDeviceSnapshot, 'sta
   }
 
   return [...device.state.data.bytes]
-}
-
-export function getCanvasMemoryWordsData(
-  device: Pick<CanvasDeviceSnapshot, 'type' | 'state'>,
-  fallbackCount?: number,
-) {
-  return getCanvasMemoryData(device, fallbackCount).words
 }
 
 export function getCanvasDeviceDrivenSignalLevel(
@@ -1075,49 +960,6 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
     getBindingSlots: (device) => {
       const config = getCanvasHd44780LcdConfig(device) ?? defaultHd44780Config()
       return hd44780BindingSlots(config.busMode)
-    },
-  },
-  memory: {
-    title: translate('memoryDevice'),
-    dropAliases: ['memory', 'rom', 'ram'],
-    defaultState: () => {
-      const defaults = defaultMemoryConfig()
-      return createDefaultState({
-        binding: createSlotBindings(
-          Array.from({ length: memoryBindingSlots(defaults).length }, () => null),
-        ),
-        config: {
-          kind: 'memory',
-          mode: defaults.mode,
-          address_width: defaults.addressWidth,
-          data_width: defaults.dataWidth,
-        },
-        data: {
-          kind: 'memory',
-          words: defaultMemoryData(defaults).words,
-          source_path: null,
-          preview_offset: 0,
-        },
-      })
-    },
-    toRendererProps: (device) => {
-      const config = getCanvasMemoryConfig(device) ?? defaultMemoryConfig()
-      const data = getCanvasMemoryData(device)
-      return {
-        mode: config.mode,
-        addressWidth: config.addressWidth,
-        dataWidth: config.dataWidth,
-        wordCount: 1 << Math.min(config.addressWidth, CANVAS_MEMORY_MAX_ADDRESS_WIDTH),
-        sourcePath: data.sourcePath,
-        previewOffset: data.previewOffset,
-      }
-    },
-    getShellSize: () => ({ width: 360, height: 260 }),
-    emitsToggle: false,
-    capabilities: { drivesSignal: true, receivesSignal: true },
-    getBindingSlots: (device) => {
-      const config = getCanvasMemoryConfig(device) ?? defaultMemoryConfig()
-      return memoryBindingSlots(config)
     },
   },
   vga_display: createVgaDisplayDefinition(),

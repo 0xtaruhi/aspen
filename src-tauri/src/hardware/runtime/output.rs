@@ -4,15 +4,12 @@ use std::{
 };
 
 use crate::hardware::types::{
-    CanvasDeviceSnapshot, CanvasHd44780BusMode, CanvasMemoryMode, CanvasUartMode,
-    CanvasVgaColorMode, HardwareCanvasDeviceTelemetryEntryV1, HardwareCanvasDeviceTelemetryV1,
-    HardwareStateV1,
+    CanvasDeviceSnapshot, CanvasHd44780BusMode, CanvasUartMode, CanvasVgaColorMode,
+    HardwareCanvasDeviceTelemetryEntryV1, HardwareCanvasDeviceTelemetryV1, HardwareStateV1,
 };
 
 use super::registry::{output_compiler_for_device_type, SignalIndexLookup};
-use super::shared::{
-    matrix_keypad_shared_state, memory_shared_state, MatrixKeypadRuntimeState, MemoryRuntimeState,
-};
+use super::shared::{matrix_keypad_shared_state, MatrixKeypadRuntimeState};
 use super::*;
 
 pub(super) trait OutputDeviceDecoder: Send {
@@ -113,19 +110,6 @@ struct MatrixKeypadOutputDecoder {
     shared: Arc<Mutex<MatrixKeypadRuntimeState>>,
 }
 
-struct MemoryOutputDecoder {
-    device_id: String,
-    address_signal_indices: Vec<Option<usize>>,
-    data_in_signal_indices: Vec<Option<usize>>,
-    chip_select_index: Option<usize>,
-    output_enable_index: Option<usize>,
-    write_enable_index: Option<usize>,
-    preview_offset: usize,
-    shared: Arc<Mutex<MemoryRuntimeState>>,
-    selected_count: u32,
-    total_count: u32,
-}
-
 struct Hd44780LcdOutputDecoder {
     device_id: String,
     columns: usize,
@@ -143,7 +127,6 @@ struct Hd44780LcdOutputDecoder {
 
 const VGA_MAX_CAPTURE_COLUMNS: usize = 1024;
 const VGA_MAX_CAPTURE_ROWS: usize = 768;
-const MEMORY_PREVIEW_WORDS: usize = 16;
 
 impl HardwareRuntime {
     pub(super) fn device_snapshot_interval_for_state(state: &HardwareStateV1) -> Duration {
@@ -293,22 +276,6 @@ fn empty_device_snapshot(device_id: &str) -> HardwareCanvasDeviceTelemetryEntryV
         memory_address: 0,
         memory_output_word: 0,
     }
-}
-
-fn sample_bus_value(signal_indices: &[Option<usize>], cycle: &[u16]) -> u16 {
-    signal_indices
-        .iter()
-        .enumerate()
-        .fold(0_u16, |value, (bit_index, signal_index)| {
-            let bit_is_set = signal_index
-                .map(|signal_index| read_signal_value(cycle, signal_index))
-                .unwrap_or(false);
-            if bit_is_set {
-                value | (1_u16 << bit_index)
-            } else {
-                value
-            }
-        })
 }
 
 pub(super) fn compile_led_output(
@@ -472,77 +439,6 @@ pub(super) fn compile_hd44780_lcd_output(
         pending_high_nibble: None,
         ddram: vec![b' '; 0x68],
         cursor_addr: 0,
-    }))
-}
-
-pub(super) fn compile_memory_output(
-    device: &CanvasDeviceSnapshot,
-    signal_indices: &SignalIndexLookup<'_>,
-) -> Option<Box<dyn OutputDeviceDecoder>> {
-    let (mode, address_width, data_width) = device.state.memory_config()?;
-    let slot_signals = device.state.slot_signals();
-    let address_signal_indices = (0..address_width)
-        .map(|index| {
-            slot_signals
-                .get(index)
-                .and_then(|signal| signal.as_deref())
-                .and_then(|signal| signal_indices.get(signal).copied())
-        })
-        .collect::<Vec<_>>();
-    let data_in_signal_indices = if matches!(mode, CanvasMemoryMode::Ram) {
-        (0..data_width)
-            .map(|index| {
-                slot_signals
-                    .get(address_width + index)
-                    .and_then(|signal| signal.as_deref())
-                    .and_then(|signal| signal_indices.get(signal).copied())
-            })
-            .collect::<Vec<_>>()
-    } else {
-        Vec::new()
-    };
-    let controls_offset = if matches!(mode, CanvasMemoryMode::Ram) {
-        address_width + (2 * data_width)
-    } else {
-        address_width + data_width
-    };
-    let chip_select_index = slot_signals
-        .get(controls_offset)
-        .and_then(|signal| signal.as_deref())
-        .and_then(|signal| signal_indices.get(signal).copied());
-    let output_enable_index = slot_signals
-        .get(controls_offset + 1)
-        .and_then(|signal| signal.as_deref())
-        .and_then(|signal| signal_indices.get(signal).copied());
-    let write_enable_index = if matches!(mode, CanvasMemoryMode::Ram) {
-        slot_signals
-            .get(controls_offset + 2)
-            .and_then(|signal| signal.as_deref())
-            .and_then(|signal| signal_indices.get(signal).copied())
-    } else {
-        None
-    };
-
-    if !address_signal_indices.iter().any(Option::is_some)
-        && !data_in_signal_indices.iter().any(Option::is_some)
-        && chip_select_index.is_none()
-        && output_enable_index.is_none()
-        && write_enable_index.is_none()
-    {
-        return None;
-    }
-
-    Some(Box::new(MemoryOutputDecoder {
-        device_id: device.id.clone(),
-        address_signal_indices,
-        data_in_signal_indices,
-        chip_select_index,
-        output_enable_index,
-        write_enable_index,
-        preview_offset: device.state.memory_preview_offset(),
-        shared: memory_shared_state(device),
-        selected_count: 0,
-        total_count: 0,
     }))
 }
 
@@ -1406,79 +1302,6 @@ impl OutputDeviceDecoder for MatrixKeypadOutputDecoder {
         let mut entry = empty_device_snapshot(&self.device_id);
         entry.latest = self.latest_rows.iter().any(|value| *value != 0);
         entry.bit_values = self.latest_rows.clone();
-        entry
-    }
-}
-
-impl OutputDeviceDecoder for MemoryOutputDecoder {
-    fn ingest_cycle(&mut self, cycle: &[u16]) {
-        let chip_selected = self
-            .chip_select_index
-            .map(|signal_index| !read_signal_value(cycle, signal_index))
-            .unwrap_or(true);
-        let output_enabled = self
-            .output_enable_index
-            .map(|signal_index| !read_signal_value(cycle, signal_index))
-            .unwrap_or(true);
-        let write_enabled = self
-            .write_enable_index
-            .map(|signal_index| !read_signal_value(cycle, signal_index))
-            .unwrap_or(false);
-
-        let address = usize::from(sample_bus_value(&self.address_signal_indices, cycle));
-        let data_in = sample_bus_value(&self.data_in_signal_indices, cycle);
-
-        let Ok(mut shared) = self.shared.lock() else {
-            return;
-        };
-        let data_width = shared.data_width.min(u16::BITS as usize);
-        let data_mask = if data_width >= u16::BITS as usize {
-            u16::MAX
-        } else {
-            ((1_u32 << data_width) - 1) as u16
-        };
-        let word_count = shared.words.len().max(1);
-        let next_address = address.min(word_count - 1);
-        shared.address = next_address;
-        shared.chip_selected = chip_selected;
-
-        if matches!(shared.mode, CanvasMemoryMode::Ram) && chip_selected && write_enabled {
-            if let Some(word) = shared.words.get_mut(next_address) {
-                *word = data_in & data_mask;
-            }
-        }
-
-        shared.output_word = shared.words.get(next_address).copied().unwrap_or(0) & data_mask;
-        shared.read_enabled = chip_selected && output_enabled && !write_enabled;
-
-        self.total_count = self.total_count.saturating_add(1);
-        if chip_selected {
-            self.selected_count = self.selected_count.saturating_add(1);
-        }
-    }
-
-    fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntryV1 {
-        let Ok(shared) = self.shared.lock() else {
-            return empty_device_snapshot(&self.device_id);
-        };
-        let total_count = self.total_count.max(1);
-        let mut entry = empty_device_snapshot(&self.device_id);
-        entry.latest = shared.chip_selected;
-        entry.high_ratio = self.selected_count as f32 / total_count as f32;
-        let preview_start = self
-            .preview_offset
-            .min(shared.words.len().saturating_sub(1));
-        let preview_end = shared
-            .words
-            .len()
-            .min(preview_start.saturating_add(MEMORY_PREVIEW_WORDS));
-        entry.memory_word_count = u32::try_from(shared.words.len()).unwrap_or(u32::MAX);
-        entry.memory_preview_start = u32::try_from(preview_start).unwrap_or(u32::MAX);
-        entry.memory_address = u32::try_from(shared.address).unwrap_or(u32::MAX);
-        entry.memory_output_word = shared.output_word;
-        entry.sample_values = shared.words[preview_start..preview_end].to_vec();
-        self.selected_count = 0;
-        self.total_count = 0;
         entry
     }
 }

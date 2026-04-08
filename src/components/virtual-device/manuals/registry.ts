@@ -9,8 +9,6 @@ import {
   getCanvasLedBarConfig,
   getCanvasMatrixDimensions,
   getCanvasMatrixKeypadConfig,
-  getCanvasMemoryConfig,
-  getCanvasMemoryData,
   getCanvasQuadratureEncoderConfig,
   getCanvasSegmentDisplayConfig,
   getCanvasUartTerminalConfig,
@@ -138,12 +136,6 @@ function uartModeValue(mode: 'tx' | 'rx' | 'tx_rx', language: SupportedLanguage)
     default:
       return resolveText(txt('TX + RX', '收发双向'), language)
   }
-}
-
-function memoryModeValue(mode: 'rom' | 'ram', language: SupportedLanguage) {
-  return mode === 'rom'
-    ? resolveText(txt('ROM', 'ROM'), language)
-    : resolveText(txt('RAM', 'RAM'), language)
 }
 
 function busModeValue(mode: '4bit' | '8bit', language: SupportedLanguage) {
@@ -842,142 +834,6 @@ const canvasDeviceManualDefinitions: Record<CanvasDeviceType, CanvasDeviceManual
                 },
         },
       ]
-    },
-  },
-  memory: {
-    summary: txt(
-      'Virtual ROM/RAM block with file-backed initialization and live bus interaction.',
-      '带文件初始化能力的虚拟 ROM/RAM 模块，可以在实时数据流中参与总线读写。',
-    ),
-    resolvePins: (device, language) => {
-      const config = getCanvasMemoryConfig(device)
-      const addressWidth = config?.addressWidth ?? 8
-      const dataWidth = config?.dataWidth ?? 8
-      const mode = config?.mode ?? 'ram'
-      return [
-        ...Array.from({ length: addressWidth }, (_, index) =>
-          pin(
-            `A${index}`,
-            'fpga_to_device',
-            txt(`Address bit ${index}.`, `地址位 A${index}。`),
-            language,
-          ),
-        ),
-        ...(mode === 'ram'
-          ? Array.from({ length: dataWidth }, (_, index) =>
-              pin(
-                `DIN${index}`,
-                'fpga_to_device',
-                txt(`Write-data bit ${index}.`, `写数据位 DIN${index}。`),
-                language,
-              ),
-            )
-          : []),
-        ...Array.from({ length: dataWidth }, (_, index) =>
-          pin(
-            `DOUT${index}`,
-            'device_to_fpga',
-            txt(`Read-data bit ${index}.`, `读数据位 DOUT${index}。`),
-            language,
-          ),
-        ),
-        pin('CS', 'fpga_to_device', txt('Active-low chip select.', '低电平有效片选。'), language),
-        pin(
-          'OE',
-          'fpga_to_device',
-          txt('Active-low output enable for reads.', '低电平有效输出使能。'),
-          language,
-        ),
-        ...(mode === 'ram'
-          ? [
-              pin(
-                'WE',
-                'fpga_to_device',
-                txt('Active-low write enable.', '低电平有效写使能。'),
-                language,
-              ),
-            ]
-          : []),
-      ]
-    },
-    resolveParameters: (device, language) => {
-      const config = getCanvasMemoryConfig(device)
-      const data = getCanvasMemoryData(device)
-      return [
-        parameter(
-          'Mode',
-          memoryModeValue(config?.mode ?? 'ram', language),
-          resolveText(txt('RAM', 'RAM'), language),
-          txt('Choose read-only ROM or read/write RAM behavior.', '选择只读 ROM 或可写 RAM 行为。'),
-          language,
-        ),
-        parameter(
-          'Address width',
-          config?.addressWidth ?? 8,
-          8,
-          txt('Number of address bits.', '地址总线位宽。'),
-          language,
-        ),
-        parameter(
-          'Data width',
-          config?.dataWidth ?? 8,
-          8,
-          txt('Number of data bits per word.', '每个字的位宽。'),
-          language,
-        ),
-        parameter(
-          'Image source',
-          data.sourcePath ?? resolveText(txt('Embedded / zero-filled', '内嵌 / 零填充'), language),
-          resolveText(txt('Embedded / zero-filled', '内嵌 / 零填充'), language),
-          txt(
-            'Optional file used to initialize the memory contents.',
-            '用于初始化存储内容的可选文件。',
-          ),
-          language,
-        ),
-      ]
-    },
-    resolveWaveforms: (device, _language) => {
-      const mode = getCanvasMemoryConfig(device)?.mode ?? 'ram'
-      const waveforms: ManualWaveformDefinition[] = [
-        {
-          id: 'memory-read',
-          title: txt('Read cycle', '读周期'),
-          description: txt(
-            'Drive address, assert CS/OE low, then sample DOUT.',
-            '给出地址并把 CS/OE 拉低，随后从 DOUT 读取数据。',
-          ),
-          source: {
-            signal: [
-              { name: 'A', wave: 'x.=.....', data: ['ADDR'] },
-              { name: 'CS#', wave: '1.0....1' },
-              { name: 'OE#', wave: '1.0....1' },
-              { name: 'DOUT', wave: 'z..=..z.', data: ['DATA'] },
-            ],
-          },
-        },
-      ]
-
-      if (mode === 'ram') {
-        waveforms.push({
-          id: 'memory-write',
-          title: txt('Write cycle', '写周期'),
-          description: txt(
-            'Drive address and DIN, assert CS/WE low, and the word is written.',
-            '给出地址和 DIN，并把 CS/WE 拉低即可写入一个字。',
-          ),
-          source: {
-            signal: [
-              { name: 'A', wave: 'x.=.....', data: ['ADDR'] },
-              { name: 'DIN', wave: 'x.=.....', data: ['DATA'] },
-              { name: 'CS#', wave: '1.0....1' },
-              { name: 'WE#', wave: '1..0...1' },
-            ],
-          },
-        })
-      }
-
-      return waveforms
     },
   },
   vga_display: {

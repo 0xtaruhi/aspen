@@ -2,7 +2,6 @@ import type { Component } from 'vue'
 import {
   Binary,
   CircleDot,
-  Cpu,
   Grid2x2,
   Lightbulb,
   MonitorSmartphone,
@@ -22,7 +21,6 @@ import LedBarDevice from '@/components/devices/LedBarDevice.vue'
 import LedDevice from '@/components/devices/LedDevice.vue'
 import LedMatrixDevice from '@/components/devices/LedMatrixDevice.vue'
 import MatrixKeypadDevice from '@/components/devices/MatrixKeypadDevice.vue'
-import MemoryDevice from '@/components/devices/MemoryDevice.vue'
 import QuadratureEncoderDevice from '@/components/devices/QuadratureEncoderDevice.vue'
 import SegmentDisplayDevice from '@/components/devices/SegmentDisplayDevice.vue'
 import SwitchDevice from '@/components/devices/SwitchDevice.vue'
@@ -36,7 +34,6 @@ import DeviceHd44780LcdSettings from '@/components/virtual-device/settings/Devic
 import DeviceLedBarSettings from '@/components/virtual-device/settings/DeviceLedBarSettings.vue'
 import DeviceLedMatrixSettings from '@/components/virtual-device/settings/DeviceLedMatrixSettings.vue'
 import DeviceMatrixKeypadSettings from '@/components/virtual-device/settings/DeviceMatrixKeypadSettings.vue'
-import DeviceMemorySettings from '@/components/virtual-device/settings/DeviceMemorySettings.vue'
 import DeviceQuadratureEncoderSettings from '@/components/virtual-device/settings/DeviceQuadratureEncoderSettings.vue'
 import DeviceSegmentDisplaySettings from '@/components/virtual-device/settings/DeviceSegmentDisplaySettings.vue'
 import DeviceUartTerminalSettings from '@/components/virtual-device/settings/DeviceUartTerminalSettings.vue'
@@ -48,8 +45,6 @@ import {
   getCanvasHd44780LcdConfig,
   getCanvasLedBarConfig,
   getCanvasMatrixDimensions,
-  getCanvasMemoryConfig,
-  getCanvasMemoryData,
   getCanvasSegmentDisplayConfig,
   getCanvasVgaDisplayConfig,
 } from '@/lib/canvas-devices'
@@ -218,29 +213,6 @@ const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefiniti
         context.telemetry?.text_lines ??
         Array.from({ length: getCanvasHd44780LcdConfig(device)?.rows ?? 2 }, () => ''),
     }),
-  },
-  memory: {
-    renderer: MemoryDevice,
-    gallery: { section: 'debug', order: 20, meta: 'ROM / RAM', icon: Cpu },
-    settingsComponent: DeviceMemorySettings,
-    buildRuntimeProps: (device, context) => {
-      const config = getCanvasMemoryConfig(device)
-      const data = getCanvasMemoryData(device, 1 << Math.min(config?.addressWidth ?? 8, 16))
-      return {
-        wordCount:
-          context.streamRunning && context.telemetry?.memory_word_count
-            ? context.telemetry.memory_word_count
-            : data.words.length,
-        liveAddress:
-          context.streamRunning && typeof context.telemetry?.memory_address === 'number'
-            ? context.telemetry.memory_address
-            : null,
-        liveOutputWord:
-          context.streamRunning && typeof context.telemetry?.memory_output_word === 'number'
-            ? context.telemetry.memory_output_word
-            : null,
-      }
-    },
   },
   vga_display: {
     renderer: VgaDisplayDevice,

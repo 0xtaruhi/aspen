@@ -73,7 +73,6 @@ pub enum CanvasDeviceType {
     MatrixKeypad,
     UartTerminal,
     Hd44780Lcd,
-    Memory,
     VgaDisplay,
     SegmentDisplay,
     LedMatrix,
@@ -104,13 +103,6 @@ pub enum CanvasUartMode {
     Tx,
     Rx,
     TxRx,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[serde(rename_all = "snake_case")]
-pub enum CanvasMemoryMode {
-    Rom,
-    Ram,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
@@ -174,11 +166,6 @@ pub enum CanvasDeviceConfigSnapshot {
         rows: u16,
         bus_mode: CanvasHd44780BusMode,
     },
-    Memory {
-        mode: CanvasMemoryMode,
-        address_width: u16,
-        data_width: u16,
-    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
@@ -201,13 +188,6 @@ pub enum CanvasDeviceDataSnapshot {
     QueuedBytes {
         #[serde(default)]
         bytes: Vec<u8>,
-    },
-    Memory {
-        #[serde(default)]
-        words: Vec<u16>,
-        source_path: Option<String>,
-        #[serde(default)]
-        preview_offset: u32,
     },
 }
 
@@ -340,21 +320,6 @@ impl CanvasDeviceStateSnapshot {
         }
     }
 
-    pub fn memory_config(&self) -> Option<(CanvasMemoryMode, usize, usize)> {
-        match self.config {
-            CanvasDeviceConfigSnapshot::Memory {
-                mode,
-                address_width,
-                data_width,
-            } => Some((
-                mode,
-                usize::from(address_width.max(1)),
-                usize::from(data_width.max(1)),
-            )),
-            _ => None,
-        }
-    }
-
     pub fn bitset(&self) -> &[bool] {
         match &self.data {
             CanvasDeviceDataSnapshot::Bitset { bits } => bits,
@@ -366,22 +331,6 @@ impl CanvasDeviceStateSnapshot {
         match &self.data {
             CanvasDeviceDataSnapshot::QueuedBytes { bytes } => bytes,
             _ => &[],
-        }
-    }
-
-    pub fn memory_words(&self) -> &[u16] {
-        match &self.data {
-            CanvasDeviceDataSnapshot::Memory { words, .. } => words,
-            _ => &[],
-        }
-    }
-
-    pub fn memory_preview_offset(&self) -> usize {
-        match self.data {
-            CanvasDeviceDataSnapshot::Memory { preview_offset, .. } => {
-                usize::try_from(preview_offset).unwrap_or(usize::MAX)
-            }
-            _ => 0,
         }
     }
 
