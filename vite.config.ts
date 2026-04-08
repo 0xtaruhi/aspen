@@ -1,10 +1,14 @@
+import { createRequire } from 'node:module'
 import path from 'node:path'
 import { env } from 'node:process'
 import tailwindcss from '@tailwindcss/vite'
 import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vite'
 
+const require = createRequire(import.meta.url)
 const host = env.TAURI_DEV_HOST
+const wavedromRoot = path.dirname(require.resolve('wavedrom/package.json'))
+const onmlRoot = path.dirname(require.resolve('onml/package.json'))
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
@@ -12,6 +16,9 @@ export default defineConfig(async () => ({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      '@wavedrom-render-any': path.join(wavedromRoot, 'lib', 'render-any.js'),
+      '@wavedrom-skin-default': path.join(wavedromRoot, 'skins', 'default.js'),
+      '@onml-stringify': path.join(onmlRoot, 'stringify.js'),
     },
   },
   build: {

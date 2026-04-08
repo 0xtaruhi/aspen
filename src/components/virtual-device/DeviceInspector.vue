@@ -3,7 +3,7 @@ import type { CanvasDeviceSnapshot } from '@/lib/hardware-client'
 import type { SignalCatalogEntry } from '@/stores/signal-catalog'
 
 import { computed, ref, watch } from 'vue'
-import { Link2, Trash2, Unplug, X } from 'lucide-vue-next'
+import { BookOpenText, Link2, Trash2, Unplug, X } from 'lucide-vue-next'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -43,6 +43,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void
+  (e: 'open-manual'): void
 }>()
 
 const UNBOUND_SIGNAL = '__unbound__'
@@ -259,6 +260,10 @@ function clearBindings() {
   })
 }
 
+function openManual() {
+  emit('open-manual')
+}
+
 async function removeDevice() {
   if (!props.device) {
     return
@@ -292,6 +297,15 @@ async function removeDevice() {
               {{ device.type }}
             </p>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            class="hidden shrink-0 gap-2 rounded-lg sm:inline-flex"
+            @click="openManual"
+          >
+            <BookOpenText class="h-4 w-4" />
+            {{ t('manual') }}
+          </Button>
           <Button variant="ghost" size="icon" class="h-8 w-8" @click="$emit('close')">
             <X class="h-4 w-4" />
           </Button>
@@ -301,6 +315,14 @@ async function removeDevice() {
           <Badge variant="secondary">{{ capabilityLabel }}</Badge>
           <Badge variant="outline">{{ liveLevel ? t('high') : t('low') }}</Badge>
           <Badge variant="outline">{{ bindingSlots.length }} pins</Badge>
+          <button
+            type="button"
+            class="inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-background px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-border hover:text-foreground sm:hidden"
+            @click="openManual"
+          >
+            <BookOpenText class="h-3.5 w-3.5" />
+            {{ t('manual') }}
+          </button>
         </div>
 
         <Separator class="my-5" />

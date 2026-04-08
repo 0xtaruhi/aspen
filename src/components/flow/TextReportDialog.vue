@@ -63,7 +63,7 @@ async function copyReportContent() {
 <template>
   <Dialog :open="props.open" @update:open="emit('update:open', $event)">
     <DialogScrollContent class="max-h-[85vh] p-0 sm:max-w-4xl">
-      <div class="flex min-w-0 flex-col">
+      <div class="flex h-full min-h-0 min-w-0 flex-col">
         <div class="flex items-start justify-between gap-4 border-b border-border px-4 py-4">
           <DialogHeader class="min-w-0 flex-1 space-y-1">
             <div class="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
@@ -92,9 +92,9 @@ async function copyReportContent() {
           </Button>
         </div>
 
-        <div class="min-w-0 px-4 py-4">
+        <div class="min-h-0 min-w-0 flex-1 px-4 py-4">
           <pre
-            class="allow-text-select max-h-[65vh] min-w-0 max-w-full overflow-x-auto overflow-y-auto whitespace-pre rounded-md border border-border bg-white px-3 py-3 font-mono text-[12px] leading-5 text-slate-950 dark:bg-black dark:text-white"
+            class="allow-text-select h-full min-h-0 min-w-0 max-w-full overflow-x-auto overflow-y-auto whitespace-pre rounded-md border border-border bg-white px-3 py-3 font-mono text-[12px] leading-5 text-slate-950 dark:bg-black dark:text-white"
             >{{ displayContent }}</pre
           >
         </div>

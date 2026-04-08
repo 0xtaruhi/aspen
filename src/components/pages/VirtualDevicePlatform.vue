@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Hand, LayoutGrid, Play, ScanSearch, Square, Trash2 } from 'lucide-vue-next'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { Hand, LayoutGrid, Play, ScanSearch, Square, Trash2, X } from 'lucide-vue-next'
 
 import DeviceCanvas from '@/components/canvas/DeviceCanvas.vue'
 import ComponentGallery from '@/components/ComponentGallery.vue'
@@ -9,6 +9,7 @@ import DeviceInspector from '@/components/virtual-device/DeviceInspector.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Dialog, DialogScrollContent, DialogTitle } from '@/components/ui/dialog'
 import { confirmAction } from '@/lib/confirm-action'
 import { useI18n } from '@/lib/i18n'
 import { designContextStore } from '@/stores/design-context'
@@ -27,6 +28,9 @@ const canvasInteractionMode = ref<CanvasInteractionMode>('select')
 const selectedDeviceId = ref<string | null>(null)
 const selectedDeviceIds = ref<string[]>([])
 const inspectorOpen = ref(false)
+const manualDialogOpen = ref(false)
+const manualDeviceId = ref<string | null>(null)
+const reopenInspectorAfterManual = ref(false)
 const galleryDropBlockInset = 60
 const streamBusy = ref(false)
 const streamMessage = ref('')
@@ -35,6 +39,9 @@ const displayedActualHz = ref(0)
 let streamStatusPollTimer: ReturnType<typeof setInterval> | null = null
 let displayedHzTimer: ReturnType<typeof setInterval> | null = null
 const { t } = useI18n()
+const DeviceManual = defineAsyncComponent(
+  () => import('@/components/virtual-device/DeviceManual.vue'),
+)
 
 const availableSignalCount = computed(() => signalCatalogStore.signals.value.length)
 const hasAnySynthesisSignals = signalCatalogStore.hasSignalSourceReport
@@ -90,6 +97,16 @@ const selectedDevice = computed(() => {
     ) ?? null
   )
 })
+const manualDevice = computed(() => {
+  if (!manualDeviceId.value) {
+    return null
+  }
+
+  return (
+    hardwareStore.state.value.canvas_devices.find((device) => device.id === manualDeviceId.value) ??
+    null
+  )
+})
 
 function toggleGallery() {
   showGallery.value = !showGallery.value
@@ -129,6 +146,28 @@ function openInspectorForDevice(id: string) {
   selectedDeviceIds.value = [id]
   selectedDeviceId.value = id
   inspectorOpen.value = true
+}
+
+function openManualForSelectedDevice() {
+  if (!selectedDevice.value) {
+    return
+  }
+
+  manualDeviceId.value = selectedDevice.value.id
+  reopenInspectorAfterManual.value = inspectorOpen.value
+  inspectorOpen.value = false
+  manualDialogOpen.value = true
+}
+
+function closeManualDialog() {
+  manualDialogOpen.value = false
+  manualDeviceId.value = null
+
+  if (reopenInspectorAfterManual.value && selectedDevice.value) {
+    inspectorOpen.value = true
+  }
+
+  reopenInspectorAfterManual.value = false
 }
 
 function getErrorMessage(err: unknown) {
@@ -327,6 +366,14 @@ function handleGlobalKeydown(event: KeyboardEvent) {
 watch(selectedDevice, (device) => {
   if (!device) {
     inspectorOpen.value = false
+  }
+})
+
+watch(manualDevice, (device) => {
+  if (!device && manualDialogOpen.value) {
+    manualDialogOpen.value = false
+    manualDeviceId.value = null
+    reopenInspectorAfterManual.value = false
   }
 })
 
@@ -535,7 +582,42 @@ onBeforeUnmount(() => {
           : t('deviceSettingsTitle')
       "
     >
-      <DeviceInspector :device="selectedDevice" @close="inspectorOpen = false" />
+      <DeviceInspector
+        :device="selectedDevice"
+        @close="inspectorOpen = false"
+        @open-manual="openManualForSelectedDevice"
+      />
     </RightDrawer>
+
+    <Dialog :open="manualDialogOpen" @update:open="(open) => (!open ? closeManualDialog() : null)">
+      <DialogScrollContent
+        :show-close-button="false"
+        class="h-[90vh] max-h-[90vh] border-border/80 bg-background/98 p-0 sm:max-w-[1100px]"
+      >
+        <div class="flex h-full min-h-0 flex-col">
+          <Button
+            variant="outline"
+            size="icon"
+            class="absolute top-4 right-4 z-20 rounded-full bg-background/95 shadow-sm backdrop-blur"
+            @click="closeManualDialog"
+          >
+            <X class="h-4 w-4" />
+          </Button>
+
+          <div class="border-b border-border/70 px-6 py-5">
+            <div class="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
+              {{ manualDevice?.type }}
+            </div>
+            <DialogTitle class="mt-2 text-xl font-semibold">
+              {{ manualDevice?.label }} · {{ t('manual') }}
+            </DialogTitle>
+          </div>
+
+          <div class="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+            <DeviceManual v-if="manualDevice" :device="manualDevice" />
+          </div>
+        </div>
+      </DialogScrollContent>
+    </Dialog>
   </div>
 </template>
