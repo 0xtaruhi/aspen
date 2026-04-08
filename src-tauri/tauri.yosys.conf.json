@@ -1,5 +1,10 @@
 {
   "bundle": {
-    "resources": ["vendor/yosys/**/*", "resource/yosys-fde/**/*", "resource/fde/**/*"]
+    "resources": [
+      "vendor/yosys/**/*",
+      "resource/yosys-fde/**/*",
+      "resource/fde/**/*",
+      "resource/windows-driver/**/*"
+    ]
   }
 }

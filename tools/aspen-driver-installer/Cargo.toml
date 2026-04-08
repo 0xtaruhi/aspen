@@ -1,0 +1,9 @@
+[package]
+name = "aspen-driver-installer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+[target.'cfg(target_os = "windows")'.dependencies]
+wdi-rs = "0.1"

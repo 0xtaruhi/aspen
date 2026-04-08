@@ -17,6 +17,14 @@ This template should help get you started developing with Vue 3 and TypeScript i
   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
 - The release workflow generates `latest.json` with `scripts/generate_updater_manifest.py`.
 
+## Windows USB Driver Packaging
+
+- Windows release bundles now include `aspen-driver-installer.exe`, a helper built from `tools/aspen-driver-installer/`.
+- The helper uses `libwdi` via `wdi-rs` to prepare and install Aspen's WinUSB driver package for `VID=0x2200`, `PID=0x2008`, interface `0`.
+- `pnpm tauri build` invokes `scripts/prepare-tauri-build.mjs`, which compiles the helper on Windows and stages it under `src-tauri/resource/windows-driver/`.
+- The NSIS installer runs that helper from `src-tauri/windows/driver-hooks.nsh` after the app files are copied.
+- Windows `setup.exe` now requests elevation during install so the driver package can be installed in the same flow.
+
 ## BRAM Notes
 
 - Aspen synthesis now keeps inferred memories intact long enough for Yosys BRAM mapping.

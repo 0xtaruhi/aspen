@@ -31,3 +31,5 @@ src-tauri/vendor/yosys/*
 src-tauri/vendor/fde/*
 !src-tauri/vendor/fde/.placeholder
 !src-tauri/vendor/fde/README.md
+src-tauri/resource/windows-driver/aspen-driver-installer.exe
+tools/aspen-driver-installer/target/

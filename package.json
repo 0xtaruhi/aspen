@@ -1,11 +1,12 @@
 {
   "name": "aspen",
   "private": true,
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
+    "prepare:tauri-build": "node scripts/prepare-tauri-build.mjs",
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest",
     "test:ci": "vitest run --passWithNoTests",
