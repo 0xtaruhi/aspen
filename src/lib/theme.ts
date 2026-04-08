@@ -1,13 +1,12 @@
 import { readonly, ref } from 'vue'
 
 const prefersDarkQuery = '(prefers-color-scheme: dark)'
-const STORAGE_KEY = 'theme-preference'
 
-type ThemePreference = 'light' | 'dark' | null
+export type ThemeMode = 'system' | 'light' | 'dark'
 
 const isDark = ref(false)
 let initialized = false
-let manualPreference: ThemePreference = null
+let currentMode: ThemeMode = 'system'
 let media: MediaQueryList | null = null
 let mediaListener: ((event: MediaQueryListEvent) => void) | null = null
 
@@ -19,67 +18,46 @@ function applyDarkClass(isDarkMode: boolean) {
   document.documentElement.classList.toggle('dark', isDarkMode)
 }
 
-function readStoredPreference(): ThemePreference {
-  if (typeof window === 'undefined') {
-    return null
+function resolveIsDark(mode: ThemeMode) {
+  if (mode === 'dark') {
+    return true
   }
 
-  try {
-    const stored = window.localStorage.getItem(STORAGE_KEY)
-    if (stored === 'dark' || stored === 'light') {
-      return stored
-    }
-  } catch (_) {
-    /* no-op */
+  if (mode === 'light') {
+    return false
   }
 
-  return null
+  return media?.matches ?? false
 }
 
-function writeStoredPreference(preference: Exclude<ThemePreference, null>) {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  try {
-    window.localStorage.setItem(STORAGE_KEY, preference)
-  } catch (_) {
-    /* no-op */
-  }
+function syncTheme(mode: ThemeMode) {
+  currentMode = mode
+  const nextIsDark = resolveIsDark(mode)
+  document.documentElement.dataset.themeMode = mode
+  document.documentElement.dataset.themeResolved = nextIsDark ? 'dark' : 'light'
+  document.documentElement.style.colorScheme = nextIsDark ? 'dark' : 'light'
+  applyDarkClass(nextIsDark)
+  isDark.value = nextIsDark
 }
 
-function setThemeInternal(isDarkMode: boolean, options: { persist?: boolean } = {}) {
-  applyDarkClass(isDarkMode)
-  isDark.value = isDarkMode
-
-  if (options.persist) {
-    manualPreference = isDarkMode ? 'dark' : 'light'
-    writeStoredPreference(manualPreference)
-  }
-}
-
-export function initThemeSync() {
+export function initThemeSync(mode: ThemeMode = 'system') {
   if (initialized || typeof window === 'undefined') {
     return
   }
 
   initialized = true
   media = window.matchMedia(prefersDarkQuery)
-
-  manualPreference = readStoredPreference()
-
-  if (manualPreference) {
-    setThemeInternal(manualPreference === 'dark')
-  } else {
-    setThemeInternal(media.matches)
-  }
+  syncTheme(mode)
 
   mediaListener = (event: MediaQueryListEvent) => {
-    if (manualPreference !== null) {
+    if (currentMode !== 'system') {
       return
     }
 
-    setThemeInternal(event.matches)
+    document.documentElement.dataset.themeResolved = event.matches ? 'dark' : 'light'
+    document.documentElement.style.colorScheme = event.matches ? 'dark' : 'light'
+    applyDarkClass(event.matches)
+    isDark.value = event.matches
   }
 
   if (typeof media.addEventListener === 'function') {
@@ -89,8 +67,17 @@ export function initThemeSync() {
   }
 }
 
-export function toggleTheme() {
-  setThemeInternal(!isDark.value, { persist: true })
+export function setThemeMode(mode: ThemeMode) {
+  if (typeof document === 'undefined') {
+    return
+  }
+
+  if (!initialized) {
+    initThemeSync(mode)
+    return
+  }
+
+  syncTheme(mode)
 }
 
 export function useThemeState() {

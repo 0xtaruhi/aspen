@@ -2,9 +2,16 @@
 import { computed, onMounted } from 'vue'
 import { isTauri } from '@tauri-apps/api/core'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import { ArrowDownToLine, Globe, MonitorCog, ShieldCheck } from 'lucide-vue-next'
+import {
+  ArrowDownToLine,
+  Globe,
+  Monitor,
+  MonitorCog,
+  Moon,
+  ShieldCheck,
+  Sun,
+} from 'lucide-vue-next'
 
-import ThemeToggleButton from '@/components/ThemeToggleButton.vue'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -34,6 +41,29 @@ const themeAccentInput = computed(() => normalizeThemeAccentColor(settingsStore.
 const themePresetOptions = Object.keys(APP_THEME_PRESET_COLORS) as AppThemePresetColor[]
 const updateState = appUpdateStore.state
 const showUpdateCard = computed(() => updateState.supported)
+const themeModeOptions = computed(() => [
+  {
+    value: 'system' as const,
+    label: t('themeModeSystem'),
+    icon: Monitor,
+  },
+  {
+    value: 'light' as const,
+    label: t('themeModeLight'),
+    icon: Sun,
+  },
+  {
+    value: 'dark' as const,
+    label: t('themeModeDark'),
+    icon: Moon,
+  },
+])
+const themeModeIndex = computed(() =>
+  themeModeOptions.value.findIndex((option) => option.value === settingsStore.state.themeMode),
+)
+const themeModeThumbStyle = computed(() => ({
+  transform: `translateX(${Math.max(0, themeModeIndex.value) * 100}%)`,
+}))
 
 const updateStatusLabel = computed(() => {
   switch (updateState.status) {
@@ -209,14 +239,32 @@ onMounted(() => {
                 <p class="text-sm text-muted-foreground">{{ t('languageDescription') }}</p>
               </div>
 
-              <div
-                class="flex items-center justify-between rounded-2xl border border-border bg-muted/30 px-4 py-3"
-              >
-                <div class="space-y-1">
-                  <p class="text-sm font-medium">{{ t('themeToggle') }}</p>
-                  <p class="text-sm text-muted-foreground">{{ t('appearanceDescription') }}</p>
+              <div class="grid gap-2">
+                <Label>{{ t('themeMode') }}</Label>
+                <div
+                  class="relative flex max-w-md rounded-2xl border border-border/60 bg-muted/28 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+                >
+                  <div
+                    class="pointer-events-none absolute inset-y-1 left-1 w-[calc((100%-0.5rem)/3)] rounded-[0.95rem] border border-border/70 bg-background/78 shadow-sm transition-transform duration-200 ease-out"
+                    :style="themeModeThumbStyle"
+                  />
+                  <button
+                    v-for="option in themeModeOptions"
+                    :key="option.value"
+                    type="button"
+                    class="relative z-10 flex min-h-10 flex-1 items-center justify-center gap-2 rounded-[0.95rem] px-3 py-2 text-left text-sm transition-colors"
+                    :class="
+                      settingsStore.state.themeMode === option.value
+                        ? 'text-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    "
+                    @click="settingsStore.setThemeMode(option.value)"
+                  >
+                    <component :is="option.icon" class="h-4 w-4 shrink-0" />
+                    <span class="truncate text-xs font-medium sm:text-sm">{{ option.label }}</span>
+                  </button>
                 </div>
-                <ThemeToggleButton />
+                <p class="text-sm text-muted-foreground">{{ t('themeModeDescription') }}</p>
               </div>
 
               <div class="space-y-3">

@@ -18,7 +18,6 @@ import { Separator } from '@/components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { useI18n } from '@/lib/i18n'
 import { openProject, saveProject, saveProjectAs } from '@/lib/project-io'
-import ThemeToggleButton from '@/components/ThemeToggleButton.vue'
 import { routeLabelMap, type AppRouteName } from '@/router'
 import { hardwareWorkbenchStore } from '@/stores/hardware-workbench'
 import { projectStore } from '@/stores/project'
@@ -205,7 +204,6 @@ onUnmounted(() => {
               >
                 <Settings2 class="h-4 w-4" />
               </button>
-              <ThemeToggleButton />
             </div>
           </div>
         </header>

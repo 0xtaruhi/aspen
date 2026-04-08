@@ -5,11 +5,13 @@ import {
   DEFAULT_THEME_ACCENT,
   normalizeThemeAccentColor,
 } from '../lib/theme-accent'
+import { setThemeMode, type ThemeMode } from '../lib/theme'
 
 export type AppLanguage = 'en-US' | 'zh-CN' | 'zh-TW'
 
 type SettingsState = {
   language: AppLanguage
+  themeMode: ThemeMode
   themeAccent: string
   editorFontSize: number
   editorMinimap: boolean
@@ -67,10 +69,15 @@ function detectPreferredLanguage(): AppLanguage {
   return 'en-US'
 }
 
+function normalizeThemeMode(value: unknown): ThemeMode {
+  return value === 'light' || value === 'dark' || value === 'system' ? value : 'system'
+}
+
 const defaultLanguage = detectPreferredLanguage()
 
 const defaultSettings: SettingsState = {
   language: defaultLanguage,
+  themeMode: 'system',
   themeAccent: DEFAULT_THEME_ACCENT,
   editorFontSize: 14,
   editorMinimap: true,
@@ -105,6 +112,7 @@ function readStoredSettings(): Partial<SettingsState> {
     return {
       ...parsed,
       language: normalizeLanguage(parsed.language) ?? defaultLanguage,
+      themeMode: normalizeThemeMode(parsed.themeMode),
       themeAccent: normalizeThemeAccentColor(parsed.themeAccent),
     }
   } catch (_) {
@@ -130,6 +138,7 @@ const state = reactive<SettingsState>({
 })
 
 applyLanguage(state.language)
+setThemeMode(state.themeMode)
 applyThemeAccentColor(state.themeAccent)
 
 export const settingsStore = {
@@ -137,14 +146,20 @@ export const settingsStore = {
 
   update(patch: Partial<SettingsState>) {
     Object.assign(state, patch)
+    state.themeMode = normalizeThemeMode(state.themeMode)
     state.themeAccent = normalizeThemeAccentColor(state.themeAccent)
     applyLanguage(state.language)
+    setThemeMode(state.themeMode)
     applyThemeAccentColor(state.themeAccent)
     writeStoredSettings(state)
   },
 
   setLanguage(language: AppLanguage) {
     this.update({ language })
+  },
+
+  setThemeMode(themeMode: ThemeMode) {
+    this.update({ themeMode })
   },
 
   setThemeAccent(themeAccent: string) {
