@@ -20,7 +20,7 @@ use memory_image::MemoryImageLoadResult;
 use serde::Deserialize;
 use serde::Serialize;
 use tauri::Emitter;
-use vlfd_rs::{Device, HotplugEvent, HotplugEventKind, HotplugOptions, HotplugRegistration};
+use vlfd_rs::{HotplugEvent, HotplugEventKind, HotplugOptions, HotplugRegistration, Probe};
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -326,10 +326,8 @@ fn start_hotplug_watch(
 
     let handle = app.clone();
     let runtime_handle = runtime.inner().clone();
-    let registration = Device::new()
-        .map_err(|err| err.to_string())?
-        .usb()
-        .register_hotplug_callback(opts, move |event: HotplugEvent| {
+    let registration = Probe::new()
+        .watch(opts, move |event: HotplugEvent| {
             let event_kind = match event.kind {
                 HotplugEventKind::Arrived => "arrived",
                 HotplugEventKind::Left => "left",

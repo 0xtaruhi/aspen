@@ -4,11 +4,12 @@ use std::{
 };
 
 use super::types::{HardwareArtifactSnapshot, HardwareDeviceSnapshot};
-use vlfd_rs::{Device, Programmer};
+use vlfd_rs::{Board, Programmer};
 
 pub fn probe_device() -> Result<HardwareDeviceSnapshot, String> {
-    let device = Device::connect().map_err(|err| err.to_string())?;
-    let snapshot = device.config().clone().into();
+    let board = Board::open().map_err(|err| err.to_string())?;
+    let snapshot = board.config().clone().into();
+    let _ = board.close();
 
     Ok(HardwareDeviceSnapshot {
         board: "FDP3P7".to_string(),
@@ -18,7 +19,7 @@ pub fn probe_device() -> Result<HardwareDeviceSnapshot, String> {
 }
 
 pub fn program_bitstream(bitstream_path: &str) -> Result<(), String> {
-    let mut programmer = Programmer::connect().map_err(|err| err.to_string())?;
+    let mut programmer = Programmer::open().map_err(|err| err.to_string())?;
     let result = programmer
         .program(Path::new(bitstream_path))
         .map_err(|err| err.to_string());
