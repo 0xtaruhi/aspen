@@ -318,6 +318,31 @@ fn configure_data_stream_propagates_vericomm_clock_delays() {
 }
 
 #[test]
+fn set_data_stream_rate_preserves_last_measured_rate_while_running() {
+    let runtime = HardwareRuntime::default();
+
+    {
+        let mut status = runtime.data_stream_status.lock().unwrap();
+        status.running = true;
+        status.target_hz = 1_000.0;
+        status.actual_hz = 987.5;
+        status.transfer_rate_hz = 123.0;
+        status.last_batch_cycles = 16;
+    }
+
+    let status = runtime
+        .set_data_stream_rate(2_500.0)
+        .expect("rate update should succeed");
+
+    assert!(status.running);
+    assert_eq!(status.target_hz, 2_500.0);
+    assert_eq!(status.actual_hz, 987.5);
+    assert_eq!(status.transfer_rate_hz, 123.0);
+    assert_eq!(status.last_batch_cycles, 16);
+    assert_eq!(status.queue_fill, 0);
+}
+
+#[test]
 fn device_snapshot_interval_scales_with_vga_resolution() {
     let low_res = HardwareStateV1 {
         canvas_devices: vec![CanvasDeviceSnapshot {

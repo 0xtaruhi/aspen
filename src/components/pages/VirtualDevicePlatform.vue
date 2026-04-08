@@ -20,6 +20,7 @@ import { settingsStore } from '@/stores/settings'
 
 const STREAM_SIGNAL_LIMIT = 4 * 16
 const DISPLAY_UPDATE_INTERVAL_MS = 1000
+const STREAM_LAG_WARNING_THRESHOLD_MS = 10
 
 type CanvasInteractionMode = 'select' | 'pan'
 
@@ -71,19 +72,9 @@ const streamScheduleLagMs = computed(() => {
 
   return (streamStatus.value.queue_fill / effectiveStreamRateHz.value) * 1000
 })
-const streamBacklogWarningThresholdMs = computed(() => {
-  const queueCapacity = streamStatus.value.queue_capacity
-  if (queueCapacity <= 0) {
-    return 50
-  }
-
-  const batchLagMs = (queueCapacity / effectiveStreamRateHz.value) * 1000
-  return Math.min(50, batchLagMs)
-})
 const shouldWarnStreamBacklog = computed(() => {
   return (
-    streamStatus.value.queue_fill > 0 &&
-    streamScheduleLagMs.value >= streamBacklogWarningThresholdMs.value
+    streamStatus.value.queue_fill > 0 && streamScheduleLagMs.value > STREAM_LAG_WARNING_THRESHOLD_MS
   )
 })
 const selectedDevice = computed(() => {

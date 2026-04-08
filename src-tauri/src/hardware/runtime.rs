@@ -218,11 +218,14 @@ impl HardwareRuntime {
         }
 
         self.update_data_stream_status(|status| {
+            let running = status.running;
             status.target_hz = rate_hz;
-            status.actual_hz = 0.0;
-            status.transfer_rate_hz = 0.0;
             status.queue_fill = 0;
-            status.last_batch_cycles = 0;
+            if !running {
+                status.actual_hz = 0.0;
+                status.transfer_rate_hz = 0.0;
+                status.last_batch_cycles = 0;
+            }
             status.last_error = None;
         })?;
 
