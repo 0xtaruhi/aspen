@@ -135,7 +135,7 @@ dependencies = [
 
 [[package]]
 name = "aspen"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "fde",
  "objc2-foundation 0.3.2",
