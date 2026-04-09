@@ -1,15 +1,13 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Hand, LayoutGrid, Play, ScanSearch, Square, Trash2, X } from 'lucide-vue-next'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import DeviceCanvas from '@/components/canvas/DeviceCanvas.vue'
 import ComponentGallery from '@/components/ComponentGallery.vue'
 import RightDrawer from '@/components/RightDrawer.vue'
 import DeviceInspector from '@/components/virtual-device/DeviceInspector.vue'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Dialog, DialogScrollContent, DialogTitle } from '@/components/ui/dialog'
+import VirtualDeviceManualDialog from '@/components/virtual-device/platform/VirtualDeviceManualDialog.vue'
+import VirtualDeviceStatusBanner from '@/components/virtual-device/platform/VirtualDeviceStatusBanner.vue'
+import VirtualDeviceToolbar from '@/components/virtual-device/platform/VirtualDeviceToolbar.vue'
 import { getCanvasDeviceBoundSignal, getCanvasDeviceBoundSignals } from '@/lib/canvas-devices'
 import { confirmAction } from '@/lib/confirm-action'
 import { useI18n } from '@/lib/i18n'
@@ -18,12 +16,11 @@ import { hardwareStore } from '@/stores/hardware'
 import { HARDWARE_STREAM_CLOCK_DELAY, hardwareWorkbenchStore } from '@/stores/hardware-workbench'
 import { signalCatalogStore } from '@/stores/signal-catalog'
 import { settingsStore } from '@/stores/settings'
+import type { CanvasInteractionMode } from '@/components/virtual-device/platform/types'
 
 const STREAM_SIGNAL_LIMIT = 4 * 16
 const DISPLAY_UPDATE_INTERVAL_MS = 1000
 const STREAM_LAG_WARNING_THRESHOLD_MS = 10
-
-type CanvasInteractionMode = 'select' | 'pan'
 
 const showGallery = ref(false)
 const canvasInteractionMode = ref<CanvasInteractionMode>('select')
@@ -41,9 +38,6 @@ const displayedActualHz = ref(0)
 let streamStatusPollTimer: ReturnType<typeof setInterval> | null = null
 let displayedHzTimer: ReturnType<typeof setInterval> | null = null
 const { t } = useI18n()
-const DeviceManual = defineAsyncComponent(
-  () => import('@/components/virtual-device/DeviceManual.vue'),
-)
 
 const availableSignalCount = computed(() => signalCatalogStore.workbenchSignals.value.length)
 const hasAnySynthesisSignals = signalCatalogStore.hasSignalSourceReport
@@ -74,7 +68,19 @@ const hasCanvasDevices = computed(() => hardwareStore.state.value.canvas_devices
 const selectedDeviceCount = computed(() => selectedDeviceIds.value.length)
 const streamStatus = computed(() => hardwareStore.dataStreamStatus.value)
 const streamRunning = computed(() => streamStatus.value.running)
-const canApplySettings = computed(() => !streamBusy.value)
+const isHardwareConnected = computed(() => {
+  return Boolean(hardwareStore.state.value.device?.config.pcb_connected)
+})
+const canApplySettings = computed(() => {
+  return !streamBusy.value && streamRunning.value && isHardwareConnected.value
+})
+const canToggleStream = computed(() => {
+  if (streamRunning.value) {
+    return !streamBusy.value
+  }
+
+  return !streamBusy.value && isHardwareConnected.value
+})
 const actualHzLabel = computed(() => `${formatMetric(displayedActualHz.value)} Hz`)
 const galleryTitle = computed(() => {
   return showGallery.value ? t('hideComponentGallery') : t('openComponentGallery')
@@ -245,6 +251,10 @@ async function syncStreamConfig() {
 }
 
 async function applyStreamSettings() {
+  if (!canApplySettings.value) {
+    return
+  }
+
   streamBusy.value = true
   streamMessage.value = ''
 
@@ -268,6 +278,10 @@ async function applyStreamSettings() {
 }
 
 async function startStream() {
+  if (!canToggleStream.value || !isHardwareConnected.value) {
+    return
+  }
+
   streamBusy.value = true
   streamMessage.value = ''
 
@@ -456,149 +470,41 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="h-full flex flex-col bg-background">
-    <div class="h-12 border-b border-border bg-muted/20 px-4 flex items-center gap-3">
-      <div class="flex items-center gap-1">
-        <Button
-          type="button"
-          size="icon"
-          variant="outline"
-          :title="galleryTitle"
-          :aria-label="t('toggleComponentGallery')"
-          @pointerdown.stop
-          @click.stop="toggleGallery"
-        >
-          <LayoutGrid class="h-4 w-4" />
-        </Button>
-        <Button
-          type="button"
-          size="icon"
-          :variant="canvasInteractionMode === 'pan' ? 'default' : 'outline'"
-          :title="t('canvasPanTool')"
-          :aria-label="t('canvasPanTool')"
-          :aria-pressed="canvasInteractionMode === 'pan'"
-          @click="canvasInteractionMode = 'pan'"
-        >
-          <Hand class="h-4 w-4" />
-        </Button>
-        <Button
-          type="button"
-          size="icon"
-          :variant="canvasInteractionMode === 'select' ? 'default' : 'outline'"
-          :title="t('canvasSelectTool')"
-          :aria-label="t('canvasSelectTool')"
-          :aria-pressed="canvasInteractionMode === 'select'"
-          @click="canvasInteractionMode = 'select'"
-        >
-          <ScanSearch class="h-4 w-4" />
-        </Button>
-      </div>
-      <Badge variant="outline">
-        {{ streamRunning ? t('runningState') : t('stoppedState') }}
-      </Badge>
-      <Badge variant="outline">
-        {{ streamStatus.configured_signal_count || streamSignalNames.length }} /
-        {{ availableSignalCount }}
-        {{ t('portsUnit') }}
-      </Badge>
-      <Badge variant="outline">{{ actualHzLabel }}</Badge>
-      <div class="ml-auto flex items-center gap-2">
-        <Button
-          v-if="selectedDeviceCount > 0"
-          type="button"
-          size="sm"
-          variant="outline"
-          class="gap-2 text-destructive hover:text-destructive"
-          :disabled="streamBusy"
-          @click="deleteSelectedDevices"
-        >
-          <Trash2 class="h-4 w-4" />
-          {{ t('deleteSelected') }}
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          class="gap-2 text-destructive hover:text-destructive"
-          :disabled="streamBusy || !hasCanvasDevices"
-          @click="clearCanvas"
-        >
-          <Trash2 class="h-4 w-4" />
-          {{ t('clearCanvas') }}
-        </Button>
-        <div class="flex items-center gap-2 rounded-md border border-border bg-background px-2">
-          <span class="text-xs text-muted-foreground">Hz</span>
-          <Input
-            v-model="rateInput"
-            type="number"
-            min="0.1"
-            step="1"
-            class="h-8 w-24 border-0 bg-transparent px-0 text-right shadow-none focus-visible:ring-0"
-            @keydown.enter.prevent="canApplySettings && applyStreamSettings()"
-          />
-        </div>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          :disabled="!canApplySettings"
-          @click="applyStreamSettings"
-        >
-          {{ t('apply') }}
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          :variant="streamRunning ? 'destructive' : 'default'"
-          :disabled="streamBusy"
-          class="gap-2"
-          @click="streamRunning ? stopStream() : startStream()"
-        >
-          <Square v-if="streamRunning" class="h-4 w-4" />
-          <Play v-else class="h-4 w-4" />
-          {{ streamRunning ? t('stop') : t('start') }}
-        </Button>
-      </div>
-    </div>
+    <VirtualDeviceToolbar
+      :show-gallery="showGallery"
+      :interaction-mode="canvasInteractionMode"
+      :gallery-title="galleryTitle"
+      :stream-running="streamRunning"
+      :configured-signal-count="streamStatus.configured_signal_count"
+      :visible-signal-count="streamSignalNames.length"
+      :available-signal-count="availableSignalCount"
+      :actual-hz-label="actualHzLabel"
+      :selected-device-count="selectedDeviceCount"
+      :has-canvas-devices="hasCanvasDevices"
+      :stream-busy="streamBusy"
+      :rate-input="rateInput"
+      :can-apply-settings="canApplySettings"
+      :can-toggle-stream="canToggleStream"
+      @toggle-gallery="toggleGallery"
+      @update:interaction-mode="canvasInteractionMode = $event"
+      @update:rate-input="rateInput = $event"
+      @delete-selected="deleteSelectedDevices"
+      @clear-canvas="clearCanvas"
+      @apply-settings="applyStreamSettings"
+      @toggle-stream="streamRunning ? stopStream() : startStream()"
+    />
 
-    <div
-      v-if="
-        streamMessage ||
-        streamStatus.last_error ||
-        streamStatus.dropped_samples > 0 ||
-        shouldWarnStreamBacklog ||
-        streamSignalOverflow > 0 ||
-        (designContextStore.selectedSource.value && !hasAnySynthesisSignals) ||
-        hasStaleSynthesisSignals
-      "
-      class="border-b border-border bg-background px-4 py-2 text-xs text-muted-foreground"
-    >
-      <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
-        <span v-if="streamStatus.last_error" class="text-destructive">
-          {{ streamStatus.last_error }}
-        </span>
-        <span v-else-if="streamMessage" class="text-destructive">
-          {{ streamMessage }}
-        </span>
-        <span v-if="streamStatus.dropped_samples > 0" class="text-amber-600">
-          {{ t('streamDroppedWarning', { count: streamStatus.dropped_samples }) }}
-        </span>
-        <span v-if="shouldWarnStreamBacklog" class="text-amber-600">
-          {{ t('streamLagWarning', { ms: Math.round(streamScheduleLagMs) }) }}
-        </span>
-        <span v-if="streamSignalOverflow > 0" class="text-amber-600">
-          {{ t('streamOverflowWarning', { count: streamSignalOverflow }) }}
-        </span>
-        <span
-          v-if="designContextStore.selectedSource.value && !hasAnySynthesisSignals"
-          class="text-amber-600"
-        >
-          {{ t('workbenchRequiresSynthesisDescription') }}
-        </span>
-        <span v-else-if="hasStaleSynthesisSignals" class="text-amber-600">
-          {{ t('workbenchSynthesisOutdatedDescription') }}
-        </span>
-      </div>
-    </div>
+    <VirtualDeviceStatusBanner
+      :stream-message="streamMessage"
+      :stream-last-error="streamStatus.last_error"
+      :dropped-samples="streamStatus.dropped_samples"
+      :show-backlog-warning="shouldWarnStreamBacklog"
+      :stream-schedule-lag-ms="streamScheduleLagMs"
+      :stream-signal-overflow="streamSignalOverflow"
+      :has-selected-source="Boolean(designContextStore.selectedSource.value)"
+      :has-any-synthesis-signals="hasAnySynthesisSignals"
+      :has-stale-synthesis-signals="hasStaleSynthesisSignals"
+    />
 
     <div class="relative flex-1 min-h-0 overflow-hidden">
       <ComponentGallery :open="showGallery" @close="showGallery = false" />
@@ -626,35 +532,10 @@ onBeforeUnmount(() => {
       />
     </RightDrawer>
 
-    <Dialog :open="manualDialogOpen" @update:open="(open) => (!open ? closeManualDialog() : null)">
-      <DialogScrollContent
-        :show-close-button="false"
-        class="h-[90vh] max-h-[90vh] border-border/80 bg-background/98 p-0 sm:max-w-[1100px]"
-      >
-        <div class="flex h-full min-h-0 flex-col">
-          <Button
-            variant="outline"
-            size="icon"
-            class="absolute top-4 right-4 z-20 rounded-full bg-background/95 shadow-sm backdrop-blur"
-            @click="closeManualDialog"
-          >
-            <X class="h-4 w-4" />
-          </Button>
-
-          <div class="border-b border-border/70 px-6 py-5">
-            <div class="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
-              {{ manualDevice?.type }}
-            </div>
-            <DialogTitle class="mt-2 text-xl font-semibold">
-              {{ manualDevice?.label }} · {{ t('manual') }}
-            </DialogTitle>
-          </div>
-
-          <div class="min-h-0 flex-1 overflow-y-auto px-6 py-6">
-            <DeviceManual v-if="manualDevice" :device="manualDevice" />
-          </div>
-        </div>
-      </DialogScrollContent>
-    </Dialog>
+    <VirtualDeviceManualDialog
+      :open="manualDialogOpen"
+      :device="manualDevice"
+      @close="closeManualDialog"
+    />
   </div>
 </template>
