@@ -21,6 +21,7 @@ import {
 import { useI18n } from '@/lib/i18n'
 import { designContextStore } from '@/stores/design-context'
 import { projectStore } from '@/stores/project'
+import { topModuleDialogStore } from '@/stores/top-module-dialog'
 
 const props = defineProps<{
   disabled?: boolean
@@ -38,22 +39,8 @@ const selectedTopModule = computed(() => designContextStore.primaryModule.value)
 const hasProject = computed(() => projectStore.hasProject)
 const hasTopFile = computed(() => selectedSource.value !== null)
 const hasHardwareTopFile = computed(() => selectedSource.value?.isHardwareSource === true)
-const isDialogOpen = ref(false)
 const dialogTopFileId = ref('')
 const dialogTopModuleName = ref('')
-
-const detectedModuleSourceCount = computed(() => moduleSources.value.length)
-const detectedModuleCount = computed(() => {
-  return moduleSources.value.reduce((count, source) => count + source.moduleNames.length, 0)
-})
-
-const topModuleDisplay = computed(() => {
-  if (!hasHardwareTopFile.value || moduleNames.value.length === 0) {
-    return t('topModuleUnavailable')
-  }
-
-  return selectedTopModule.value
-})
 
 const helperText = computed(() => {
   if (!hasTopFile.value) {
@@ -101,7 +88,6 @@ const dialogModuleNames = computed(() => {
 const canOpenTopModuleDialog = computed(() => {
   return !props.disabled && hasProject.value
 })
-
 const canApplyDialogSelection = computed(() => {
   return (
     dialogTopFileId.value.trim().length > 0 &&
@@ -126,8 +112,16 @@ const triggerLabel = computed(() => {
   return selectedTopModule.value
 })
 
+const triggerTitle = computed(() => {
+  const summary = `${t('topModuleLabel')}: ${triggerLabel.value}`
+  const topFileSummary = `${t('topModuleTopFileLabel')}: ${hasTopFile.value ? sourceName.value : t('topFileNotSelected')}`
+  return [summary, topFileSummary, helperText.value].filter(Boolean).join(' · ')
+})
+
 function syncDialogState() {
+  const preferredSourceId = topModuleDialogStore.preferredSourceId.trim()
   const defaultSourceId =
+    topFileOptions.value.find((source) => source.id === preferredSourceId)?.id ??
     topFileOptions.value.find((source) => source.id === projectStore.topFileId)?.id ??
     topFileOptions.value[0]?.id ??
     ''
@@ -144,7 +138,7 @@ function syncDialogState() {
 
 function openTopModuleDialog() {
   syncDialogState()
-  isDialogOpen.value = true
+  topModuleDialogStore.open()
 }
 
 function applyDialogSelection() {
@@ -154,7 +148,7 @@ function applyDialogSelection() {
 
   projectStore.setTopFile(dialogTopFileId.value)
   projectStore.setTopModuleName(dialogTopModuleName.value)
-  isDialogOpen.value = false
+  topModuleDialogStore.close()
 }
 
 function resetToAutoDetectedModule() {
@@ -164,7 +158,7 @@ function resetToAutoDetectedModule() {
 
   projectStore.setTopFile(dialogTopFileId.value)
   projectStore.setTopModuleName('')
-  isDialogOpen.value = false
+  topModuleDialogStore.close()
 }
 
 watch(
@@ -180,26 +174,40 @@ watch(
     }
   },
 )
+
+watch(
+  () => [
+    topModuleDialogStore.isOpen,
+    topModuleDialogStore.preferredSourceId,
+    topFileOptions.value.length,
+  ],
+  ([isOpen]) => {
+    if (isOpen) {
+      syncDialogState()
+    }
+  },
+)
 </script>
 
 <template>
   <Button
     type="button"
-    size="sm"
-    variant="outline"
-    class="h-7 max-w-[180px] gap-1.5 px-2 text-xs"
-    :class="moduleNamesStale ? 'border-amber-500/30 text-amber-700' : ''"
+    variant="ghost"
+    size="icon"
+    class="h-7 w-7 shrink-0"
+    :class="moduleNamesStale ? 'text-amber-700 dark:text-amber-300' : ''"
     :disabled="!canOpenTopModuleDialog"
-    :title="helperText"
+    :title="triggerTitle"
+    :aria-label="triggerTitle"
     @click="openTopModuleDialog"
   >
-    <CircuitBoard class="h-3.5 w-3.5 shrink-0" />
-    <span class="truncate">
-      {{ triggerLabel }}
-    </span>
+    <CircuitBoard class="h-4 w-4" />
   </Button>
 
-  <Dialog :open="isDialogOpen" @update:open="isDialogOpen = $event">
+  <Dialog
+    :open="topModuleDialogStore.isOpen"
+    @update:open="(open) => (open ? topModuleDialogStore.open() : topModuleDialogStore.close())"
+  >
     <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-[760px]">
       <DialogHeader>
         <DialogTitle>{{ t('topModuleDialogTitle') }}</DialogTitle>
@@ -207,38 +215,6 @@ watch(
           {{ t('topModuleDialogDescription') }}
         </DialogDescription>
       </DialogHeader>
-
-      <div
-        class="grid gap-3 rounded-lg border border-border/70 bg-muted/30 p-3 text-sm sm:grid-cols-3"
-      >
-        <div>
-          <p class="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-            {{ t('topModuleTopFileLabel') }}
-          </p>
-          <p class="truncate font-mono text-xs">
-            {{ hasTopFile ? sourceName : t('topModuleUnavailable') }}
-          </p>
-        </div>
-        <div>
-          <p class="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-            {{ t('topModuleLabel') }}
-          </p>
-          <p class="truncate font-mono text-xs">{{ topModuleDisplay }}</p>
-        </div>
-        <div>
-          <p class="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-            {{
-              t('topModuleDetectedSummary', {
-                files: detectedModuleSourceCount,
-                modules: detectedModuleCount,
-              })
-            }}
-          </p>
-          <p class="text-xs" :class="moduleNamesStale ? 'text-amber-600' : 'text-muted-foreground'">
-            {{ helperText }}
-          </p>
-        </div>
-      </div>
 
       <div v-if="topFileOptions.length > 0" class="space-y-4">
         <div class="space-y-2">
@@ -296,7 +272,7 @@ watch(
           {{ t('topModuleUseAuto') }}
         </Button>
         <div class="flex gap-2">
-          <Button type="button" variant="outline" @click="isDialogOpen = false">
+          <Button type="button" variant="outline" @click="topModuleDialogStore.close()">
             {{ t('cancel') }}
           </Button>
           <Button type="button" :disabled="!canApplyDialogSelection" @click="applyDialogSelection">

@@ -215,12 +215,10 @@ function handleImportFiles() {
                   >
                     <FolderOpen class="h-4 w-4" />
                   </Button>
+                  <TopModuleSelect v-if="rootNode" />
                 </div>
               </div>
               <div class="min-h-0 flex-1 overflow-hidden">
-                <div v-if="rootNode" class="mx-2 mb-2">
-                  <TopModuleSelect />
-                </div>
                 <ProjectExplorer />
               </div>
             </SidebarGroup>

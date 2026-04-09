@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import {
   CircuitBoard,
   Folder,
@@ -13,25 +13,10 @@ import {
 } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { useI18n } from '@/lib/i18n'
 import { extractVerilogModuleNames } from '@/lib/verilog-modules'
 import { projectStore, type ProjectNode } from '@/stores/project'
+import { topModuleDialogStore } from '@/stores/top-module-dialog'
 import { requestProjectTextInput } from '@/stores/project-text-input'
 import { settingsStore } from '@/stores/settings'
 import {
@@ -49,8 +34,6 @@ const props = defineProps<{
 
 const router = useRouter()
 const { t } = useI18n()
-const isTopModuleDialogOpen = ref(false)
-const pendingTopModuleName = ref('')
 
 const nodeModuleNames = computed(() => {
   if (props.node.type !== 'file' || !isHardwareSourceFile(props.node.name)) {
@@ -158,42 +141,24 @@ function requestSetAsTopFile() {
   deferContextAction(setAsTopFile)
 }
 
-function applyTopSelection(moduleName: string) {
-  projectStore.setTopFile(props.node.id)
-  projectStore.setTopModuleName(moduleName)
-}
-
 function setAsTopFile() {
   if (props.node.type !== 'file') {
     return
   }
 
+  projectStore.setTopFile(props.node.id)
+
   if (nodeModuleNames.value.length > 1) {
-    const currentTopModule =
-      projectStore.topFileId === props.node.id ? projectStore.topModuleName.trim() : ''
-    pendingTopModuleName.value = nodeModuleNames.value.includes(currentTopModule)
-      ? currentTopModule
-      : (nodeModuleNames.value[0] ?? '')
-    isTopModuleDialogOpen.value = true
+    topModuleDialogStore.open(props.node.id)
     return
   }
 
   if (nodeModuleNames.value.length === 1) {
-    applyTopSelection(nodeModuleNames.value[0] ?? '')
+    projectStore.setTopModuleName(nodeModuleNames.value[0] ?? '')
     return
   }
 
-  projectStore.setTopFile(props.node.id)
   projectStore.setTopModuleName('')
-}
-
-function applyTopSelectionFromDialog() {
-  if (!pendingTopModuleName.value) {
-    return
-  }
-
-  applyTopSelection(pendingTopModuleName.value)
-  isTopModuleDialogOpen.value = false
 }
 </script>
 
@@ -264,51 +229,4 @@ function applyTopSelectionFromDialog() {
       <TreeNode v-for="child in node.children" :key="child.id" :node="child" />
     </div>
   </div>
-
-  <Dialog :open="isTopModuleDialogOpen" @update:open="isTopModuleDialogOpen = $event">
-    <DialogContent class="sm:max-w-[520px]">
-      <DialogHeader>
-        <DialogTitle>{{ t('topModuleDialogTitle') }}</DialogTitle>
-        <DialogDescription>
-          {{ t('topModuleDialogChooseFromFile') }}
-        </DialogDescription>
-      </DialogHeader>
-
-      <div class="space-y-3">
-        <p class="text-xs text-muted-foreground">
-          {{ t('topModuleSourceHint', { name: node.name }) }}
-        </p>
-        <div class="space-y-2">
-          <p class="text-sm font-medium">{{ t('topModuleLabel') }}</p>
-          <Select v-model="pendingTopModuleName">
-            <SelectTrigger class="w-full">
-              <SelectValue :placeholder="t('selectTopModule')" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem
-                v-for="moduleName in nodeModuleNames"
-                :key="moduleName"
-                :value="moduleName"
-              >
-                <span class="font-mono text-xs">{{ moduleName }}</span>
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <DialogFooter>
-        <Button type="button" variant="outline" @click="isTopModuleDialogOpen = false">
-          {{ t('cancel') }}
-        </Button>
-        <Button
-          type="button"
-          :disabled="pendingTopModuleName.length === 0"
-          @click="applyTopSelectionFromDialog"
-        >
-          {{ t('topModuleApply') }}
-        </Button>
-      </DialogFooter>
-    </DialogContent>
-  </Dialog>
 </template>
