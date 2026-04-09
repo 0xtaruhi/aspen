@@ -6,9 +6,13 @@ use std::{
 
 use tauri::{AppHandle, Emitter};
 
-use super::{artifacts::quote_yosys_path, now_millis, SynthesisLogChunkV1, FDE_LUT_WIDTH};
+use super::{
+    artifacts::{quote_yosys_path, quote_yosys_workdir_path},
+    now_millis, SynthesisLogChunkV1, FDE_LUT_WIDTH,
+};
 
 pub(super) struct YosysScriptInput<'a> {
+    pub workdir: &'a Path,
     pub fde_simlib: &'a Path,
     pub fde_bram_lib: &'a Path,
     pub fde_bram_map: &'a Path,
@@ -24,7 +28,7 @@ pub(super) fn build_yosys_script(input: YosysScriptInput<'_>) -> String {
     let quoted_sources = input
         .source_paths
         .iter()
-        .map(|path| quote_yosys_path(path))
+        .map(|path| quote_yosys_workdir_path(input.workdir, path))
         .collect::<Vec<_>>()
         .join(" ");
 
@@ -91,8 +95,8 @@ write_json {}\n",
         FDE_LUT_WIDTH,
         FDE_LUT_WIDTH,
         quote_yosys_path(input.fde_cells_map),
-        quote_yosys_path(input.edif_path),
-        quote_yosys_path(input.netlist_path),
+        quote_yosys_workdir_path(input.workdir, input.edif_path),
+        quote_yosys_workdir_path(input.workdir, input.netlist_path),
     )
 }
 

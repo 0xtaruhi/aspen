@@ -98,6 +98,7 @@ where
     }
 
     let script = build_yosys_script(YosysScriptInput {
+        workdir,
         fde_simlib: toolchain.fde_simlib,
         fde_bram_lib: toolchain.fde_bram_lib,
         fde_bram_map: toolchain.fde_bram_map,

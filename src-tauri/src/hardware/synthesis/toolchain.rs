@@ -5,7 +5,7 @@ use std::{
 };
 
 #[cfg(target_os = "windows")]
-use std::ffi::OsString;
+use std::os::windows::process::CommandExt;
 
 use tauri::{path::BaseDirectory, AppHandle, Manager};
 
@@ -53,6 +53,16 @@ pub(super) fn spawn_yosys_process(
     script_path: &Path,
     workdir: &Path,
 ) -> std::io::Result<std::process::Child> {
+    #[cfg(target_os = "windows")]
+    if let Some(environment_batch) = resolve_yosys_environment(toolchain.yosys_bin) {
+        return spawn_windows_yosys_process(
+            &environment_batch,
+            toolchain.yosys_bin,
+            script_path,
+            workdir,
+        );
+    }
+
     let mut command = Command::new(toolchain.yosys_bin);
     command
         .arg("-s")
@@ -65,14 +75,6 @@ pub(super) fn spawn_yosys_process(
 }
 
 fn configure_yosys_runtime_env(command: &mut Command, yosys_bin: &Path) {
-    #[cfg(target_os = "windows")]
-    if let Some(environment_batch) = resolve_yosys_environment(yosys_bin) {
-        if let Some(environment) = resolve_windows_environment_from_batch(&environment_batch) {
-            command.envs(environment);
-            return;
-        }
-    }
-
     let Some(bin_dir) = yosys_bin.parent() else {
         return;
     };
@@ -105,61 +107,45 @@ fn resolve_yosys_environment(yosys_bin: &Path) -> Option<PathBuf> {
 }
 
 #[cfg(target_os = "windows")]
-fn resolve_windows_environment_from_batch(
+fn spawn_windows_yosys_process(
     environment_batch: &Path,
-) -> Option<Vec<(OsString, OsString)>> {
-    let command = format!("call \"{}\" >nul && set", environment_batch.display());
-    let output = Command::new("cmd")
-        .arg("/u")
+    yosys_bin: &Path,
+    script_path: &Path,
+    workdir: &Path,
+) -> std::io::Result<std::process::Child> {
+    let script_argument = resolve_windows_script_argument(script_path, workdir);
+    let mut command = Command::new("cmd");
+    command
         .arg("/d")
         .arg("/c")
-        .arg(command)
+        .raw_arg(format!(
+            "call {} >nul 2>nul & {} -s {}",
+            quote_windows_cmd_path(environment_batch),
+            quote_windows_cmd_path(yosys_bin),
+            quote_windows_cmd_path(&script_argument),
+        ))
+        .current_dir(workdir)
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-
-    if !output.status.success() {
-        return None;
-    }
-
-    let environment = decode_cmd_unicode_output(&output.stdout)?;
-    let mut variables = Vec::new();
-    for line in environment.lines() {
-        let trimmed = line.trim_end_matches('\r');
-        let Some(split) = trimmed.find('=') else {
-            continue;
-        };
-        if split == 0 {
-            continue;
-        }
-        variables.push((
-            OsString::from(&trimmed[..split]),
-            OsString::from(&trimmed[split + 1..]),
-        ));
-    }
-
-    Some(variables)
+        .stderr(Stdio::piped());
+    command.spawn()
 }
 
 #[cfg(target_os = "windows")]
-fn decode_cmd_unicode_output(buffer: &[u8]) -> Option<String> {
-    if buffer.is_empty() {
-        return Some(String::new());
-    }
+fn quote_windows_cmd_path(path: &Path) -> String {
+    format!("\"{}\"", path.display())
+}
 
-    let bytes = if buffer.starts_with(&[0xff, 0xfe]) {
-        &buffer[2..]
-    } else {
-        buffer
-    };
-    let even_length = bytes.len() - (bytes.len() % 2);
-    let utf16 = bytes[..even_length]
-        .chunks_exact(2)
-        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
-        .collect::<Vec<_>>();
-
-    String::from_utf16(&utf16).ok()
+#[cfg(target_os = "windows")]
+fn resolve_windows_script_argument(script_path: &Path, workdir: &Path) -> PathBuf {
+    script_path
+        .strip_prefix(workdir)
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            script_path
+                .file_name()
+                .map(PathBuf::from)
+                .unwrap_or_else(|| script_path.to_path_buf())
+        })
 }
 
 pub(super) fn resolve_fde_support_file(

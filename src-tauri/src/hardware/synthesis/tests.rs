@@ -396,6 +396,7 @@ endmodule
 #[test]
 fn build_yosys_script_runs_bram_mapping_before_memory_map() {
     let script = process::build_yosys_script(process::YosysScriptInput {
+        workdir: PathBuf::from("/tmp").as_path(),
         fde_simlib: PathBuf::from("/tmp/fdesimlib.v").as_path(),
         fde_bram_lib: PathBuf::from("/tmp/brams.txt").as_path(),
         fde_bram_map: PathBuf::from("/tmp/brams_map.v").as_path(),

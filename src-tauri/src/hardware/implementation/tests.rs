@@ -11,7 +11,7 @@ use std::{
 };
 
 #[cfg(target_os = "windows")]
-use std::ffi::OsString;
+use std::os::windows::process::CommandExt;
 
 const TEST_BUNDLED_YOSYS_DIR: &str = "vendor/yosys";
 const TEST_YOSYS_SUPPORT_DIR: &str = "resource/yosys-fde";
@@ -148,12 +148,41 @@ write_edif {}\n",
     )
     .map_err(|err| err.to_string())?;
 
-    let mut command = if cfg!(target_os = "windows") {
-        let mut command = Command::new(&yosys_bin);
-        command.arg("-s").arg(&script_path);
-        configure_test_yosys_runtime_env(&mut command, &yosys_bin);
-        command
-    } else {
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        if let Some(environment_batch) = yosys_bin
+            .parent()
+            .and_then(Path::parent)
+            .map(|root| root.join("environment.bat"))
+            .filter(|path| path.is_file())
+        {
+            let script_argument = script_path
+                .strip_prefix(workdir)
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| {
+                    script_path
+                        .file_name()
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|| script_path.clone())
+                });
+            let mut command = Command::new("cmd");
+            command.arg("/d").arg("/c").raw_arg(format!(
+                "call {} >nul 2>nul & {} -s {}",
+                quote_test_windows_cmd_path(&environment_batch),
+                quote_test_windows_cmd_path(&yosys_bin),
+                quote_test_windows_cmd_path(&script_argument),
+            ));
+            command
+        } else {
+            let mut command = Command::new(&yosys_bin);
+            command.arg("-s").arg(&script_path);
+            configure_test_yosys_runtime_env(&mut command, &yosys_bin);
+            command
+        }
+    };
+
+    #[cfg(not(target_os = "windows"))]
+    let mut command = {
         let mut command = Command::new(&yosys_bin);
         command.arg("-s").arg(&script_path);
         command
@@ -177,20 +206,8 @@ write_edif {}\n",
     Ok(edif_path)
 }
 
+#[allow(dead_code)]
 fn configure_test_yosys_runtime_env(command: &mut Command, yosys_bin: &Path) {
-    #[cfg(target_os = "windows")]
-    if let Some(environment_batch) = yosys_bin
-        .parent()
-        .and_then(Path::parent)
-        .map(|root| root.join("environment.bat"))
-        .filter(|path| path.is_file())
-    {
-        if let Some(environment) = resolve_windows_environment_from_batch(&environment_batch) {
-            command.envs(environment);
-            return;
-        }
-    }
-
     let Some(bin_dir) = yosys_bin.parent() else {
         return;
     };
@@ -214,61 +231,8 @@ fn configure_test_yosys_runtime_env(command: &mut Command, yosys_bin: &Path) {
 }
 
 #[cfg(target_os = "windows")]
-fn resolve_windows_environment_from_batch(
-    environment_batch: &Path,
-) -> Option<Vec<(OsString, OsString)>> {
-    let command = format!("call \"{}\" >nul && set", environment_batch.display());
-    let output = Command::new("cmd")
-        .arg("/u")
-        .arg("/d")
-        .arg("/c")
-        .arg(command)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-
-    if !output.status.success() {
-        return None;
-    }
-
-    let environment = decode_cmd_unicode_output(&output.stdout)?;
-    let mut variables = Vec::new();
-    for line in environment.lines() {
-        let trimmed = line.trim_end_matches('\r');
-        let Some(split) = trimmed.find('=') else {
-            continue;
-        };
-        if split == 0 {
-            continue;
-        }
-        variables.push((
-            OsString::from(&trimmed[..split]),
-            OsString::from(&trimmed[split + 1..]),
-        ));
-    }
-
-    Some(variables)
-}
-
-#[cfg(target_os = "windows")]
-fn decode_cmd_unicode_output(buffer: &[u8]) -> Option<String> {
-    if buffer.is_empty() {
-        return Some(String::new());
-    }
-
-    let bytes = if buffer.starts_with(&[0xff, 0xfe]) {
-        &buffer[2..]
-    } else {
-        buffer
-    };
-    let even_length = bytes.len() - (bytes.len() % 2);
-    let utf16 = bytes[..even_length]
-        .chunks_exact(2)
-        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
-        .collect::<Vec<_>>();
-
-    String::from_utf16(&utf16).ok()
+fn quote_test_windows_cmd_path(path: &Path) -> String {
+    format!("\"{}\"", path.display())
 }
 
 fn test_resource_paths() -> toolchain::ImplementationResourcePaths {
