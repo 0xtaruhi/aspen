@@ -62,9 +62,11 @@ fn run() -> Result<i32, String> {
         device.device_id = plugged.device_id;
     }
 
-    let mut prepare_options = wdi_rs::PrepareDriverOptions::default();
-    prepare_options.driver_type = wdi_rs::DriverType::WinUsb;
-    prepare_options.vendor_name = Some(DEFAULT_VENDOR_NAME.to_string());
+    let prepare_options = wdi_rs::PrepareDriverOptions {
+        driver_type: wdi_rs::DriverType::WinUsb,
+        vendor_name: Some(DEFAULT_VENDOR_NAME.to_string()),
+        ..Default::default()
+    };
 
     let install_options = wdi_rs::InstallDriverOptions {
         pending_install_timeout: options.pending_install_timeout_ms,
@@ -73,9 +75,9 @@ fn run() -> Result<i32, String> {
 
     let package_dir_str = package_dir.to_string_lossy().to_string();
     wdi_rs::set_log_level(if options.quiet {
-        wdi_rs::LogLevel::None
+        log::LevelFilter::Off.into()
     } else {
-        wdi_rs::LogLevel::Warning
+        log::LevelFilter::Info.into()
     })
     .map_err(format_wdi_error)?;
 

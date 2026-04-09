@@ -6,4 +6,5 @@ edition = "2021"
 [dependencies]
 
 [target.'cfg(target_os = "windows")'.dependencies]
+log = "0.4"
 wdi-rs = "0.1"
