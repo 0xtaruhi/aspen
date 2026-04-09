@@ -20,6 +20,7 @@ import {
   hardwareGetState,
   listenHardwareDataBatchBinary,
   listenHardwareDataCatalog,
+  listenHardwareDataStreamStatus,
   listenHardwareDeviceSnapshot,
   listenHardwareStateChanged,
   setHardwareDataStreamRate,
@@ -91,6 +92,7 @@ let unlistenHotplug: UnlistenFn | null = null
 let unlistenDataBatch: UnlistenFn | null = null
 let unlistenDataCatalog: UnlistenFn | null = null
 let unlistenDeviceSnapshot: UnlistenFn | null = null
+let unlistenDataStreamStatus: UnlistenFn | null = null
 let telemetryRafId: number | null = null
 let telemetryFlushTimerId: ReturnType<typeof setTimeout> | null = null
 
@@ -101,6 +103,8 @@ let pendingDataBatchMeta: Pick<
   HardwareDataStreamStatusV1,
   | 'sequence'
   | 'dropped_samples'
+  | 'actual_hz'
+  | 'transfer_rate_hz'
   | 'queue_fill'
   | 'queue_capacity'
   | 'last_batch_at_ms'
@@ -188,6 +192,8 @@ function flushTelemetry() {
     dataStreamStatus.value.running = true
     dataStreamStatus.value.sequence = pendingDataBatchMeta.sequence
     dataStreamStatus.value.dropped_samples = pendingDataBatchMeta.dropped_samples
+    dataStreamStatus.value.actual_hz = pendingDataBatchMeta.actual_hz
+    dataStreamStatus.value.transfer_rate_hz = pendingDataBatchMeta.transfer_rate_hz
     dataStreamStatus.value.queue_fill = pendingDataBatchMeta.queue_fill
     dataStreamStatus.value.queue_capacity = pendingDataBatchMeta.queue_capacity
     dataStreamStatus.value.last_batch_at_ms = pendingDataBatchMeta.last_batch_at_ms
@@ -250,8 +256,9 @@ function onDataBatchBinary(batch: HardwareDataBatchBinaryV1) {
 
   const bytes = new Uint8Array(batch.payload)
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-  const expectedHeaderBytes = 32
-  if (view.byteLength < expectedHeaderBytes) {
+  const expectedHeaderBytesLegacy = 32
+  const expectedHeaderBytesCurrent = 48
+  if (view.byteLength < expectedHeaderBytesLegacy) {
     return
   }
 
@@ -262,6 +269,17 @@ function onDataBatchBinary(batch: HardwareDataBatchBinaryV1) {
   offset += 8
   const droppedSamples = toSafeNumberFromU64(view.getBigUint64(offset, true))
   offset += 8
+  const hasRateHeader = batch.version >= 2 && view.byteLength >= expectedHeaderBytesCurrent
+  const actualHz = hasRateHeader ? view.getFloat64(offset, true) : dataStreamStatus.value.actual_hz
+  if (hasRateHeader) {
+    offset += 8
+  }
+  const transferRateHz = hasRateHeader
+    ? view.getFloat64(offset, true)
+    : dataStreamStatus.value.transfer_rate_hz
+  if (hasRateHeader) {
+    offset += 8
+  }
   const queueFill = view.getUint16(offset, true)
   offset += 2
   const queueCapacity = view.getUint16(offset, true)
@@ -272,6 +290,7 @@ function onDataBatchBinary(batch: HardwareDataBatchBinaryV1) {
   offset += 2
 
   const bytesPerUpdate = 9
+  const expectedHeaderBytes = hasRateHeader ? expectedHeaderBytesCurrent : expectedHeaderBytesLegacy
   const expectedBytes = expectedHeaderBytes + updateCount * bytesPerUpdate
   if (view.byteLength < expectedBytes) {
     return
@@ -304,6 +323,8 @@ function onDataBatchBinary(batch: HardwareDataBatchBinaryV1) {
   pendingDataBatchMeta = {
     sequence,
     dropped_samples: droppedSamples,
+    actual_hz: actualHz,
+    transfer_rate_hz: transferRateHz,
     queue_fill: queueFill,
     queue_capacity: queueCapacity,
     last_batch_at_ms: generatedAtMs,
@@ -447,16 +468,12 @@ export async function start() {
   try {
     await syncState()
 
-    try {
-      await refreshDataStreamStatus()
-    } catch (err) {
-      if (!isTauriUnavailable(err)) {
-        throw err
-      }
-    }
-
     unlistenStateChanged = await listenHardwareStateChanged((event: HardwareEventV1) => {
       applyHardwareState(event.state)
+    })
+
+    unlistenDataStreamStatus = await listenHardwareDataStreamStatus((status) => {
+      applyDataStreamStatus(status)
     })
 
     unlistenDataCatalog = await listenHardwareDataCatalog((catalog) => {
@@ -476,12 +493,24 @@ export async function start() {
         event.payload.kind === 'arrived' ? translate('deviceConnected') : translate('deviceRemoved')
     })
 
+    try {
+      await refreshDataStreamStatus()
+    } catch (err) {
+      if (!isTauriUnavailable(err)) {
+        throw err
+      }
+    }
+
     await invoke('start_hotplug_watch')
     isStarted.value = true
   } catch (err) {
     if (unlistenStateChanged) {
       unlistenStateChanged()
       unlistenStateChanged = null
+    }
+    if (unlistenDataStreamStatus) {
+      unlistenDataStreamStatus()
+      unlistenDataStreamStatus = null
     }
     if (unlistenDataBatch) {
       unlistenDataBatch()
@@ -523,6 +552,10 @@ export async function stop() {
     if (unlistenStateChanged) {
       unlistenStateChanged()
       unlistenStateChanged = null
+    }
+    if (unlistenDataStreamStatus) {
+      unlistenDataStreamStatus()
+      unlistenDataStreamStatus = null
     }
     if (unlistenDataBatch) {
       unlistenDataBatch()
@@ -618,7 +651,6 @@ export async function setDataStreamRate(rateHz: number) {
 export async function startDataStream() {
   try {
     await startHardwareDataStream()
-    await refreshDataStreamStatus()
   } catch (err) {
     if (isTauriUnavailable(err)) {
       applyDataStreamStatus({

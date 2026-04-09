@@ -546,6 +546,14 @@ export async function listenHardwareDataBatchBinary(
   })
 }
 
+export async function listenHardwareDataStreamStatus(
+  callback: (status: HardwareDataStreamStatusV1) => void,
+): Promise<UnlistenFn> {
+  return listen<HardwareDataStreamStatusV1>('hardware:data_stream_status_changed', (event) => {
+    callback(event.payload)
+  })
+}
+
 export async function listenHardwareDataCatalog(
   callback: (catalog: HardwareDataSignalCatalogV1) => void,
 ): Promise<UnlistenFn> {

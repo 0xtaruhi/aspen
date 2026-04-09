@@ -47,6 +47,7 @@ const DATA_DEFAULT_MAX_WAIT_US: u32 = 2_000;
 const DATA_DEFAULT_CLOCK_HIGH_DELAY: u16 = 4;
 const DATA_DEFAULT_CLOCK_LOW_DELAY: u16 = 4;
 const DATA_RATE_WINDOW: Duration = Duration::from_millis(1000);
+const DATA_STREAM_STATUS_CHANGED_EVENT: &str = "hardware:data_stream_status_changed";
 
 struct HardwareDataStreamSession {
     stop_flag: Arc<AtomicBool>,
@@ -57,6 +58,8 @@ struct StreamDecodeBatch {
     sequence: u64,
     generated_at_ms: u64,
     dropped_samples: u64,
+    actual_hz: f64,
+    transfer_rate_hz: f64,
     queue_fill: u16,
     queue_capacity: u16,
     batch_cycles: u16,
@@ -114,6 +117,8 @@ struct PendingSignalBatchMeta {
     sequence: u64,
     generated_at_ms: u64,
     dropped_samples: u64,
+    actual_hz: f64,
+    transfer_rate_hz: f64,
     queue_fill: u16,
     queue_capacity: u16,
     batch_cycles: u32,
@@ -124,6 +129,7 @@ pub struct HardwareRuntime {
     data_stream: Mutex<Option<HardwareDataStreamSession>>,
     data_stream_config: Arc<Mutex<HardwareDataStreamConfigV1>>,
     data_stream_status: Mutex<HardwareDataStreamStatusV1>,
+    app_handle: Mutex<Option<AppHandle>>,
 }
 
 impl Default for HardwareRuntime {
@@ -151,11 +157,18 @@ impl Default for HardwareRuntime {
                 configured_signal_count: 0,
                 last_error: None,
             }),
+            app_handle: Mutex::new(None),
         }
     }
 }
 
 impl HardwareRuntime {
+    pub fn attach_app_handle(&self, app: AppHandle) {
+        if let Ok(mut guard) = self.app_handle.lock() {
+            *guard = Some(app);
+        }
+    }
+
     pub fn snapshot(&self) -> Result<HardwareStateV1, String> {
         let state = self
             .state
@@ -675,12 +688,52 @@ impl HardwareRuntime {
     where
         F: FnOnce(&mut HardwareDataStreamStatusV1),
     {
-        let mut guard = self
-            .data_stream_status
-            .lock()
-            .map_err(|_| "failed to acquire data stream status mutex".to_string())?;
-        mutator(&mut guard);
+        let (previous_status, next_status) = {
+            let mut guard = self
+                .data_stream_status
+                .lock()
+                .map_err(|_| "failed to acquire data stream status mutex".to_string())?;
+            let previous_status = guard.clone();
+            mutator(&mut guard);
+            (previous_status, guard.clone())
+        };
+
+        if Self::should_emit_data_stream_status_event(&previous_status, &next_status) {
+            let app = self
+                .app_handle
+                .lock()
+                .map_err(|_| "failed to acquire app handle mutex".to_string())?
+                .clone();
+            if let Some(app) = app {
+                self.emit_data_stream_status(&app, &next_status)?;
+            }
+        }
+
         Ok(())
+    }
+
+    fn emit_data_stream_status(
+        &self,
+        app: &AppHandle,
+        status: &HardwareDataStreamStatusV1,
+    ) -> Result<(), String> {
+        app.emit(DATA_STREAM_STATUS_CHANGED_EVENT, status.clone())
+            .map_err(|err| err.to_string())
+    }
+
+    fn should_emit_data_stream_status_event(
+        previous: &HardwareDataStreamStatusV1,
+        next: &HardwareDataStreamStatusV1,
+    ) -> bool {
+        previous.running != next.running
+            || (previous.target_hz - next.target_hz).abs() > f64::EPSILON
+            || previous.words_per_cycle != next.words_per_cycle
+            || previous.min_batch_cycles != next.min_batch_cycles
+            || previous.max_wait_us != next.max_wait_us
+            || previous.vericomm_clock_high_delay != next.vericomm_clock_high_delay
+            || previous.vericomm_clock_low_delay != next.vericomm_clock_low_delay
+            || previous.configured_signal_count != next.configured_signal_count
+            || previous.last_error != next.last_error
     }
 
     fn probe_failure_phase(message: &str) -> HardwarePhase {

@@ -369,7 +369,15 @@ fn stop_hotplug_watch(state: tauri::State<'_, Arc<HotplugState>>) -> Result<(), 
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let hardware_runtime = Arc::new(HardwareRuntime::default());
     let builder = tauri::Builder::default()
+        .setup({
+            let hardware_runtime = Arc::clone(&hardware_runtime);
+            move |app| {
+                hardware_runtime.attach_app_handle(app.handle().clone());
+                Ok(())
+            }
+        })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(
@@ -379,7 +387,7 @@ pub fn run() {
         )
         .manage(Arc::new(app_update::PendingUpdateState::default()))
         .manage(Arc::new(HotplugState::default()))
-        .manage(Arc::new(HardwareRuntime::default()))
+        .manage(hardware_runtime)
         .invoke_handler(tauri::generate_handler![
             greet,
             app_update::app_get_update_capability,
