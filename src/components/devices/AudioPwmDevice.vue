@@ -117,27 +117,26 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="flex h-full w-full flex-col gap-3 p-3">
-    <div class="rounded-md border border-border/70 bg-muted/25 px-3 py-2">
-      <div class="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-        {{ t('audioPwm') }}
-      </div>
-      <div class="mt-2 flex items-end justify-between gap-3">
+  <div class="flex h-full w-full flex-col justify-between gap-3 px-3 py-3">
+    <div class="flex items-start justify-between gap-3">
+      <div class="min-w-0">
         <div class="text-lg font-semibold tabular-nums text-foreground">
           {{ displayFrequency }}
         </div>
-        <div class="text-xs font-mono text-muted-foreground">
-          {{ props.isOn ? t('high') : t('low') }}
-        </div>
+        <div class="mt-1 text-xs font-mono text-muted-foreground">DUTY {{ displayDuty }}</div>
       </div>
-      <div class="mt-1 text-xs font-mono text-muted-foreground">DUTY {{ displayDuty }}</div>
+      <div
+        class="shrink-0 rounded-sm border border-border/70 bg-muted/30 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground"
+      >
+        {{ props.isOn ? t('high') : t('low') }}
+      </div>
     </div>
 
-    <div class="grid grid-cols-10 gap-1 rounded-md border border-border/70 bg-background/70 p-2">
+    <div class="grid grid-cols-10 gap-1.5">
       <div
         v-for="(lit, index) in bars"
         :key="index"
-        class="h-8 rounded-sm border border-zinc-800 transition-colors"
+        class="h-9 rounded-sm border border-zinc-800 transition-colors"
         :class="lit ? 'bg-emerald-500/80 shadow-[0_0_12px_rgba(16,185,129,0.35)]' : 'bg-zinc-900'"
       />
     </div>

@@ -72,6 +72,11 @@ fn fill_write_frame(
 }
 
 #[test]
+fn default_hardware_state_starts_with_empty_canvas() {
+    assert!(HardwareStateV1::default().canvas_devices.is_empty());
+}
+
+#[test]
 fn aggregate_data_samples_tracks_latest_ratio_and_edges() {
     let mut queue = VecDeque::from([
         sample(&[(1, false), (2, true)]),
@@ -113,24 +118,34 @@ fn collect_data_sample_prefers_drivers_and_keeps_receiver_fallback() {
 
     {
         let mut state = runtime.state.lock().unwrap();
-        let switch = state
-            .canvas_devices
-            .iter_mut()
-            .find(|item| item.r#type == CanvasDeviceType::Switch)
-            .unwrap();
-        switch
-            .state
-            .set_single_signal(Some("sig_driven".to_string()));
-        switch.state.is_on = true;
-
-        let led = state
-            .canvas_devices
-            .iter_mut()
-            .find(|item| item.r#type == CanvasDeviceType::Led)
-            .unwrap();
-        led.state.set_single_signal(Some("sig_driven".to_string()));
-        led.state.is_on = false;
-
+        state.canvas_devices.push(CanvasDeviceSnapshot {
+            id: "switch-driven".to_string(),
+            r#type: CanvasDeviceType::Switch,
+            x: 0.0,
+            y: 0.0,
+            label: "Switch Driven".to_string(),
+            state: CanvasDeviceStateSnapshot {
+                is_on: true,
+                color: None,
+                binding: single_binding(Some("sig_driven")),
+                config: no_config(),
+                data: no_data(),
+            },
+        });
+        state.canvas_devices.push(CanvasDeviceSnapshot {
+            id: "led-driven".to_string(),
+            r#type: CanvasDeviceType::Led,
+            x: 0.0,
+            y: 0.0,
+            label: "LED Driven".to_string(),
+            state: CanvasDeviceStateSnapshot {
+                is_on: false,
+                color: Some("red".to_string()),
+                binding: single_binding(Some("sig_driven")),
+                config: no_config(),
+                data: no_data(),
+            },
+        });
         state.canvas_devices.push(CanvasDeviceSnapshot {
             id: "led-extra".to_string(),
             r#type: CanvasDeviceType::Led,

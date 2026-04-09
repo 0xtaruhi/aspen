@@ -852,7 +852,7 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
     dropAliases: ['audio_pwm', 'audio', 'buzzer'],
     defaultState: () => createDefaultState({ binding: createSingleBinding() }),
     toRendererProps: () => ({}),
-    getShellSize: () => ({ width: 260, height: 140 }),
+    getShellSize: () => ({ width: 260, height: 160 }),
     emitsToggle: false,
     capabilities: { drivesSignal: false, receivesSignal: true },
   },
