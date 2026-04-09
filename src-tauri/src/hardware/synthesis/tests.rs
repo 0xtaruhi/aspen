@@ -194,6 +194,60 @@ endmodule
 }
 
 #[test]
+fn yosys_smoke_test_supports_non_ascii_workdir_paths() {
+    let Some(toolchain) = bundled_synthesis_toolchain() else {
+        return;
+    };
+
+    let request = SynthesisRequestV1 {
+        op_id: "unicode-op".to_string(),
+        project_name: Some("项目".to_string()),
+        project_dir: None,
+        top_module: "top".to_string(),
+        files: vec![SynthesisSourceFileV1 {
+            path: "rtl/子模块/top.v".to_string(),
+            content: r#"
+module top(
+    input wire a,
+    input wire b,
+    output wire y
+);
+    assign y = a ^ b;
+endmodule
+"#
+            .trim()
+            .to_string(),
+        }],
+    };
+    let generated_at_ms = now_millis().unwrap();
+    let workdir = std::env::temp_dir().join(format!(
+        "aspen-yosys-测试-{}-{}",
+        std::process::id(),
+        generated_at_ms
+    ));
+    fs::create_dir_all(&workdir).unwrap();
+
+    let report = run_yosys_in_workdir(
+        &toolchain,
+        &workdir,
+        &request,
+        generated_at_ms,
+        Instant::now(),
+        |_| {},
+    )
+    .unwrap();
+    let _ = fs::remove_dir_all(&workdir);
+
+    assert!(report.success, "{}", report.log);
+    assert!(report
+        .artifacts
+        .as_ref()
+        .and_then(|artifacts| artifacts.edif_path.as_ref())
+        .is_some());
+    assert!(report.stats.cell_count > 0, "{}", report.log);
+}
+
+#[test]
 fn yosys_smoke_test_lowers_division_and_modulo_into_supported_cells() {
     let Some(toolchain) = bundled_synthesis_toolchain() else {
         return;

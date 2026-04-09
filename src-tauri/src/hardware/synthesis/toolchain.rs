@@ -4,6 +4,9 @@ use std::{
     process::{Command, Stdio},
 };
 
+#[cfg(target_os = "windows")]
+use std::ffi::OsString;
+
 use tauri::{path::BaseDirectory, AppHandle, Manager};
 
 use super::{BUNDLED_YOSYS_DIR, FDE_RESOURCE_DIR};
@@ -50,17 +53,6 @@ pub(super) fn spawn_yosys_process(
     script_path: &Path,
     workdir: &Path,
 ) -> std::io::Result<std::process::Child> {
-    if cfg!(target_os = "windows") {
-        if let Some(environment_batch) = resolve_yosys_environment(toolchain.yosys_bin) {
-            return spawn_windows_yosys_process(
-                &environment_batch,
-                toolchain.yosys_bin,
-                script_path,
-                workdir,
-            );
-        }
-    }
-
     let mut command = Command::new(toolchain.yosys_bin);
     command
         .arg("-s")
@@ -72,45 +64,15 @@ pub(super) fn spawn_yosys_process(
     command.spawn()
 }
 
-fn resolve_yosys_environment(yosys_bin: &Path) -> Option<PathBuf> {
-    yosys_bin
-        .parent()
-        .and_then(Path::parent)
-        .map(|root| root.join("environment.bat"))
-        .filter(|path| path.is_file())
-}
-
-fn spawn_windows_yosys_process(
-    environment_batch: &Path,
-    yosys_bin: &Path,
-    script_path: &Path,
-    workdir: &Path,
-) -> std::io::Result<std::process::Child> {
-    let wrapper_path = workdir.join("aspen-run-yosys.cmd");
-    std::fs::write(
-        &wrapper_path,
-        format!(
-            "@echo off\r\n\
-call \"{}\"\r\n\
-if errorlevel 1 exit /b %errorlevel%\r\n\
-\"{}\" -s \"{}\"\r\n",
-            environment_batch.display(),
-            yosys_bin.display(),
-            script_path.display()
-        ),
-    )?;
-
-    Command::new("cmd")
-        .arg("/d")
-        .arg("/c")
-        .arg(&wrapper_path)
-        .current_dir(workdir)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-}
-
 fn configure_yosys_runtime_env(command: &mut Command, yosys_bin: &Path) {
+    #[cfg(target_os = "windows")]
+    if let Some(environment_batch) = resolve_yosys_environment(yosys_bin) {
+        if let Some(environment) = resolve_windows_environment_from_batch(&environment_batch) {
+            command.envs(environment);
+            return;
+        }
+    }
+
     let Some(bin_dir) = yosys_bin.parent() else {
         return;
     };
@@ -131,6 +93,73 @@ fn configure_yosys_runtime_env(command: &mut Command, yosys_bin: &Path) {
     if let Ok(path) = env::join_paths(runtime_entries) {
         command.env("PATH", path);
     }
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_yosys_environment(yosys_bin: &Path) -> Option<PathBuf> {
+    yosys_bin
+        .parent()
+        .and_then(Path::parent)
+        .map(|root| root.join("environment.bat"))
+        .filter(|path| path.is_file())
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_windows_environment_from_batch(
+    environment_batch: &Path,
+) -> Option<Vec<(OsString, OsString)>> {
+    let command = format!("call \"{}\" >nul && set", environment_batch.display());
+    let output = Command::new("cmd")
+        .arg("/u")
+        .arg("/d")
+        .arg("/c")
+        .arg(command)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let environment = decode_cmd_unicode_output(&output.stdout)?;
+    let mut variables = Vec::new();
+    for line in environment.lines() {
+        let trimmed = line.trim_end_matches('\r');
+        let Some(split) = trimmed.find('=') else {
+            continue;
+        };
+        if split == 0 {
+            continue;
+        }
+        variables.push((
+            OsString::from(&trimmed[..split]),
+            OsString::from(&trimmed[split + 1..]),
+        ));
+    }
+
+    Some(variables)
+}
+
+#[cfg(target_os = "windows")]
+fn decode_cmd_unicode_output(buffer: &[u8]) -> Option<String> {
+    if buffer.is_empty() {
+        return Some(String::new());
+    }
+
+    let bytes = if buffer.starts_with(&[0xff, 0xfe]) {
+        &buffer[2..]
+    } else {
+        buffer
+    };
+    let even_length = bytes.len() - (bytes.len() % 2);
+    let utf16 = bytes[..even_length]
+        .chunks_exact(2)
+        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+        .collect::<Vec<_>>();
+
+    String::from_utf16(&utf16).ok()
 }
 
 pub(super) fn resolve_fde_support_file(
