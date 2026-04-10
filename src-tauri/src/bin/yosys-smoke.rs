@@ -58,8 +58,8 @@ endmodule
 
     run_case(
         &toolchain,
-        "unicode",
-        "rtl/子模块/top.v",
+        "测试",
+        "rtl/top.v",
         r#"
 module top(
     input wire a,
