@@ -20,6 +20,9 @@ import type { CanvasInteractionMode } from '@/components/virtual-device/platform
 
 const STREAM_SIGNAL_LIMIT = 4 * 16
 const STREAM_LAG_WARNING_THRESHOLD_MS = 10
+const DISPLAY_ACTUAL_HZ_INTERVAL_MS = 250
+const DISPLAY_ACTUAL_HZ_SAMPLE_WINDOW = 5
+const DISPLAY_ACTUAL_HZ_CONFIRMATION_SAMPLES = 3
 
 const showGallery = ref(false)
 const canvasInteractionMode = ref<CanvasInteractionMode>('select')
@@ -33,6 +36,10 @@ const galleryDropBlockInset = 60
 const streamBusy = ref(false)
 const streamMessage = ref('')
 const rateInput = ref<string | number>('1000')
+const displayActualHz = ref(0)
+const displayActualHzSamples: number[] = []
+let displayActualHzPendingSamples = 0
+let displayActualHzTimer: ReturnType<typeof setInterval> | null = null
 const { t } = useI18n()
 
 const availableSignalCount = computed(() => signalCatalogStore.workbenchSignals.value.length)
@@ -77,7 +84,7 @@ const canToggleStream = computed(() => {
 
   return !streamBusy.value && isHardwareConnected.value
 })
-const actualHzLabel = computed(() => `${formatMetric(streamStatus.value.actual_hz)} Hz`)
+const actualHzLabel = computed(() => formatActualHz(displayActualHz.value))
 const galleryTitle = computed(() => {
   return showGallery.value ? t('hideComponentGallery') : t('openComponentGallery')
 })
@@ -187,20 +194,74 @@ function formatRate(rateHz: number) {
   return rateHz.toFixed(2).replace(/\.?0+$/, '')
 }
 
-function formatMetric(rateHz: number) {
+function formatActualHz(rateHz: number) {
   if (!Number.isFinite(rateHz) || rateHz <= 0) {
-    return '0'
+    return '0 Hz'
   }
 
-  if (rateHz >= 1_000_000) {
-    return `${(rateHz / 1_000_000).toFixed(2).replace(/\.?0+$/, '')}M`
+  if (rateHz < 10_000) {
+    return `${Math.round(rateHz)} Hz`
   }
 
-  if (rateHz >= 1_000) {
-    return `${(rateHz / 1_000).toFixed(1).replace(/\.?0+$/, '')}k`
+  if (rateHz < 100_000) {
+    return `${(rateHz / 1_000).toFixed(1).replace(/\.?0+$/, '')} kHz`
   }
 
-  return Math.round(rateHz).toString()
+  if (rateHz < 1_000_000) {
+    return `${Math.round(rateHz / 1_000)} kHz`
+  }
+
+  return `${(rateHz / 1_000_000).toFixed(2).replace(/\.?0+$/, '')} MHz`
+}
+
+function resetDisplayActualHz(rateHz = 0) {
+  const nextRate = Number.isFinite(rateHz) && rateHz > 0 ? rateHz : 0
+  displayActualHz.value = nextRate
+  displayActualHzSamples.length = nextRate > 0 ? 1 : 0
+  if (nextRate > 0) {
+    displayActualHzSamples[0] = nextRate
+  }
+  displayActualHzPendingSamples = 0
+}
+
+function median(values: readonly number[]) {
+  if (values.length === 0) {
+    return 0
+  }
+
+  const sorted = [...values].sort((left, right) => left - right)
+  const middle = Math.floor(sorted.length / 2)
+  if (sorted.length % 2 === 1) {
+    return sorted[middle]
+  }
+
+  return (sorted[middle - 1] + sorted[middle]) / 2
+}
+
+function tickDisplayActualHz() {
+  if (!streamRunning.value) {
+    resetDisplayActualHz()
+    return
+  }
+
+  const rawActualHz = streamStatus.value.actual_hz
+  if (!Number.isFinite(rawActualHz) || rawActualHz <= 0) {
+    return
+  }
+
+  displayActualHzSamples.push(rawActualHz)
+  while (displayActualHzSamples.length > DISPLAY_ACTUAL_HZ_SAMPLE_WINDOW) {
+    displayActualHzSamples.shift()
+  }
+
+  if (displayActualHzPendingSamples > 0) {
+    displayActualHzPendingSamples -= 1
+    if (displayActualHzPendingSamples > 0) {
+      return
+    }
+  }
+
+  displayActualHz.value = median(displayActualHzSamples)
 }
 
 function parseRequestedRate() {
@@ -396,8 +457,28 @@ watch(
 
 watch(
   () => streamStatus.value.target_hz,
-  (targetHz) => {
+  (targetHz, previousTargetHz) => {
     rateInput.value = formatRate(targetHz)
+
+    if (previousTargetHz === undefined) {
+      return
+    }
+
+    if (!streamRunning.value) {
+      resetDisplayActualHz()
+      return
+    }
+
+    displayActualHzSamples.length = 0
+    displayActualHzPendingSamples = DISPLAY_ACTUAL_HZ_CONFIRMATION_SAMPLES
+  },
+  { immediate: true },
+)
+
+watch(
+  () => streamRunning.value,
+  (running) => {
+    resetDisplayActualHz(running ? streamStatus.value.actual_hz : 0)
   },
   { immediate: true },
 )
@@ -405,12 +486,19 @@ watch(
 onMounted(() => {
   if (typeof window !== 'undefined') {
     window.addEventListener('keydown', handleGlobalKeydown, { capture: true })
+    displayActualHzTimer = setInterval(() => {
+      tickDisplayActualHz()
+    }, DISPLAY_ACTUAL_HZ_INTERVAL_MS)
   }
 })
 
 onBeforeUnmount(() => {
   if (typeof window !== 'undefined') {
     window.removeEventListener('keydown', handleGlobalKeydown, { capture: true })
+    if (displayActualHzTimer !== null) {
+      clearInterval(displayActualHzTimer)
+      displayActualHzTimer = null
+    }
   }
 })
 </script>
