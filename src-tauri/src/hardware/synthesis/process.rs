@@ -6,6 +6,12 @@ use std::{
 
 use tauri::{AppHandle, Emitter};
 
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::{
+    Globalization::{GetACP, GetOEMCP, MultiByteToWideChar},
+    System::Console::GetConsoleOutputCP,
+};
+
 use super::{
     artifacts::{quote_yosys_path, quote_yosys_workdir_path},
     now_millis, SynthesisLogChunkV1, FDE_LUT_WIDTH,
@@ -111,9 +117,80 @@ pub(super) fn stream_output<R: std::io::Read>(reader: R, tx: mpsc::Sender<String
             break;
         }
 
-        let chunk = String::from_utf8_lossy(&buffer).into_owned();
+        let chunk = decode_process_output_chunk(&buffer);
         let _ = tx.send(chunk);
     }
+}
+
+pub(crate) fn decode_process_output_chunk(buffer: &[u8]) -> String {
+    if let Ok(chunk) = std::str::from_utf8(buffer) {
+        return chunk.to_owned();
+    }
+
+    #[cfg(target_os = "windows")]
+    if let Some(chunk) = decode_windows_process_output(buffer) {
+        return chunk;
+    }
+
+    String::from_utf8_lossy(buffer).into_owned()
+}
+
+#[cfg(target_os = "windows")]
+fn decode_windows_process_output(buffer: &[u8]) -> Option<String> {
+    let mut code_pages = Vec::with_capacity(3);
+    push_unique_code_page(&mut code_pages, unsafe { GetConsoleOutputCP() });
+    push_unique_code_page(&mut code_pages, unsafe { GetOEMCP() });
+    push_unique_code_page(&mut code_pages, unsafe { GetACP() });
+
+    code_pages
+        .into_iter()
+        .find_map(|code_page| decode_windows_bytes_with_code_page(buffer, code_page))
+}
+
+#[cfg(target_os = "windows")]
+fn push_unique_code_page(code_pages: &mut Vec<u32>, code_page: u32) {
+    if code_page != 0 && !code_pages.contains(&code_page) {
+        code_pages.push(code_page);
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn decode_windows_bytes_with_code_page(buffer: &[u8], code_page: u32) -> Option<String> {
+    if buffer.is_empty() {
+        return Some(String::new());
+    }
+
+    let input_length = i32::try_from(buffer.len()).ok()?;
+    let wide_length = unsafe {
+        MultiByteToWideChar(
+            code_page,
+            0,
+            buffer.as_ptr(),
+            input_length,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if wide_length <= 0 {
+        return None;
+    }
+
+    let mut wide = vec![0u16; wide_length as usize];
+    let converted = unsafe {
+        MultiByteToWideChar(
+            code_page,
+            0,
+            buffer.as_ptr(),
+            input_length,
+            wide.as_mut_ptr(),
+            wide_length,
+        )
+    };
+    if converted <= 0 {
+        return None;
+    }
+
+    Some(String::from_utf16_lossy(&wide[..converted as usize]))
 }
 
 pub(super) fn emit_log_chunk(
@@ -132,4 +209,25 @@ pub(super) fn emit_log_chunk(
             generated_at_ms,
         },
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::decode_process_output_chunk;
+
+    #[test]
+    fn decode_process_output_chunk_preserves_utf8_lines() {
+        let line = "项目综合完成\n";
+        assert_eq!(decode_process_output_chunk(line.as_bytes()), line);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn decode_process_output_chunk_supports_windows_code_page_fallback() {
+        let bytes = [0xC4, 0xE3, 0xBA, 0xC3, b'\n'];
+        assert_eq!(
+            super::decode_windows_bytes_with_code_page(&bytes, 936).as_deref(),
+            Some("你好\n")
+        );
+    }
 }

@@ -1,4 +1,5 @@
 use super::*;
+use crate::hardware::synthesis::decode_process_output_chunk;
 use crate::hardware::types::{
     ImplementationPlaceModeV1, ImplementationRequestV1, SynthesisSourceFileV1,
 };
@@ -198,8 +199,8 @@ write_edif {}\n",
     if !output.status.success() || !edif_path.is_file() {
         return Err(format!(
             "{}{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
+            decode_process_output_chunk(&output.stdout),
+            decode_process_output_chunk(&output.stderr)
         ));
     }
 
