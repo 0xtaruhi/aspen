@@ -365,7 +365,7 @@ jobs:
           path: src-tauri/vendor/yosys
 
       - name: Windows Yosys smoke tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml yosys_smoke_test -- --nocapture
+        run: cargo run --manifest-path src-tauri/Cargo.toml --bin yosys-smoke
 
   packages-linux:
     name: Aspen Packages (ubuntu-22.04)
