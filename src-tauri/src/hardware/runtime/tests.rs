@@ -113,6 +113,43 @@ fn aggregate_data_samples_caps_payload_size() {
 }
 
 #[test]
+fn binary_batch_header_carries_stream_rates() {
+    let payload = HardwareRuntime::encode_binary_batch(
+        7,
+        42,
+        3,
+        987.5,
+        321.25,
+        9,
+        64,
+        16,
+        &[HardwareSignalAggregateByIdV1 {
+            signal_id: 11,
+            latest: true,
+            high_ratio: 0.5,
+            edge_count: 2,
+        }],
+    );
+
+    assert_eq!(payload.len(), 48 + 9);
+    assert_eq!(u64::from_le_bytes(payload[0..8].try_into().unwrap()), 7);
+    assert_eq!(u64::from_le_bytes(payload[8..16].try_into().unwrap()), 42);
+    assert_eq!(u64::from_le_bytes(payload[16..24].try_into().unwrap()), 3);
+    assert_eq!(
+        f64::from_le_bytes(payload[24..32].try_into().unwrap()),
+        987.5
+    );
+    assert_eq!(
+        f64::from_le_bytes(payload[32..40].try_into().unwrap()),
+        321.25
+    );
+    assert_eq!(u16::from_le_bytes(payload[40..42].try_into().unwrap()), 9);
+    assert_eq!(u16::from_le_bytes(payload[42..44].try_into().unwrap()), 64);
+    assert_eq!(u16::from_le_bytes(payload[44..46].try_into().unwrap()), 16);
+    assert_eq!(u16::from_le_bytes(payload[46..48].try_into().unwrap()), 1);
+}
+
+#[test]
 fn collect_data_sample_prefers_drivers_and_keeps_receiver_fallback() {
     let runtime = HardwareRuntime::default();
 

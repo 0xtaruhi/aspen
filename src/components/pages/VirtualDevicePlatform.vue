@@ -19,7 +19,6 @@ import { settingsStore } from '@/stores/settings'
 import type { CanvasInteractionMode } from '@/components/virtual-device/platform/types'
 
 const STREAM_SIGNAL_LIMIT = 4 * 16
-const DISPLAY_UPDATE_INTERVAL_MS = 1000
 const STREAM_LAG_WARNING_THRESHOLD_MS = 10
 
 const showGallery = ref(false)
@@ -34,9 +33,6 @@ const galleryDropBlockInset = 60
 const streamBusy = ref(false)
 const streamMessage = ref('')
 const rateInput = ref<string | number>('1000')
-const displayedActualHz = ref(0)
-let streamStatusPollTimer: ReturnType<typeof setInterval> | null = null
-let displayedHzTimer: ReturnType<typeof setInterval> | null = null
 const { t } = useI18n()
 
 const availableSignalCount = computed(() => signalCatalogStore.workbenchSignals.value.length)
@@ -81,7 +77,7 @@ const canToggleStream = computed(() => {
 
   return !streamBusy.value && isHardwareConnected.value
 })
-const actualHzLabel = computed(() => `${formatMetric(displayedActualHz.value)} Hz`)
+const actualHzLabel = computed(() => `${formatMetric(streamStatus.value.actual_hz)} Hz`)
 const galleryTitle = computed(() => {
   return showGallery.value ? t('hideComponentGallery') : t('openComponentGallery')
 })
@@ -145,36 +141,6 @@ async function sanitizeUnsupportedBindings() {
       }
     }
   }
-}
-
-function clearStreamStatusPollTimer() {
-  if (streamStatusPollTimer !== null) {
-    clearInterval(streamStatusPollTimer)
-    streamStatusPollTimer = null
-  }
-}
-
-function clearDisplayedHzTimer() {
-  if (displayedHzTimer !== null) {
-    clearInterval(displayedHzTimer)
-    displayedHzTimer = null
-  }
-}
-
-function startStreamStatusPolling() {
-  clearStreamStatusPollTimer()
-  streamStatusPollTimer = setInterval(() => {
-    void hardwareStore.refreshDataStreamStatus().catch((err) => {
-      streamMessage.value = t('failedRefreshStreamStatus', { message: getErrorMessage(err) })
-    })
-  }, 250)
-}
-
-function startDisplayedHzTimer() {
-  clearDisplayedHzTimer()
-  displayedHzTimer = setInterval(() => {
-    displayedActualHz.value = streamStatus.value.actual_hz
-  }, DISPLAY_UPDATE_INTERVAL_MS)
 }
 
 function openInspectorForDevice(id: string) {
@@ -429,22 +395,6 @@ watch(
 )
 
 watch(
-  streamRunning,
-  (running) => {
-    if (running) {
-      startStreamStatusPolling()
-      startDisplayedHzTimer()
-      return
-    }
-
-    clearStreamStatusPollTimer()
-    clearDisplayedHzTimer()
-    displayedActualHz.value = 0
-  },
-  { immediate: true },
-)
-
-watch(
   () => streamStatus.value.target_hz,
   (targetHz) => {
     rateInput.value = formatRate(targetHz)
@@ -462,9 +412,6 @@ onBeforeUnmount(() => {
   if (typeof window !== 'undefined') {
     window.removeEventListener('keydown', handleGlobalKeydown, { capture: true })
   }
-
-  clearStreamStatusPollTimer()
-  clearDisplayedHzTimer()
 })
 </script>
 

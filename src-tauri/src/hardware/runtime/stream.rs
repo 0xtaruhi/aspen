@@ -327,8 +327,8 @@ impl HardwareRuntime {
             let generated_at_ms = Self::now_millis();
             let refreshed_expected_cycles =
                 Self::expected_cycles_from_anchor(&schedule_anchor, transfer_finished_at);
+            let mut decoded_batches = Vec::with_capacity(transfer_count);
 
-            let mut decode_failed = false;
             for ((frame_cycles, frame_words), read_buffer) in batch_cycles
                 .iter()
                 .copied()
@@ -338,17 +338,35 @@ impl HardwareRuntime {
                 completed_cycles = completed_cycles.saturating_add(frame_cycles as u64);
                 sequence = sequence.saturating_add(1);
                 let remaining_backlog = refreshed_expected_cycles.saturating_sub(completed_cycles);
-                let batch_message = StreamDecodeBatch {
+                decoded_batches.push(StreamDecodeBatch {
                     sequence,
                     generated_at_ms,
                     dropped_samples,
+                    actual_hz: 0.0,
+                    transfer_rate_hz: 0.0,
                     queue_fill: remaining_backlog.min(u64::from(u16::MAX)) as u16,
                     queue_capacity: queue_capacity.min(usize::from(u16::MAX)) as u16,
                     batch_cycles: frame_cycles.min(usize::from(u16::MAX)) as u16,
                     words_per_cycle,
                     batch_words: frame_words,
                     read_buffer,
-                };
+                });
+            }
+
+            let remaining_backlog = refreshed_expected_cycles.saturating_sub(completed_cycles);
+            let (actual_hz, transfer_rate_hz) = Self::windowed_stream_rates(
+                &mut rate_window_samples,
+                transfer_finished_at,
+                completed_cycles,
+                sequence,
+            );
+
+            let mut decode_failed = false;
+            for batch_message in decoded_batches.into_iter().map(|mut batch_message| {
+                batch_message.actual_hz = actual_hz;
+                batch_message.transfer_rate_hz = transfer_rate_hz;
+                batch_message
+            }) {
                 match decode_tx.send(StreamDecodeMessage::Batch(batch_message)) {
                     Ok(()) => {}
                     Err(mpsc::SendError(StreamDecodeMessage::Batch(batch_message))) => {
@@ -368,13 +386,6 @@ impl HardwareRuntime {
                 break;
             }
 
-            let remaining_backlog = refreshed_expected_cycles.saturating_sub(completed_cycles);
-            let (actual_hz, transfer_rate_hz) = Self::windowed_stream_rates(
-                &mut rate_window_samples,
-                transfer_finished_at,
-                completed_cycles,
-                sequence,
-            );
             let _ = self.update_data_stream_status(|status| {
                 status.running = true;
                 status.target_hz = config.target_hz;
@@ -452,6 +463,8 @@ impl HardwareRuntime {
                     pending_signal_meta.sequence = batch.sequence;
                     pending_signal_meta.generated_at_ms = batch.generated_at_ms;
                     pending_signal_meta.dropped_samples = batch.dropped_samples;
+                    pending_signal_meta.actual_hz = batch.actual_hz;
+                    pending_signal_meta.transfer_rate_hz = batch.transfer_rate_hz;
                     pending_signal_meta.queue_fill = batch.queue_fill;
                     pending_signal_meta.queue_capacity = batch.queue_capacity;
                     pending_signal_meta.batch_cycles = pending_signal_meta

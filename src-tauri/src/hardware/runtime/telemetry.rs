@@ -172,16 +172,20 @@ impl HardwareRuntime {
         sequence: u64,
         generated_at_ms: u64,
         dropped_samples: u64,
+        actual_hz: f64,
+        transfer_rate_hz: f64,
         queue_fill: u16,
         queue_capacity: u16,
         batch_cycles: u16,
         updates: &[HardwareSignalAggregateByIdV1],
     ) -> Vec<u8> {
         let updates_count = updates.len() as u16;
-        let mut payload = Vec::with_capacity(32 + updates.len() * 9);
+        let mut payload = Vec::with_capacity(48 + updates.len() * 9);
         payload.extend_from_slice(&sequence.to_le_bytes());
         payload.extend_from_slice(&generated_at_ms.to_le_bytes());
         payload.extend_from_slice(&dropped_samples.to_le_bytes());
+        payload.extend_from_slice(&actual_hz.to_le_bytes());
+        payload.extend_from_slice(&transfer_rate_hz.to_le_bytes());
         payload.extend_from_slice(&queue_fill.to_le_bytes());
         payload.extend_from_slice(&queue_capacity.to_le_bytes());
         payload.extend_from_slice(&batch_cycles.to_le_bytes());
@@ -223,6 +227,8 @@ impl HardwareRuntime {
             pending_meta.sequence,
             pending_meta.generated_at_ms,
             pending_meta.dropped_samples,
+            pending_meta.actual_hz,
+            pending_meta.transfer_rate_hz,
             pending_meta.queue_fill,
             pending_meta.queue_capacity,
             pending_meta.batch_cycles.min(u32::from(u16::MAX)) as u16,
@@ -231,7 +237,7 @@ impl HardwareRuntime {
         let _ = app.emit(
             "hardware:data_batch_bin",
             crate::hardware::types::HardwareDataBatchBinaryV1 {
-                version: 1,
+                version: 2,
                 payload,
             },
         );
