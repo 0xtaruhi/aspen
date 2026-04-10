@@ -29,11 +29,6 @@ const targetAssetHint = resolveTargetAssetHint()
 const githubToken = process.env.GITHUB_TOKEN?.trim() || process.env.YOSYS_GITHUB_TOKEN?.trim() || ''
 const args = new Set(process.argv.slice(2))
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error))
-  process.exit(1)
-})
-
 async function main() {
   if (args.has('--prune-existing')) {
     if (!existsSync(bundleTargetDir)) {
@@ -1201,3 +1196,8 @@ function formatSpawnFailure(message, result) {
   }
   return message
 }
+
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error))
+  process.exit(1)
+})
