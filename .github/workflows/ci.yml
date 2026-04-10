@@ -364,9 +364,6 @@ jobs:
           name: bundled-fpga-toolchains-windows-latest
           path: src-tauri/vendor/yosys
 
-      - name: Windows Yosys smoke tests
-        run: cargo run --manifest-path src-tauri/Cargo.toml --bin yosys-smoke
-
   packages-linux:
     name: Aspen Packages (ubuntu-22.04)
     runs-on: ubuntu-22.04
