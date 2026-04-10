@@ -1,4 +1,5 @@
 use super::*;
+use crate::hardware::synthesis::decode_process_output_chunk;
 use crate::hardware::types::{
     ImplementationPlaceModeV1, ImplementationRequestV1, SynthesisSourceFileV1,
 };
@@ -9,6 +10,9 @@ use std::{
     process::{Command, Stdio},
     time::Instant,
 };
+
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 
 const TEST_BUNDLED_YOSYS_DIR: &str = "vendor/yosys";
 const TEST_YOSYS_SUPPORT_DIR: &str = "resource/yosys-fde";
@@ -145,29 +149,30 @@ write_edif {}\n",
     )
     .map_err(|err| err.to_string())?;
 
-    let mut command = if cfg!(target_os = "windows") {
+    #[cfg(target_os = "windows")]
+    let mut command = {
         if let Some(environment_batch) = yosys_bin
             .parent()
             .and_then(Path::parent)
             .map(|root| root.join("environment.bat"))
             .filter(|path| path.is_file())
         {
-            let wrapper_path = workdir.join("aspen-test-yosys.cmd");
-            fs::write(
-                &wrapper_path,
-                format!(
-                    "@echo off\r\n\
-call \"{}\"\r\n\
-if errorlevel 1 exit /b %errorlevel%\r\n\
-\"{}\" -s \"{}\"\r\n",
-                    environment_batch.display(),
-                    yosys_bin.display(),
-                    script_path.display()
-                ),
-            )
-            .map_err(|err| err.to_string())?;
+            let script_argument = script_path
+                .strip_prefix(workdir)
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| {
+                    script_path
+                        .file_name()
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|| script_path.clone())
+                });
             let mut command = Command::new("cmd");
-            command.arg("/d").arg("/c").arg(&wrapper_path);
+            command.arg("/d").arg("/c").raw_arg(format!(
+                "call {} >nul 2>nul & {} -s {}",
+                quote_test_windows_cmd_path(&environment_batch),
+                quote_test_windows_cmd_path(&yosys_bin),
+                quote_test_windows_cmd_path(&script_argument),
+            ));
             command
         } else {
             let mut command = Command::new(&yosys_bin);
@@ -175,7 +180,10 @@ if errorlevel 1 exit /b %errorlevel%\r\n\
             configure_test_yosys_runtime_env(&mut command, &yosys_bin);
             command
         }
-    } else {
+    };
+
+    #[cfg(not(target_os = "windows"))]
+    let mut command = {
         let mut command = Command::new(&yosys_bin);
         command.arg("-s").arg(&script_path);
         command
@@ -191,14 +199,15 @@ if errorlevel 1 exit /b %errorlevel%\r\n\
     if !output.status.success() || !edif_path.is_file() {
         return Err(format!(
             "{}{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
+            decode_process_output_chunk(&output.stdout),
+            decode_process_output_chunk(&output.stderr)
         ));
     }
 
     Ok(edif_path)
 }
 
+#[allow(dead_code)]
 fn configure_test_yosys_runtime_env(command: &mut Command, yosys_bin: &Path) {
     let Some(bin_dir) = yosys_bin.parent() else {
         return;
@@ -220,6 +229,11 @@ fn configure_test_yosys_runtime_env(command: &mut Command, yosys_bin: &Path) {
     if let Ok(path) = env::join_paths(runtime_entries) {
         command.env("PATH", path);
     }
+}
+
+#[cfg(target_os = "windows")]
+fn quote_test_windows_cmd_path(path: &Path) -> String {
+    format!("\"{}\"", path.display())
 }
 
 fn test_resource_paths() -> toolchain::ImplementationResourcePaths {

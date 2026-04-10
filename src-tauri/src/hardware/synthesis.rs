@@ -24,6 +24,9 @@ use self::{
 };
 use super::types::{SynthesisLogChunkV1, SynthesisReportV1, SynthesisRequestV1, SynthesisStatsV1};
 
+#[cfg(test)]
+pub(crate) use self::process::decode_process_output_chunk;
+
 const BUNDLED_YOSYS_DIR: &str = "vendor/yosys";
 const FDE_RESOURCE_DIR: &str = "resource/yosys-fde";
 const FDE_SIMLIB_FILE: &str = "fdesimlib.v";
@@ -98,6 +101,7 @@ where
     }
 
     let script = build_yosys_script(YosysScriptInput {
+        workdir,
         fde_simlib: toolchain.fde_simlib,
         fde_bram_lib: toolchain.fde_bram_lib,
         fde_bram_map: toolchain.fde_bram_map,

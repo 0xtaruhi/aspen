@@ -118,6 +118,7 @@ jobs:
           else
             if [ "$rust" = true ] || [ "$toolchain" = true ]; then
               run_rust=true
+              run_toolchain_windows=true
             fi
 
             if [ "$frontend" = true ]; then
@@ -345,6 +346,26 @@ jobs:
 
       - name: Rust clippy
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets
+
+  rust-checks-windows:
+    name: Rust Checks (windows-latest)
+    runs-on: windows-latest
+    needs:
+      - changes
+      - toolchain-windows
+    if: needs.changes.outputs.run_toolchain_windows == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download bundled FPGA toolchains
+        uses: actions/download-artifact@v8
+        with:
+          name: bundled-fpga-toolchains-windows-latest
+          path: src-tauri/vendor/yosys
+
+      - name: Windows Yosys smoke tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml yosys_smoke_test -- --nocapture
 
   packages-linux:
     name: Aspen Packages (ubuntu-22.04)

@@ -33,9 +33,13 @@ pub(super) fn write_source_file(
 
 pub(super) fn sanitize_source_path(path: &str, index: usize) -> PathBuf {
     let mut sanitized = PathBuf::new();
-    for component in Path::new(path).components() {
+    for (component_index, component) in Path::new(path).components().enumerate() {
         if let Component::Normal(part) = component {
-            sanitized.push(part);
+            let raw = part.to_string_lossy();
+            sanitized.push(sanitize_path_component(
+                &raw,
+                &format!("part_{}_{}", index, component_index),
+            ));
         }
     }
 
@@ -141,6 +145,10 @@ pub(super) fn quote_yosys_path(path: &Path) -> String {
     )
 }
 
+pub(super) fn quote_yosys_workdir_path(workdir: &Path, path: &Path) -> String {
+    quote_yosys_path(path.strip_prefix(workdir).unwrap_or(path))
+}
+
 fn sanitize_file_stem(value: &str) -> String {
     let mut sanitized = String::with_capacity(value.len());
     for character in value.chars() {
@@ -156,5 +164,37 @@ fn sanitize_file_stem(value: &str) -> String {
         "artifact".to_string()
     } else {
         trimmed.to_string()
+    }
+}
+
+fn sanitize_path_component(value: &str, fallback: &str) -> String {
+    let path = Path::new(value);
+    let stem = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or(value);
+    let extension = path.extension().and_then(|extension| extension.to_str());
+    let sanitized_stem = sanitize_file_stem_with_fallback(stem, fallback);
+    let sanitized_extension = extension
+        .map(|extension| {
+            extension
+                .chars()
+                .filter(|character| character.is_ascii_alphanumeric())
+                .collect::<String>()
+        })
+        .filter(|extension| !extension.is_empty());
+
+    match sanitized_extension {
+        Some(extension) => format!("{sanitized_stem}.{extension}"),
+        None => sanitized_stem,
+    }
+}
+
+fn sanitize_file_stem_with_fallback(value: &str, fallback: &str) -> String {
+    let sanitized = sanitize_file_stem(value);
+    if sanitized == "artifact" && !value.trim().is_empty() {
+        fallback.to_string()
+    } else {
+        sanitized
     }
 }
