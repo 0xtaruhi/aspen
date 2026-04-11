@@ -267,10 +267,10 @@ fn render_stage_log_includes_messages_warnings_metrics_and_artifacts() {
     report.metric("pips", 42);
     report.artifact("design", "/tmp/top_route.xml");
 
-    let log = report::render_stage_log(&report);
-    assert!(log.contains("stage: route"));
-    assert!(log.contains("messages:"));
-    assert!(log.contains("warnings:"));
+    let log = report::render_stage_log(&report, "success", 42);
+    assert!(log.contains(">>> completed route (success, 42 ms)"));
+    assert!(log.contains("info: routed design"));
+    assert!(log.contains("warning: route warning"));
     assert!(log.contains("pips = 42"));
     assert!(log.contains("design = /tmp/top_route.xml"));
 }

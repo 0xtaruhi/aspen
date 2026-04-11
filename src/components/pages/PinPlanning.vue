@@ -296,9 +296,6 @@ function goToSynthesis() {
         <h2 class="text-3xl font-bold tracking-tight">{{ t('pinPlanning') }}</h2>
         <p class="text-sm text-muted-foreground">{{ t('pinAssignmentsDescription') }}</p>
       </div>
-      <div class="flex items-center gap-2">
-        <Badge variant="outline">{{ boardDescriptor.displayName }}</Badge>
-      </div>
     </div>
 
     <Card v-if="!projectStore.hasProject || !hasDesignSource" class="max-w-3xl">

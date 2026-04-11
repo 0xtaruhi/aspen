@@ -40,9 +40,17 @@ pub(super) fn finish_success_stage(
     sink: &mut StageLogSink<'_, impl FnMut(ImplementationStageKindV1, String)>,
 ) -> Result<ImplementationStageResultV1, String> {
     let elapsed_ms = started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
-    let mut log = render_stage_log(report);
     let output_exists = output_path.is_none_or(Path::is_file);
     let success = output_exists && !matches!(report.status, ReportStatus::Failed);
+    let mut log = render_stage_log(
+        report,
+        if output_exists {
+            report_status_name(report.status)
+        } else {
+            "failed"
+        },
+        elapsed_ms,
+    );
     if !output_exists {
         let _ = writeln!(log, "error: expected artifact was not produced");
     }
@@ -82,8 +90,9 @@ pub(super) fn finish_failed_stage(
 ) -> Result<ImplementationStageResultV1, String> {
     let elapsed_ms = started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
     let log = format!(
-        "stage {} failed\nerror: {}\n",
+        ">>> completed {} (failed, {} ms)\nerror: {}\n\n",
         stage_name(stage),
+        elapsed_ms,
         error.trim()
     );
     fs::write(log_path, log.as_bytes()).map_err(|err| err.to_string())?;
@@ -104,36 +113,24 @@ pub(super) fn finish_failed_stage(
     })
 }
 
-pub(super) fn render_stage_log(report: &fde::StageReport) -> String {
+pub(super) fn render_stage_log(report: &fde::StageReport, status: &str, elapsed_ms: u64) -> String {
     let mut out = String::new();
-    let _ = writeln!(out, "stage: {}", report.stage);
-    let _ = writeln!(out, "status: {}", report_status_name(report.status));
-    if let Some(elapsed_ms) = report.elapsed_ms {
-        let _ = writeln!(out, "elapsed_ms: {}", elapsed_ms);
+    let _ = writeln!(
+        out,
+        ">>> completed {} ({}, {} ms)",
+        report.stage, status, elapsed_ms
+    );
+    for message in &report.messages {
+        let _ = writeln!(out, "info: {}", message);
     }
-    if !report.messages.is_empty() {
-        let _ = writeln!(out, "messages:");
-        for message in &report.messages {
-            let _ = writeln!(out, "  - {}", message);
-        }
+    for warning in &report.warnings {
+        let _ = writeln!(out, "warning: {}", warning);
     }
-    if !report.warnings.is_empty() {
-        let _ = writeln!(out, "warnings:");
-        for warning in &report.warnings {
-            let _ = writeln!(out, "  - {}", warning);
-        }
+    for (key, value) in &report.metrics {
+        let _ = writeln!(out, "metric: {} = {}", key, format_metric_value(value));
     }
-    if !report.metrics.is_empty() {
-        let _ = writeln!(out, "metrics:");
-        for (key, value) in &report.metrics {
-            let _ = writeln!(out, "  - {} = {}", key, format_metric_value(value));
-        }
-    }
-    if !report.artifacts.is_empty() {
-        let _ = writeln!(out, "artifacts:");
-        for (key, value) in &report.artifacts {
-            let _ = writeln!(out, "  - {} = {}", key, value);
-        }
+    for (key, value) in &report.artifacts {
+        let _ = writeln!(out, "artifact: {} = {}", key, value);
     }
     out.push('\n');
     out

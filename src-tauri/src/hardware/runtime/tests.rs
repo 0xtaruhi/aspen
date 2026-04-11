@@ -9,6 +9,7 @@ use crate::hardware::types::{
     HardwareDataStreamConfigV1, HardwareSignalAggregateByIdV1,
 };
 
+use super::telemetry::BinaryBatchHeader;
 use super::*;
 
 fn sample(values: &[(u16, bool)]) -> HardwareDataSample {
@@ -115,14 +116,16 @@ fn aggregate_data_samples_caps_payload_size() {
 #[test]
 fn binary_batch_header_carries_stream_rates() {
     let payload = HardwareRuntime::encode_binary_batch(
-        7,
-        42,
-        3,
-        987.5,
-        321.25,
-        9,
-        64,
-        16,
+        &BinaryBatchHeader {
+            sequence: 7,
+            generated_at_ms: 42,
+            dropped_samples: 3,
+            actual_hz: 987.5,
+            transfer_rate_hz: 321.25,
+            queue_fill: 9,
+            queue_capacity: 64,
+            batch_cycles: 16,
+        },
         &[HardwareSignalAggregateByIdV1 {
             signal_id: 11,
             latest: true,

@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button'
 import { useI18n } from '@/lib/i18n'
 import { getProjectRootDirectory } from '@/lib/project-layout'
 import { importProjectFiles, openProject } from '@/lib/project-io'
+import { statusBadgeClass } from '@/lib/status-badge'
 import { designContextStore } from '@/stores/design-context'
 import { hardwareStore } from '@/stores/hardware'
 import { implementationCatalogStore } from '@/stores/implementation-catalog'
@@ -190,18 +191,18 @@ function formatDuration(elapsedMs: number) {
 
 const implementationStatusBadgeClass = computed(() => {
   if (isBusy.value) {
-    return 'border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-300'
+    return statusBadgeClass('running')
   }
 
   if (implementationReport.value?.success) {
-    return 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+    return statusBadgeClass('success')
   }
 
   if (implementationReport.value && !implementationReport.value.success) {
-    return 'border-destructive/20 bg-destructive/10 text-destructive'
+    return statusBadgeClass('danger')
   }
 
-  return 'border-border/70 bg-muted/40 text-foreground'
+  return statusBadgeClass('default')
 })
 
 const implementationHeaderMeta = computed(() => {

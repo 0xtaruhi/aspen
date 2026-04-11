@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useI18n } from '@/lib/i18n'
 import { getProjectRootDirectory } from '@/lib/project-layout'
+import { statusBadgeClass } from '@/lib/status-badge'
 import { resolveSynthesisLog } from '@/lib/synthesis-log'
 import { designContextStore } from '@/stores/design-context'
 import { hardwareStore } from '@/stores/hardware'
@@ -45,6 +46,22 @@ const synthesisStatus = computed(() => {
   }
 
   return synthesisHardwareFiles.value.length > 0 ? t('ready') : t('noSource')
+})
+
+const synthesisStatusBadgeClass = computed(() => {
+  if (isBusy.value) {
+    return statusBadgeClass('running')
+  }
+
+  if (synthesisReport.value?.success) {
+    return statusBadgeClass('success')
+  }
+
+  if (synthesisReport.value && !synthesisReport.value.success) {
+    return statusBadgeClass('danger')
+  }
+
+  return statusBadgeClass('default')
 })
 
 const synthesisErrorMessage = computed(() => {
@@ -173,21 +190,7 @@ function projectDirectory() {
         </p>
       </div>
       <div class="flex gap-2 items-center flex-wrap justify-end">
-        <Badge variant="outline">{{ t('topModuleHint', { name: topModule }) }}</Badge>
-        <Badge variant="outline">
-          {{ t('sourceFiles') }} ·
-          {{ synthesisReport?.source_count ?? synthesisHardwareFiles.length }}
-        </Badge>
-        <Badge
-          variant="outline"
-          :class="
-            synthesisStatus === t('completed')
-              ? 'bg-green-500/10 text-green-500 border-green-500/20'
-              : synthesisStatus === t('failed')
-                ? 'bg-red-500/10 text-red-500 border-red-500/20'
-                : ''
-          "
-        >
+        <Badge variant="outline" :class="synthesisStatusBadgeClass">
           {{ synthesisStatus }}
         </Badge>
         <span class="text-sm text-muted-foreground">

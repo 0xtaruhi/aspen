@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useI18n } from '@/lib/i18n'
+import { statusBadgeClass } from '@/lib/status-badge'
 
 import type {
   ImplementationBlockingStateViewModel,
@@ -72,11 +73,7 @@ const { t } = useI18n()
           </div>
           <Badge
             variant="outline"
-            :class="
-              item.ready
-                ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600'
-                : 'border-amber-500/20 bg-amber-500/10 text-amber-600'
-            "
+            :class="item.ready ? statusBadgeClass('success') : statusBadgeClass('warning')"
           >
             {{ item.ready ? t('ready') : t('pending') }}
           </Badge>

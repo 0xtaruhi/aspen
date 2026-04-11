@@ -4,6 +4,17 @@ use crate::hardware::types::{HardwareDataSignalCatalogEntryV1, HardwareSignalAgg
 
 use super::*;
 
+pub(super) struct BinaryBatchHeader {
+    pub(super) sequence: u64,
+    pub(super) generated_at_ms: u64,
+    pub(super) dropped_samples: u64,
+    pub(super) actual_hz: f64,
+    pub(super) transfer_rate_hz: f64,
+    pub(super) queue_fill: u16,
+    pub(super) queue_capacity: u16,
+    pub(super) batch_cycles: u16,
+}
+
 impl SignalCatalog {
     pub(super) fn id_for_signal(
         &mut self,
@@ -169,26 +180,19 @@ impl HardwareRuntime {
     }
 
     pub(super) fn encode_binary_batch(
-        sequence: u64,
-        generated_at_ms: u64,
-        dropped_samples: u64,
-        actual_hz: f64,
-        transfer_rate_hz: f64,
-        queue_fill: u16,
-        queue_capacity: u16,
-        batch_cycles: u16,
+        header: &BinaryBatchHeader,
         updates: &[HardwareSignalAggregateByIdV1],
     ) -> Vec<u8> {
         let updates_count = updates.len() as u16;
         let mut payload = Vec::with_capacity(48 + updates.len() * 9);
-        payload.extend_from_slice(&sequence.to_le_bytes());
-        payload.extend_from_slice(&generated_at_ms.to_le_bytes());
-        payload.extend_from_slice(&dropped_samples.to_le_bytes());
-        payload.extend_from_slice(&actual_hz.to_le_bytes());
-        payload.extend_from_slice(&transfer_rate_hz.to_le_bytes());
-        payload.extend_from_slice(&queue_fill.to_le_bytes());
-        payload.extend_from_slice(&queue_capacity.to_le_bytes());
-        payload.extend_from_slice(&batch_cycles.to_le_bytes());
+        payload.extend_from_slice(&header.sequence.to_le_bytes());
+        payload.extend_from_slice(&header.generated_at_ms.to_le_bytes());
+        payload.extend_from_slice(&header.dropped_samples.to_le_bytes());
+        payload.extend_from_slice(&header.actual_hz.to_le_bytes());
+        payload.extend_from_slice(&header.transfer_rate_hz.to_le_bytes());
+        payload.extend_from_slice(&header.queue_fill.to_le_bytes());
+        payload.extend_from_slice(&header.queue_capacity.to_le_bytes());
+        payload.extend_from_slice(&header.batch_cycles.to_le_bytes());
         payload.extend_from_slice(&updates_count.to_le_bytes());
 
         for update in updates {
@@ -224,14 +228,16 @@ impl HardwareRuntime {
         }
 
         let payload = Self::encode_binary_batch(
-            pending_meta.sequence,
-            pending_meta.generated_at_ms,
-            pending_meta.dropped_samples,
-            pending_meta.actual_hz,
-            pending_meta.transfer_rate_hz,
-            pending_meta.queue_fill,
-            pending_meta.queue_capacity,
-            pending_meta.batch_cycles.min(u32::from(u16::MAX)) as u16,
+            &BinaryBatchHeader {
+                sequence: pending_meta.sequence,
+                generated_at_ms: pending_meta.generated_at_ms,
+                dropped_samples: pending_meta.dropped_samples,
+                actual_hz: pending_meta.actual_hz,
+                transfer_rate_hz: pending_meta.transfer_rate_hz,
+                queue_fill: pending_meta.queue_fill,
+                queue_capacity: pending_meta.queue_capacity,
+                batch_cycles: pending_meta.batch_cycles.min(u32::from(u16::MAX)) as u16,
+            },
             &updates,
         );
         let _ = app.emit(

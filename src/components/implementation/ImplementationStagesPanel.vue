@@ -113,6 +113,18 @@ function parseImplementationLiveStages(log: string) {
       continue
     }
 
+    const completedMatch = trimmed.match(
+      /^>>> completed \w+ \((success|failed|skipped), (\d+) ms\)$/,
+    )
+    if (completedMatch) {
+      progress.running = false
+      progress.completed = true
+      progress.success = completedMatch[1] !== 'failed'
+      progress.elapsedMs = Number(completedMatch[2])
+      warningSectionByStage.set(stage, false)
+      continue
+    }
+
     if (trimmed === 'warnings:') {
       warningSectionByStage.set(stage, true)
       continue
@@ -131,6 +143,12 @@ function parseImplementationLiveStages(log: string) {
 
     if (warningSectionByStage.get(stage) && trimmed.startsWith('- ')) {
       progress.warningCount += 1
+      continue
+    }
+
+    if (/^warning:/i.test(trimmed)) {
+      progress.warningCount += 1
+      warningSectionByStage.set(stage, false)
       continue
     }
 
@@ -257,16 +275,16 @@ function stageStatusDotClass(stage: (typeof stageCards.value)[number]) {
     return 'bg-muted-foreground/35'
   }
 
+  if (stage.result.success) {
+    return stage.warningCount > 0 ? 'bg-amber-500' : 'bg-emerald-500'
+  }
+
   if (stage.errorCount > 0 && !stage.result.success && !stage.result.optional) {
     return 'bg-destructive'
   }
 
   if (stage.warningCount > 0 || stage.result.optional) {
     return 'bg-amber-500'
-  }
-
-  if (stage.result.success) {
-    return 'bg-emerald-500'
   }
 
   if (stage.result.optional) {
