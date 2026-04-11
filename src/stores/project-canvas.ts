@@ -13,7 +13,7 @@ import {
   getCanvasDeviceDrivenSignalLevel,
 } from '@/lib/canvas-devices'
 
-type VirtualDeviceAction = Extract<
+export type ProjectCanvasAction = Extract<
   HardwareActionV1,
   | { type: 'upsert_canvas_device' }
   | { type: 'remove_canvas_device' }
@@ -24,7 +24,7 @@ type VirtualDeviceAction = Extract<
   | { type: 'set_canvas_switch_state' }
 >
 
-function isVirtualDeviceAction(action: HardwareActionV1): action is VirtualDeviceAction {
+export function isProjectCanvasAction(action: HardwareActionV1): action is ProjectCanvasAction {
   return (
     action.type === 'upsert_canvas_device' ||
     action.type === 'remove_canvas_device' ||
@@ -46,12 +46,12 @@ function cloneDevice(device: CanvasDeviceSnapshot): CanvasDeviceSnapshot {
 }
 
 function cloneCanvasDevices(
-  devices: CanvasDeviceSnapshot[] = canvasDevices.value,
+  devices: readonly CanvasDeviceSnapshot[] = canvasDevices.value,
 ): CanvasDeviceSnapshot[] {
   return devices.map((device) => cloneDevice(device))
 }
 
-function setCanvasDevices(devices: CanvasDeviceSnapshot[]) {
+function setCanvasDevices(devices: readonly CanvasDeviceSnapshot[]) {
   canvasDevices.value = cloneCanvasDevices(devices)
 }
 
@@ -117,26 +117,25 @@ function reconcileBoundSignal(devices: CanvasDeviceSnapshot[], targetId: string)
   }
 }
 
-function applyLocalAction(action: HardwareActionV1): boolean {
-  if (!isVirtualDeviceAction(action)) {
+function applyAction(action: HardwareActionV1): boolean {
+  if (!isProjectCanvasAction(action)) {
     return false
   }
 
-  const virtualAction = action
   const nextDevices = cloneCanvasDevices()
 
-  switch (virtualAction.type) {
+  switch (action.type) {
     case 'upsert_canvas_device': {
-      const index = nextDevices.findIndex((device) => device.id === virtualAction.device.id)
+      const index = nextDevices.findIndex((device) => device.id === action.device.id)
       if (index >= 0) {
-        nextDevices[index] = cloneDevice(virtualAction.device)
+        nextDevices[index] = cloneDevice(action.device)
       } else {
-        nextDevices.push(cloneDevice(virtualAction.device))
+        nextDevices.push(cloneDevice(action.device))
       }
       break
     }
     case 'remove_canvas_device': {
-      setCanvasDevices(nextDevices.filter((device) => device.id !== virtualAction.id))
+      setCanvasDevices(nextDevices.filter((device) => device.id !== action.id))
       return true
     }
     case 'clear_canvas_devices': {
@@ -144,35 +143,35 @@ function applyLocalAction(action: HardwareActionV1): boolean {
       return true
     }
     case 'set_canvas_device_position': {
-      const device = nextDevices.find((item) => item.id === virtualAction.id)
+      const device = nextDevices.find((item) => item.id === action.id)
       if (device) {
-        device.x = virtualAction.x
-        device.y = virtualAction.y
+        device.x = action.x
+        device.y = action.y
       }
       break
     }
     case 'bind_canvas_signal': {
-      const device = nextDevices.find((item) => item.id === virtualAction.id)
+      const device = nextDevices.find((item) => item.id === action.id)
       if (device && device.state.binding.kind === 'single') {
-        device.state.binding.signal = virtualAction.signal_name ?? null
-        reconcileBoundSignal(nextDevices, virtualAction.id)
+        device.state.binding.signal = action.signal_name ?? null
+        reconcileBoundSignal(nextDevices, action.id)
       }
       break
     }
     case 'bind_canvas_signal_slot': {
-      const device = nextDevices.find((item) => item.id === virtualAction.id)
+      const device = nextDevices.find((item) => item.id === action.id)
       if (device && device.state.binding.kind === 'slots') {
-        while (device.state.binding.signals.length <= virtualAction.slot_index) {
+        while (device.state.binding.signals.length <= action.slot_index) {
           device.state.binding.signals.push(null)
         }
-        device.state.binding.signals[virtualAction.slot_index] = virtualAction.signal_name ?? null
+        device.state.binding.signals[action.slot_index] = action.signal_name ?? null
       }
       break
     }
     case 'set_canvas_switch_state': {
-      const device = nextDevices.find((item) => item.id === virtualAction.id)
+      const device = nextDevices.find((item) => item.id === action.id)
       if (device) {
-        device.state.is_on = virtualAction.is_on
+        device.state.is_on = action.is_on
 
         const signal = getCanvasDeviceBoundSignal(device)
         if (deviceDrivesSignal(device.type) && signal) {
@@ -192,9 +191,9 @@ function applyLocalAction(action: HardwareActionV1): boolean {
   return true
 }
 
-export const virtualDeviceStore = {
+export const projectCanvasStore = {
   canvasDevices,
   setCanvasDevices,
   resetState,
-  applyLocalAction,
+  applyAction,
 }

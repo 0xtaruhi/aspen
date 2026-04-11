@@ -759,7 +759,7 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
         config: { kind: 'button', active_low: false },
       }),
     toRendererProps: (device) => ({ isOn: device.state.is_on }),
-    getShellSize: () => ({ width: 100, height: 100 }),
+    getShellSize: () => ({ width: 100, height: 120 }),
     emitsToggle: true,
     capabilities: { drivesSignal: true, receivesSignal: false },
   },
@@ -887,8 +887,8 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
     getShellSize: (device) => {
       const config = getCanvasMatrixKeypadConfig(device) ?? defaultMatrixKeypadConfig()
       return {
-        width: alignShellSize(84 + config.columns * 56),
-        height: alignShellSize(96 + config.rows * 56),
+        width: alignShellSize(36 + config.columns * 40),
+        height: alignShellSize(44 + config.rows * 40),
       }
     },
     emitsToggle: false,

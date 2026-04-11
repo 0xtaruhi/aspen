@@ -3,7 +3,7 @@ import { computed } from 'vue'
 
 import IndexedBusBindingAssistant from '@/components/virtual-device/binding-assist/IndexedBusBindingAssistant.vue'
 import type { IndexedBusBindingGroup, IndexedSignalBus } from '@/components/virtual-device/types'
-import { getCanvasMatrixDimensions } from '@/lib/canvas-devices'
+import { getCanvasMatrixKeypadConfig } from '@/lib/canvas-devices'
 import type { CanvasDeviceSnapshot } from '@/lib/hardware-client'
 import { useI18n } from '@/lib/i18n'
 
@@ -15,9 +15,9 @@ const props = defineProps<{
 const { t } = useI18n()
 
 const groups = computed<IndexedBusBindingGroup[]>(() => {
-  const dimensions = getCanvasMatrixDimensions(props.device)
-  const rows = dimensions?.rows ?? 0
-  const columns = dimensions?.columns ?? 0
+  const config = getCanvasMatrixKeypadConfig(props.device)
+  const rows = config?.rows ?? 0
+  const columns = config?.columns ?? 0
 
   return [
     {
@@ -32,7 +32,7 @@ const groups = computed<IndexedBusBindingGroup[]>(() => {
       label: t('columnBus'),
       width: columns,
       slotOffset: rows,
-      keywords: ['column', 'col', 'info'],
+      keywords: ['column', 'col'],
     },
   ]
 })

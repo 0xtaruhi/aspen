@@ -14,6 +14,7 @@ import { useI18n } from '@/lib/i18n'
 import { designContextStore } from '@/stores/design-context'
 import { hardwareStore } from '@/stores/hardware'
 import { HARDWARE_STREAM_CLOCK_DELAY, hardwareWorkbenchStore } from '@/stores/hardware-workbench'
+import { projectStore } from '@/stores/project'
 import { signalCatalogStore } from '@/stores/signal-catalog'
 import { settingsStore } from '@/stores/settings'
 import type { CanvasInteractionMode } from '@/components/virtual-device/platform/types'
@@ -56,8 +57,9 @@ const streamSignalOverflow = computed(() => {
 const workbenchSignalNameSet = computed(() => {
   return new Set(signalCatalogStore.workbenchSignals.value.map((signal) => signal.name))
 })
+const canvasDevices = computed(() => hardwareStore.canvasDevices.value)
 const canvasBindingSignature = computed(() => {
-  return hardwareStore.state.value.canvas_devices
+  return canvasDevices.value
     .map((device) => {
       if (device.state.binding.kind === 'single') {
         return `${device.id}:single:${getCanvasDeviceBoundSignal(device) ?? ''}`
@@ -67,7 +69,7 @@ const canvasBindingSignature = computed(() => {
     })
     .join('\u0000')
 })
-const hasCanvasDevices = computed(() => hardwareStore.state.value.canvas_devices.length > 0)
+const hasCanvasDevices = computed(() => canvasDevices.value.length > 0)
 const selectedDeviceCount = computed(() => selectedDeviceIds.value.length)
 const streamStatus = computed(() => hardwareStore.dataStreamStatus.value)
 const streamRunning = computed(() => streamStatus.value.running)
@@ -88,6 +90,7 @@ const actualHzLabel = computed(() => formatActualHz(displayActualHz.value))
 const galleryTitle = computed(() => {
   return showGallery.value ? t('hideComponentGallery') : t('openComponentGallery')
 })
+const canvasSessionKey = computed(() => String(projectStore.sessionId))
 const effectiveStreamRateHz = computed(() => {
   return Math.max(streamStatus.value.actual_hz, streamStatus.value.target_hz, 1)
 })
@@ -108,21 +111,14 @@ const selectedDevice = computed(() => {
     return null
   }
 
-  return (
-    hardwareStore.state.value.canvas_devices.find(
-      (device) => device.id === selectedDeviceId.value,
-    ) ?? null
-  )
+  return canvasDevices.value.find((device) => device.id === selectedDeviceId.value) ?? null
 })
 const manualDevice = computed(() => {
   if (!manualDeviceId.value) {
     return null
   }
 
-  return (
-    hardwareStore.state.value.canvas_devices.find((device) => device.id === manualDeviceId.value) ??
-    null
-  )
+  return canvasDevices.value.find((device) => device.id === manualDeviceId.value) ?? null
 })
 
 function toggleGallery() {
@@ -132,7 +128,7 @@ function toggleGallery() {
 async function sanitizeUnsupportedBindings() {
   const allowedSignals = workbenchSignalNameSet.value
 
-  for (const device of hardwareStore.state.value.canvas_devices) {
+  for (const device of canvasDevices.value) {
     if (device.state.binding.kind === 'single') {
       const signal = getCanvasDeviceBoundSignal(device)
       if (signal && !allowedSignals.has(signal)) {
@@ -141,11 +137,23 @@ async function sanitizeUnsupportedBindings() {
       continue
     }
 
-    const signals = getCanvasDeviceBoundSignals(device)
-    for (const [index, signal] of signals.entries()) {
-      if (signal && !allowedSignals.has(signal)) {
-        await hardwareStore.bindCanvasSignalSlot(device.id, index, null)
-      }
+    const currentSignals = device.state.binding.signals
+    const nextSignals = getCanvasDeviceBoundSignals(device).map((signal) => {
+      return signal && !allowedSignals.has(signal) ? null : signal
+    })
+
+    const changed = nextSignals.some((signal, index) => signal !== currentSignals[index])
+    if (changed) {
+      await hardwareStore.upsertCanvasDevice({
+        ...device,
+        state: {
+          ...device.state,
+          binding: {
+            kind: 'slots',
+            signals: nextSignals,
+          },
+        },
+      })
     }
   }
 }
@@ -212,6 +220,19 @@ function formatActualHz(rateHz: number) {
   }
 
   return `${(rateHz / 1_000_000).toFixed(2).replace(/\.?0+$/, '')} MHz`
+}
+
+function resetPlatformUiState() {
+  showGallery.value = false
+  canvasInteractionMode.value = 'select'
+  selectedDeviceId.value = null
+  selectedDeviceIds.value = []
+  inspectorOpen.value = false
+  manualDialogOpen.value = false
+  manualDeviceId.value = null
+  reopenInspectorAfterManual.value = false
+  streamBusy.value = false
+  streamMessage.value = ''
 }
 
 function resetDisplayActualHz(rateHz = 0) {
@@ -382,9 +403,7 @@ async function deleteSelectedDevices() {
     return
   }
 
-  const devicesById = new Map(
-    hardwareStore.state.value.canvas_devices.map((device) => [device.id, device]),
-  )
+  const devicesById = new Map(canvasDevices.value.map((device) => [device.id, device]))
   const singleDevice = ids.length === 1 ? (devicesById.get(ids[0]) ?? null) : null
 
   if (
@@ -446,6 +465,13 @@ watch(manualDevice, (device) => {
     reopenInspectorAfterManual.value = false
   }
 })
+
+watch(
+  () => projectStore.sessionId,
+  () => {
+    resetPlatformUiState()
+  },
+)
 
 watch(
   [workbenchSignalNameSet, canvasBindingSignature],
@@ -544,6 +570,7 @@ onBeforeUnmount(() => {
     <div class="relative flex-1 min-h-0 overflow-hidden">
       <ComponentGallery :open="showGallery" @close="showGallery = false" />
       <DeviceCanvas
+        :key="canvasSessionKey"
         v-model:selected-device-id="selectedDeviceId"
         v-model:selected-device-ids="selectedDeviceIds"
         :blocked-top-inset="showGallery ? galleryDropBlockInset : 0"

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch, type CSSProperties } from 'vue'
+import { computed, onUnmounted, ref, watch, type CSSProperties } from 'vue'
 
 import BaseDevice from '../devices/BaseDevice.vue'
 import WireLayer from './WireLayer.vue'
@@ -78,7 +78,7 @@ const wires = ref<
   Array<{ id: string; x1: number; y1: number; x2: number; y2: number; color: string }>
 >([])
 
-const devices = computed(() => hardwareStore.state.value.canvas_devices)
+const devices = computed(() => hardwareStore.canvasDevices.value)
 const streamRunning = computed(() => hardwareStore.dataStreamStatus.value.running)
 const sampleRateHz = computed(() => {
   return (
@@ -791,10 +791,6 @@ watch(
     consumePaletteDrop(nonce)
   },
 )
-
-onMounted(() => {
-  void hardwareStore.syncState()
-})
 
 onUnmounted(() => {
   removeWindowMouseListeners()

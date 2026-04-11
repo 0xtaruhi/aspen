@@ -16,37 +16,31 @@ import {
   syncState as syncRuntimeState,
 } from './hardware-runtime'
 import { hardwareFlowStore } from './hardware-flow'
-import { virtualDeviceStore } from './virtual-device'
+import { isProjectCanvasAction, projectCanvasStore } from './project-canvas'
 
+const canvasDevices = computed(() => projectCanvasStore.canvasDevices.value)
 const state = computed<HardwareStateV1>(() => {
   return {
     ...hardwareRuntimeStore.runtimeState.value,
-    canvas_devices: virtualDeviceStore.canvasDevices.value,
+    canvas_devices: canvasDevices.value,
   }
-})
-
-hardwareRuntimeStore.subscribeHardwareState((nextState) => {
-  virtualDeviceStore.setCanvasDevices(nextState.canvas_devices)
 })
 
 async function syncState() {
-  const nextState = await syncRuntimeState()
-  if (nextState) {
-    virtualDeviceStore.setCanvasDevices(nextState.canvas_devices)
-  }
+  await syncRuntimeState()
   return state.value
 }
 
 async function dispatch(action: HardwareActionV1) {
   try {
-    const nextState = await dispatchRuntimeAction(action)
-    if (nextState) {
-      virtualDeviceStore.setCanvasDevices(nextState.canvas_devices)
+    await dispatchRuntimeAction(action)
+    if (isProjectCanvasAction(action)) {
+      projectCanvasStore.applyAction(action)
     }
     return state.value
   } catch (err) {
     if (hardwareRuntimeStore.isTauriUnavailable(err)) {
-      virtualDeviceStore.applyLocalAction(action)
+      projectCanvasStore.applyAction(action)
       return state.value
     }
     throw err
@@ -181,11 +175,11 @@ async function stopDataStream() {
 
 async function disconnectView() {
   await disconnectRuntimeView()
-  virtualDeviceStore.resetState()
 }
 
 export const hardwareStore = {
   state,
+  canvasDevices,
   signalTelemetry: hardwareRuntimeStore.signalTelemetry,
   deviceTelemetry: hardwareRuntimeStore.deviceTelemetry,
   dataStreamStatus: hardwareRuntimeStore.dataStreamStatus,

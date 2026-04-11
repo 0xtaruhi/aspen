@@ -34,8 +34,8 @@ import {
   type ProjectSnapshot,
   type ProjectSynthesisCacheSnapshot,
 } from './project-model'
+import { projectCanvasStore } from './project-canvas'
 import { createProjectTemplateState, type ProjectTemplate } from './project-templates'
-import { virtualDeviceStore } from './virtual-device'
 
 export type {
   ProjectImplementationCacheSnapshot,
@@ -45,6 +45,7 @@ export type {
 } from './project-model'
 
 export const projectStore = reactive({
+  sessionId: 0,
   files: [] as ProjectNode[],
 
   activeFileId: '',
@@ -131,7 +132,7 @@ export const projectStore = reactive({
       implementationSettings: cloneImplementationSettings(this.implementationSettings),
       synthesisCache: cloneProjectSynthesisCacheSnapshot(this.synthesisCache),
       implementationCache: cloneProjectImplementationCacheSnapshot(this.implementationCache),
-      canvasDevices: cloneProjectCanvasDevices(virtualDeviceStore.canvasDevices.value),
+      canvasDevices: cloneProjectCanvasDevices(projectCanvasStore.canvasDevices.value),
     }
   },
 
@@ -163,7 +164,8 @@ export const projectStore = reactive({
     this.implementationSettings = cloneImplementationSettings(parsed.implementationSettings)
     this.synthesisCache = cloneProjectSynthesisCacheSnapshot(parsed.synthesisCache)
     this.implementationCache = cloneProjectImplementationCacheSnapshot(parsed.implementationCache)
-    virtualDeviceStore.setCanvasDevices(parsed.canvasDevices)
+    projectCanvasStore.setCanvasDevices(parsed.canvasDevices)
+    this.sessionId += 1
     this.markSaved(options.projectPath ?? null)
   },
 
@@ -412,7 +414,8 @@ export const projectStore = reactive({
     this.implementationSettings = cloneImplementationSettings(defaultImplementationSettings)
     this.synthesisCache = null
     this.implementationCache = null
-    virtualDeviceStore.resetState()
+    projectCanvasStore.resetState()
+    this.sessionId += 1
     this.markSaved(null)
   },
 
@@ -428,7 +431,8 @@ export const projectStore = reactive({
     this.implementationSettings = cloneImplementationSettings(defaultImplementationSettings)
     this.synthesisCache = null
     this.implementationCache = null
-    virtualDeviceStore.setCanvasDevices([])
+    projectCanvasStore.setCanvasDevices([])
+    this.sessionId += 1
     this.markSaved(null)
   },
 })

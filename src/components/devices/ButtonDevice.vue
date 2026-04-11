@@ -23,7 +23,7 @@ function release() {
   <div class="flex items-center justify-center">
     <button
       type="button"
-      class="h-12 w-12 rounded-full border-2 shadow-inner transition-colors"
+      class="h-14 w-14 rounded-full border-2 shadow-inner transition-colors"
       :class="isOn ? 'border-sky-400 bg-sky-500/30' : 'border-zinc-600 bg-zinc-800'"
       @pointerdown.prevent="press"
       @pointerup="release"

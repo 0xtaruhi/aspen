@@ -154,9 +154,8 @@ describe('virtual-device offline usability regression', () => {
       'Offline regression: toggling virtual switches must not throw Tauri internals errors',
     ).resolves.toBeTruthy()
 
-    const ledState = hardwareStore.state.value.canvas_devices.find(
-      (device) => device.id === 'led-offline',
-    )?.state.is_on
+    const ledState = hardwareStore.canvasDevices.value.find((device) => device.id === 'led-offline')
+      ?.state.is_on
 
     expect(
       ledState,

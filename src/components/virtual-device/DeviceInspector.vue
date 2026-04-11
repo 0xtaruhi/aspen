@@ -23,6 +23,8 @@ import {
   getCanvasDeviceSettingsComponent,
 } from '@/components/virtual-device/registry'
 import type { IndexedSignalBus } from '@/components/virtual-device/types'
+import { buildIndexedSignalBuses } from '@/components/virtual-device/binding-assist/indexed-bus-utils'
+import { replaceCanvasSlotBindings } from '@/components/virtual-device/settings/shared'
 import {
   CANVAS_DEVICE_PRESET_COLORS,
   deviceDrivesSignal,
@@ -74,46 +76,7 @@ const compatibleSignals = computed<readonly SignalCatalogEntry[]>(() => {
 })
 
 const indexedCompatibleBuses = computed<IndexedSignalBus[]>(() => {
-  const buses = new Map<
-    string,
-    {
-      maxIndex: number
-      signals: Map<number, string>
-    }
-  >()
-
-  for (const signal of compatibleSignals.value) {
-    const match = signal.name.match(/^(.*)\[(\d+)\]$/)
-    if (!match) {
-      continue
-    }
-
-    const baseName = match[1]
-    const bitIndex = Number.parseInt(match[2], 10)
-    if (Number.isNaN(bitIndex)) {
-      continue
-    }
-
-    const existing = buses.get(baseName) ?? {
-      maxIndex: -1,
-      signals: new Map<number, string>(),
-    }
-    existing.maxIndex = Math.max(existing.maxIndex, bitIndex)
-    existing.signals.set(bitIndex, signal.name)
-    buses.set(baseName, existing)
-  }
-
-  return [...buses.entries()]
-    .map(([baseName, bus]) => {
-      const width = bus.maxIndex + 1
-      return {
-        baseName,
-        label: `${baseName}[0:${width - 1}]`,
-        width,
-        signals: Array.from({ length: width }, (_, index) => bus.signals.get(index) ?? null),
-      }
-    })
-    .sort((left, right) => left.baseName.localeCompare(right.baseName))
+  return buildIndexedSignalBuses(compatibleSignals.value)
 })
 
 const bindingSlots = computed(() => {
@@ -255,9 +218,12 @@ function clearBindings() {
     return
   }
 
-  bindingSlots.value.forEach((_, index) => {
-    commitSlotBinding(index, UNBOUND_SIGNAL)
-  })
+  void hardwareStore.upsertCanvasDevice(
+    replaceCanvasSlotBindings(
+      props.device,
+      Array.from({ length: bindingSlots.value.length }, () => null),
+    ),
+  )
 }
 
 function openManual() {

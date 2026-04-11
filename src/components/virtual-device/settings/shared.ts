@@ -5,7 +5,6 @@ import type {
   CanvasVgaColorMode,
 } from '@/lib/hardware-client'
 import { vgaColorModeBitCounts } from '@/lib/canvas-devices'
-import type { IndexedSignalBus } from '@/components/virtual-device/types'
 
 export function clampInspectorInt(
   value: string | number | null | undefined,
@@ -39,24 +38,24 @@ export function resizeCanvasSlotBindings(
   }
 }
 
-export function guessIndexedBus(
-  indexedBuses: readonly IndexedSignalBus[],
-  minimumWidth: number,
-  keywords: readonly string[],
-  excludeBaseName?: string,
-) {
-  const narrowed = indexedBuses.filter((bus) => {
-    return bus.width >= minimumWidth && bus.baseName !== excludeBaseName
-  })
-
-  for (const keyword of keywords) {
-    const match = narrowed.find((bus) => bus.baseName.toLowerCase().includes(keyword))
-    if (match) {
-      return match.baseName
-    }
+export function replaceCanvasSlotBindings(
+  device: CanvasDeviceSnapshot,
+  signals: readonly (string | null)[],
+): CanvasDeviceSnapshot {
+  if (device.state.binding.kind !== 'slots') {
+    return device
   }
 
-  return narrowed[0]?.baseName ?? ''
+  return {
+    ...device,
+    state: {
+      ...device.state,
+      binding: {
+        kind: 'slots',
+        signals: [...signals],
+      },
+    },
+  }
 }
 
 export function vgaSlotCount(mode: CanvasVgaColorMode) {

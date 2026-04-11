@@ -26,20 +26,20 @@ function isPressed(row: number, column: number) {
 </script>
 
 <template>
-  <div class="flex h-full w-full items-center justify-center px-2 py-2">
+  <div class="flex h-full w-full items-center justify-center px-1.5 py-1.5">
     <div
-      class="rounded-lg border border-zinc-800 bg-zinc-950/90 p-2"
+      class="rounded-md border border-zinc-800 bg-zinc-950/90 p-1.5"
       :style="{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }"
     >
       <div
-        class="grid gap-1.5"
+        class="grid gap-1"
         :style="{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }"
       >
         <button
           v-for="index in rows * columns"
           :key="index"
           type="button"
-          class="grid h-9 w-9 place-items-center rounded-md border text-[11px] font-semibold transition-colors"
+          class="grid h-8 w-8 place-items-center rounded-sm border text-[10px] font-semibold transition-colors"
           :class="
             isPressed(Math.floor((index - 1) / columns), (index - 1) % columns)
               ? 'border-emerald-400 bg-emerald-500/15 text-emerald-100'

@@ -111,17 +111,9 @@ let pendingDataBatchMeta: Pick<
   | 'last_batch_cycles'
 > | null = null
 
-const hardwareStateListeners = new Set<(state: HardwareStateV1) => void>()
-
 function extractRuntimeState(nextState: HardwareStateV1): RuntimeState {
   const { canvas_devices: _canvasDevices, ...runtimeOnlyState } = nextState
   return runtimeOnlyState
-}
-
-function notifyHardwareState(nextState: HardwareStateV1) {
-  for (const listener of hardwareStateListeners) {
-    listener(nextState)
-  }
 }
 
 function setRuntimeState(nextState: RuntimeState) {
@@ -130,7 +122,6 @@ function setRuntimeState(nextState: RuntimeState) {
 
 function applyHardwareState(nextState: HardwareStateV1) {
   setRuntimeState(extractRuntimeState(nextState))
-  notifyHardwareState(nextState)
 }
 
 function setError(message: string) {
@@ -702,14 +693,6 @@ export async function disconnectView() {
   resetRuntimeViewState()
 }
 
-function subscribeHardwareState(listener: (state: HardwareStateV1) => void) {
-  hardwareStateListeners.add(listener)
-
-  return () => {
-    hardwareStateListeners.delete(listener)
-  }
-}
-
 export const hardwareRuntimeStore = {
   runtimeState,
   signalTelemetry,
@@ -727,6 +710,5 @@ export const hardwareRuntimeStore = {
   startDataStream,
   stopDataStream,
   disconnectView,
-  subscribeHardwareState,
   isTauriUnavailable,
 }

@@ -343,17 +343,15 @@ async function writePersistedImplementationManifest(
 export async function loadProjectFromPath(path: string) {
   const content = await invoke<string>('read_project_file', { path })
   const data = JSON.parse(content) as unknown
+  const loadedSnapshot: ProjectSnapshot = isProjectMetadataSnapshot(data)
+    ? await hydrateProjectSnapshot(path, data)
+    : (data as ProjectSnapshot)
 
-  if (isProjectMetadataSnapshot(data)) {
-    const hydrated = await hydrateProjectSnapshot(path, data)
-    projectStore.loadFromSnapshot(hydrated, { projectPath: path })
-  } else {
-    projectStore.loadFromSnapshot(data, { projectPath: path })
-  }
+  projectStore.loadFromSnapshot(loadedSnapshot, { projectPath: path })
 
   await hydratePersistedSynthesisManifest(path)
   await hydratePersistedImplementationManifest(path)
-  await hardwareStore.replaceCanvasDevices(projectStore.toSnapshot().canvasDevices)
+  await hardwareStore.replaceCanvasDevices(loadedSnapshot.canvasDevices)
 
   recentProjectsStore.rememberProject(path, projectStore.toSnapshot().name)
   return true

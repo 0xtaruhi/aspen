@@ -7,7 +7,7 @@ import { defaultImplementationSettings } from '../lib/implementation-settings'
 import { resolveCurrentProjectPinConstraints } from '../lib/project-constraints'
 
 import { projectStore } from './project'
-import { virtualDeviceStore } from './virtual-device'
+import { projectCanvasStore } from './project-canvas'
 
 describe('project save-state regression', () => {
   it('can return to an empty workspace without a default project', () => {
@@ -314,7 +314,7 @@ describe('project save-state regression', () => {
       ],
     }
 
-    virtualDeviceStore.setCanvasDevices([led, matrix, vga])
+    projectCanvasStore.setCanvasDevices([led, matrix, vga])
 
     const snapshot = projectStore.toSnapshot()
     expect(snapshot.canvasDevices).toHaveLength(3)
@@ -332,18 +332,18 @@ describe('project save-state regression', () => {
       color_mode: 'rgb565',
     })
 
-    virtualDeviceStore.setCanvasDevices([])
+    projectCanvasStore.setCanvasDevices([])
     projectStore.loadFromSnapshot(snapshot)
 
-    expect(virtualDeviceStore.canvasDevices.value).toHaveLength(3)
-    expect(virtualDeviceStore.canvasDevices.value[0]?.label).toBe('Status LED')
-    expect(virtualDeviceStore.canvasDevices.value[0]?.state.binding).toEqual({
+    expect(projectCanvasStore.canvasDevices.value).toHaveLength(3)
+    expect(projectCanvasStore.canvasDevices.value[0]?.label).toBe('Status LED')
+    expect(projectCanvasStore.canvasDevices.value[0]?.state.binding).toEqual({
       kind: 'single',
       signal: 'io_gameover',
     })
-    expect(virtualDeviceStore.canvasDevices.value[0]?.state.is_on).toBe(false)
-    expect(virtualDeviceStore.canvasDevices.value[1]?.state.color).toBe('#eab308')
-    expect(virtualDeviceStore.canvasDevices.value[2]?.state.config).toEqual({
+    expect(projectCanvasStore.canvasDevices.value[0]?.state.is_on).toBe(false)
+    expect(projectCanvasStore.canvasDevices.value[1]?.state.color).toBe('#eab308')
+    expect(projectCanvasStore.canvasDevices.value[2]?.state.config).toEqual({
       kind: 'vga_display',
       rows: 240,
       columns: 320,

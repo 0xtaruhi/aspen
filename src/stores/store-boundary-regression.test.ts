@@ -2,13 +2,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-const rootStores = [
-  'hardware.ts',
-  'hardware-runtime.ts',
-  'virtual-device.ts',
-  'project.ts',
-  'ui.ts',
-]
+const rootStores = ['hardware.ts', 'hardware-runtime.ts', 'project.ts', 'ui.ts']
 
 const runtimeDomainFields = ['phase', 'last_error', 'device', 'artifact', 'op_id']
 
@@ -55,18 +49,18 @@ describe('store boundary contract regression', () => {
     ).toMatch(makeForbiddenImportPattern('ui'))
   })
 
-  it('forbids virtual store from mutating runtime-domain fields/contracts', () => {
-    const source = readStoreSource('virtual-device.ts')
+  it('forbids project canvas store from mutating runtime-domain fields/contracts', () => {
+    const source = readStoreSource('project-canvas.ts')
 
     expect(
       source,
-      'Boundary violation: src/stores/virtual-device.ts must not handle runtime action clear_error; runtime-state ownership belongs to src/stores/hardware-runtime.ts',
+      'Boundary violation: src/stores/project-canvas.ts must not handle runtime action clear_error; runtime-state ownership belongs to src/stores/hardware-runtime.ts',
     ).not.toContain("case 'clear_error'")
 
     for (const fieldName of runtimeDomainFields) {
       expect(
         source,
-        `Boundary violation: src/stores/virtual-device.ts must not mutate runtime field '${fieldName}'. Runtime domain fields are owned by src/stores/hardware-runtime.ts`,
+        `Boundary violation: src/stores/project-canvas.ts must not mutate runtime field '${fieldName}'. Runtime domain fields are owned by src/stores/hardware-runtime.ts`,
       ).not.toMatch(makeForbiddenFieldMutationPattern(fieldName))
     }
   })

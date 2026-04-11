@@ -26,8 +26,12 @@ import SegmentDisplayDevice from '@/components/devices/SegmentDisplayDevice.vue'
 import SwitchDevice from '@/components/devices/SwitchDevice.vue'
 import UartTerminalDevice from '@/components/devices/UartTerminalDevice.vue'
 import VgaDisplayDevice from '@/components/devices/VgaDisplayDevice.vue'
+import DipSwitchBankBindingAssistant from '@/components/virtual-device/binding-assist/DipSwitchBankBindingAssistant.vue'
+import LedBarBindingAssistant from '@/components/virtual-device/binding-assist/LedBarBindingAssistant.vue'
+import MatrixKeypadBindingAssistant from '@/components/virtual-device/binding-assist/MatrixKeypadBindingAssistant.vue'
 import SegmentDisplayBindingAssistant from '@/components/virtual-device/binding-assist/SegmentDisplayBindingAssistant.vue'
 import LedMatrixBindingAssistant from '@/components/virtual-device/binding-assist/LedMatrixBindingAssistant.vue'
+import VgaDisplayBindingAssistant from '@/components/virtual-device/binding-assist/VgaDisplayBindingAssistant.vue'
 import DeviceButtonSettings from '@/components/virtual-device/settings/DeviceButtonSettings.vue'
 import DeviceDipSwitchBankSettings from '@/components/virtual-device/settings/DeviceDipSwitchBankSettings.vue'
 import DeviceHd44780LcdSettings from '@/components/virtual-device/settings/DeviceHd44780LcdSettings.vue'
@@ -114,6 +118,7 @@ const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefiniti
     renderer: DipSwitchBankDevice,
     gallery: { section: 'input', order: 30, meta: 'banked input', icon: Rows3 },
     settingsComponent: DeviceDipSwitchBankSettings,
+    bindingAssistantComponent: DipSwitchBankBindingAssistant,
     buildRendererListeners: (device, actions) => ({
       'toggle-bit': (index: number, value: boolean) => {
         actions.setBitsetValue(device, index, value)
@@ -125,6 +130,7 @@ const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefiniti
     gallery: { section: 'display', order: 20, meta: 'bus monitor', icon: Rows3 },
     supportsColor: true,
     settingsComponent: DeviceLedBarSettings,
+    bindingAssistantComponent: LedBarBindingAssistant,
     buildRuntimeProps: (device, context) => {
       const config = getCanvasLedBarConfig(device)
       if (!context.streamRunning) {
@@ -185,6 +191,7 @@ const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefiniti
     renderer: MatrixKeypadDevice,
     gallery: { section: 'input', order: 50, meta: 'row/column scan', icon: Grid2x2 },
     settingsComponent: DeviceMatrixKeypadSettings,
+    bindingAssistantComponent: MatrixKeypadBindingAssistant,
     buildRendererListeners: (device, actions) => ({
       'press-key': (row: number | null, column: number | null) => {
         actions.setMatrixKey(device, row, column)
@@ -218,6 +225,7 @@ const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefiniti
     renderer: VgaDisplayDevice,
     gallery: { section: 'display', order: 70, meta: 'raster display', icon: Tv },
     settingsComponent: DeviceVgaDisplaySettings,
+    bindingAssistantComponent: VgaDisplayBindingAssistant,
     buildRuntimeProps: (device, context) => {
       const config = getCanvasVgaDisplayConfig(device)
       return {

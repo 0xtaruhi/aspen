@@ -3,7 +3,7 @@ import { computed } from 'vue'
 
 import IndexedBusBindingAssistant from '@/components/virtual-device/binding-assist/IndexedBusBindingAssistant.vue'
 import type { IndexedBusBindingGroup, IndexedSignalBus } from '@/components/virtual-device/types'
-import { getCanvasMatrixDimensions } from '@/lib/canvas-devices'
+import { getCanvasLedBarConfig } from '@/lib/canvas-devices'
 import type { CanvasDeviceSnapshot } from '@/lib/hardware-client'
 import { useI18n } from '@/lib/i18n'
 
@@ -15,24 +15,15 @@ const props = defineProps<{
 const { t } = useI18n()
 
 const groups = computed<IndexedBusBindingGroup[]>(() => {
-  const dimensions = getCanvasMatrixDimensions(props.device)
-  const rows = dimensions?.rows ?? 0
-  const columns = dimensions?.columns ?? 0
+  const width = getCanvasLedBarConfig(props.device)?.width ?? 0
 
   return [
     {
-      key: 'rows',
-      label: t('rowBus'),
-      width: rows,
+      key: 'leds',
+      label: t('ledBus'),
+      width,
       slotOffset: 0,
-      keywords: ['row'],
-    },
-    {
-      key: 'columns',
-      label: t('columnBus'),
-      width: columns,
-      slotOffset: rows,
-      keywords: ['column', 'col', 'info'],
+      keywords: ['led', 'bar', 'light'],
     },
   ]
 })
