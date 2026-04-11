@@ -11,9 +11,6 @@ use std::{
     time::Instant,
 };
 
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
-
 const TEST_BUNDLED_YOSYS_DIR: &str = "vendor/yosys";
 const TEST_YOSYS_SUPPORT_DIR: &str = "resource/yosys-fde";
 const TEST_FDE_SIMLIB_FILE: &str = "fdesimlib.v";
@@ -151,35 +148,10 @@ write_edif {}\n",
 
     #[cfg(target_os = "windows")]
     let mut command = {
-        if let Some(environment_batch) = yosys_bin
-            .parent()
-            .and_then(Path::parent)
-            .map(|root| root.join("environment.bat"))
-            .filter(|path| path.is_file())
-        {
-            let script_argument = script_path
-                .strip_prefix(workdir)
-                .map(PathBuf::from)
-                .unwrap_or_else(|_| {
-                    script_path
-                        .file_name()
-                        .map(PathBuf::from)
-                        .unwrap_or_else(|| script_path.clone())
-                });
-            let mut command = Command::new("cmd");
-            command.arg("/d").arg("/c").raw_arg(format!(
-                "call {} >nul 2>nul & {} -s {}",
-                quote_test_windows_cmd_path(&environment_batch),
-                quote_test_windows_cmd_path(&yosys_bin),
-                quote_test_windows_cmd_path(&script_argument),
-            ));
-            command
-        } else {
-            let mut command = Command::new(&yosys_bin);
-            command.arg("-s").arg(&script_path);
-            configure_test_yosys_runtime_env(&mut command, &yosys_bin);
-            command
-        }
+        let mut command = Command::new(&yosys_bin);
+        command.arg("-s").arg(&script_path);
+        configure_test_yosys_runtime_env(&mut command, &yosys_bin);
+        command
     };
 
     #[cfg(not(target_os = "windows"))]
@@ -215,6 +187,11 @@ fn configure_test_yosys_runtime_env(command: &mut Command, yosys_bin: &Path) {
 
     let mut runtime_entries = vec![bin_dir.to_path_buf()];
     if let Some(bundle_root) = bin_dir.parent() {
+        let lib_dir = bundle_root.join("lib");
+        if lib_dir.is_dir() {
+            runtime_entries.push(lib_dir);
+        }
+
         let libexec_dir = bundle_root.join("libexec");
         if libexec_dir.is_dir() {
             runtime_entries.push(libexec_dir);
@@ -229,11 +206,6 @@ fn configure_test_yosys_runtime_env(command: &mut Command, yosys_bin: &Path) {
     if let Ok(path) = env::join_paths(runtime_entries) {
         command.env("PATH", path);
     }
-}
-
-#[cfg(target_os = "windows")]
-fn quote_test_windows_cmd_path(path: &Path) -> String {
-    format!("\"{}\"", path.display())
 }
 
 fn test_resource_paths() -> toolchain::ImplementationResourcePaths {
