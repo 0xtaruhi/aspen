@@ -48,11 +48,13 @@ fn resolve_resource_file(
         return Ok(candidate);
     }
 
-    let bundled_dev_candidate = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join(root_dir)
-        .join(file_name);
-    if bundled_dev_candidate.is_file() {
-        return Ok(bundled_dev_candidate);
+    if cfg!(debug_assertions) {
+        let bundled_dev_candidate = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join(root_dir)
+            .join(file_name);
+        if bundled_dev_candidate.is_file() {
+            return Ok(bundled_dev_candidate);
+        }
     }
 
     Err(format!(
