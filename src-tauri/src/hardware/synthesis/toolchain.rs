@@ -4,9 +4,15 @@ use std::{
     process::{Command, Stdio},
 };
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 use tauri::{path::BaseDirectory, AppHandle, Manager};
 
 use super::{BUNDLED_YOSYS_DIR, FDE_RESOURCE_DIR};
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 pub(super) struct SynthesisToolchainPaths<'a> {
     pub yosys_bin: &'a Path,
@@ -59,6 +65,8 @@ pub(super) fn spawn_yosys_process(
         .current_dir(workdir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    #[cfg(target_os = "windows")]
+    command.creation_flags(CREATE_NO_WINDOW);
     configure_yosys_runtime_env(&mut command, toolchain.yosys_bin);
     command.spawn()
 }
