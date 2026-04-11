@@ -22,6 +22,7 @@ defineProps<{
     icon?: LucideIcon
     isActive?: boolean
     isRunning?: boolean
+    disabled?: boolean
     action?: () => void
     items?: {
       title: string
@@ -30,6 +31,7 @@ defineProps<{
       action?: () => void
       isActive?: boolean
       isRunning?: boolean
+      disabled?: boolean
     }[]
   }[]
 }>()
@@ -47,7 +49,11 @@ const { t } = useI18n()
             <Collapsible as-child :default-open="item.isActive" class="group/collapsible">
               <div>
                 <CollapsibleTrigger as-child>
-                  <SidebarMenuButton :tooltip="item.label ?? item.title" :is-active="item.isActive">
+                  <SidebarMenuButton
+                    :tooltip="item.label ?? item.title"
+                    :is-active="item.isActive"
+                    :disabled="item.disabled"
+                  >
                     <component :is="item.icon" v-if="item.icon" />
                     <span>{{ item.label ?? item.title }}</span>
                     <LoaderCircle
@@ -68,7 +74,8 @@ const { t } = useI18n()
                       <SidebarMenuSubButton
                         type="button"
                         :is-active="subItem.isActive"
-                        @click="subItem.action ? subItem.action() : null"
+                        :disabled="subItem.disabled"
+                        @click="!subItem.disabled && subItem.action ? subItem.action() : null"
                       >
                         <span>{{ subItem.label ?? subItem.title }}</span>
                         <LoaderCircle
@@ -87,7 +94,8 @@ const { t } = useI18n()
               type="button"
               :tooltip="item.label ?? item.title"
               :is-active="item.isActive"
-              @click="item.action ? item.action() : null"
+              :disabled="item.disabled"
+              @click="!item.disabled && item.action ? item.action() : null"
             >
               <component :is="item.icon" v-if="item.icon" />
               <span>{{ item.label ?? item.title }}</span>

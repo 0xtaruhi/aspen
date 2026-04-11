@@ -13,12 +13,15 @@ type SettingsState = {
   language: AppLanguage
   themeMode: ThemeMode
   themeAccent: string
+  editorFontFamily: string
   editorFontSize: number
   editorMinimap: boolean
   confirmDelete: boolean
 }
 
 const STORAGE_KEY = 'aspen-settings'
+export const DEFAULT_EDITOR_FONT_FAMILY =
+  "'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Consolas, monospace"
 
 function normalizeLanguage(value: unknown): AppLanguage | null {
   if (typeof value !== 'string') {
@@ -73,12 +76,26 @@ function normalizeThemeMode(value: unknown): ThemeMode {
   return value === 'light' || value === 'dark' || value === 'system' ? value : 'system'
 }
 
+function normalizeEditorFontFamily(value: unknown): string {
+  if (typeof value !== 'string') {
+    return DEFAULT_EDITOR_FONT_FAMILY
+  }
+
+  const normalized = value.trim()
+  if (!normalized) {
+    return DEFAULT_EDITOR_FONT_FAMILY
+  }
+
+  return normalized.slice(0, 200)
+}
+
 const defaultLanguage = detectPreferredLanguage()
 
 const defaultSettings: SettingsState = {
   language: defaultLanguage,
   themeMode: 'system',
   themeAccent: DEFAULT_THEME_ACCENT,
+  editorFontFamily: DEFAULT_EDITOR_FONT_FAMILY,
   editorFontSize: 14,
   editorMinimap: true,
   confirmDelete: true,
@@ -114,6 +131,7 @@ function readStoredSettings(): Partial<SettingsState> {
       language: normalizeLanguage(parsed.language) ?? defaultLanguage,
       themeMode: normalizeThemeMode(parsed.themeMode),
       themeAccent: normalizeThemeAccentColor(parsed.themeAccent),
+      editorFontFamily: normalizeEditorFontFamily(parsed.editorFontFamily),
     }
   } catch (_) {
     return {}
@@ -148,6 +166,7 @@ export const settingsStore = {
     Object.assign(state, patch)
     state.themeMode = normalizeThemeMode(state.themeMode)
     state.themeAccent = normalizeThemeAccentColor(state.themeAccent)
+    state.editorFontFamily = normalizeEditorFontFamily(state.editorFontFamily)
     applyLanguage(state.language)
     setThemeMode(state.themeMode)
     applyThemeAccentColor(state.themeAccent)
@@ -164,6 +183,10 @@ export const settingsStore = {
 
   setThemeAccent(themeAccent: string) {
     this.update({ themeAccent })
+  },
+
+  setEditorFontFamily(editorFontFamily: string) {
+    this.update({ editorFontFamily })
   },
 
   setEditorFontSize(editorFontSize: number) {

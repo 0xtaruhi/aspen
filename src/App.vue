@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { isTauri } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Settings2 } from 'lucide-vue-next'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 
 import AppSidebar from '@/components/AppSidebar.vue'
+import ProjectUnsavedChangesDialog from '@/components/project/ProjectUnsavedChangesDialog.vue'
 import NewProjectDialog from '@/components/project/NewProjectDialog.vue'
 import {
   Breadcrumb,
@@ -17,8 +19,15 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { useI18n } from '@/lib/i18n'
-import { openProject, saveProject, saveProjectAs } from '@/lib/project-io'
-import { routeLabelMap, type AppRouteName } from '@/router'
+import {
+  closeProject,
+  openProject,
+  resolveUnsavedProjectChanges,
+  saveProject,
+  saveProjectAs,
+} from '@/lib/project-io'
+import { routeLabelMap, routeRequiresProject, type AppRouteName } from '@/router'
+import { appUpdateStore } from '@/stores/app-update'
 import { hardwareWorkbenchStore } from '@/stores/hardware-workbench'
 import { projectStore } from '@/stores/project'
 import { uiStore } from '@/stores/ui'
@@ -26,6 +35,7 @@ import { uiStore } from '@/stores/ui'
 type AppMenuAction =
   | 'new-project'
   | 'open-project'
+  | 'close-project'
   | 'save-project'
   | 'save-project-as'
   | 'open-settings'
@@ -35,6 +45,7 @@ const router = useRouter()
 const { t } = useI18n()
 const showNewProjectDialog = ref(false)
 let unlistenAppMenu: (() => void) | null = null
+let unlistenCloseRequested: (() => void) | null = null
 const moduleLabelKeyMap = {
   'project-management': 'projectManagement',
   'fpga-flow': 'fpgaFlow',
@@ -56,6 +67,7 @@ const routeLabelKeyMap = {
 } as const
 
 const activeRouteName = computed(() => route.name as AppRouteName | undefined)
+const hasAvailableUpdate = computed(() => appUpdateStore.state.status === 'available')
 
 const activeModuleLabel = computed(() => {
   if (activeRouteName.value === 'settings') {
@@ -114,6 +126,27 @@ function openSettings() {
   void router.push({ name: 'settings' })
 }
 
+async function prepareApplicationClose() {
+  if (!(await resolveUnsavedProjectChanges('quit-application'))) {
+    return false
+  }
+
+  if (!projectStore.hasProject) {
+    return true
+  }
+
+  return await closeProject({ promptForUnsavedChanges: false })
+}
+
+function handleBrowserBeforeUnload(event: BeforeUnloadEvent) {
+  if (!projectStore.hasProject || !projectStore.hasUnsavedChanges) {
+    return
+  }
+
+  event.preventDefault()
+  event.returnValue = ''
+}
+
 function handleAppMenuAction(action: AppMenuAction) {
   switch (action) {
     case 'new-project':
@@ -121,6 +154,13 @@ function handleAppMenuAction(action: AppMenuAction) {
       return
     case 'open-project':
       void openProject()
+      return
+    case 'close-project':
+      void closeProject().then((closed) => {
+        if (closed) {
+          void router.push({ name: 'project-management-dashboard' })
+        }
+      })
       return
     case 'save-project':
       void saveProject()
@@ -136,11 +176,14 @@ function handleAppMenuAction(action: AppMenuAction) {
 onMounted(() => {
   if (typeof window !== 'undefined') {
     window.addEventListener('keydown', handleGlobalKeydown, { capture: true })
+    window.addEventListener('beforeunload', handleBrowserBeforeUnload)
   }
 
   void hardwareWorkbenchStore.boot().catch((err) => {
     console.error('Failed to boot Aspen hardware runtime', err)
   })
+
+  void appUpdateStore.maybeAutoCheck().catch(() => undefined)
 
   if (!isTauri()) {
     return
@@ -151,11 +194,37 @@ onMounted(() => {
   }).then((unlisten) => {
     unlistenAppMenu = unlisten
   })
+
+  const currentWindow = getCurrentWindow()
+  void currentWindow
+    .onCloseRequested(async (event) => {
+      event.preventDefault()
+
+      if (!(await prepareApplicationClose())) {
+        return
+      }
+
+      await currentWindow.destroy()
+    })
+    .then((unlisten) => {
+      unlistenCloseRequested = unlisten
+    })
 })
+
+watch(
+  [() => projectStore.hasProject, activeRouteName],
+  ([hasProject, routeName]) => {
+    if (!hasProject && routeRequiresProject(routeName)) {
+      void router.replace({ name: 'project-management-dashboard' })
+    }
+  },
+  { immediate: true },
+)
 
 onUnmounted(() => {
   if (typeof window !== 'undefined') {
     window.removeEventListener('keydown', handleGlobalKeydown, { capture: true })
+    window.removeEventListener('beforeunload', handleBrowserBeforeUnload)
   }
 
   if (unlistenAppMenu) {
@@ -163,13 +232,20 @@ onUnmounted(() => {
     unlistenAppMenu = null
   }
 
+  if (unlistenCloseRequested) {
+    unlistenCloseRequested()
+    unlistenCloseRequested = null
+  }
+
   void hardwareWorkbenchStore.shutdown().catch(() => undefined)
+  appUpdateStore.dispose()
 })
 </script>
 
 <template>
   <div class="min-h-screen bg-background text-foreground transition-colors">
     <NewProjectDialog v-model:open="showNewProjectDialog" />
+    <ProjectUnsavedChangesDialog />
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset class="relative h-screen overflow-hidden flex flex-col">
@@ -197,11 +273,15 @@ onUnmounted(() => {
 
             <div class="ml-auto flex items-center gap-2">
               <button
-                class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground h-9 w-9"
+                class="relative inline-flex h-9 w-9 items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
                 :title="t('settings')"
                 :aria-label="t('openSettings')"
                 @click="openSettings"
               >
+                <span
+                  v-if="hasAvailableUpdate"
+                  class="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-red-500"
+                />
                 <Settings2 class="h-4 w-4" />
               </button>
             </div>

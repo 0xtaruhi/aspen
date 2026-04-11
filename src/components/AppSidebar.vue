@@ -43,6 +43,7 @@ function navigate(path: string) {
 
 const activeRouteName = computed(() => route.name as AppRouteName | undefined)
 const rootNode = computed(() => projectStore.rootNode)
+const hasProject = computed(() => projectStore.hasProject)
 const isSynthesisRunning = hardwareStore.synthesisRunning
 const isImplementationRunning = hardwareStore.implementationRunning
 
@@ -80,6 +81,7 @@ const data = computed(() => ({
       icon: FileCode2,
       isActive: uiStore.activeModule.value === 'fpga-flow',
       isRunning: isSynthesisRunning.value || isImplementationRunning.value,
+      disabled: !hasProject.value,
       items: [
         {
           title: 'Synthesis',
@@ -88,6 +90,7 @@ const data = computed(() => ({
           action: () => navigate('/fpga-flow/synthesis'),
           isActive: activeRouteName.value === 'fpga-flow-synthesis',
           isRunning: isSynthesisRunning.value,
+          disabled: !hasProject.value,
         },
         {
           title: 'Pin Planning',
@@ -95,6 +98,7 @@ const data = computed(() => ({
           url: '/fpga-flow/pin-planning',
           action: () => navigate('/fpga-flow/pin-planning'),
           isActive: activeRouteName.value === 'fpga-flow-pin-planning',
+          disabled: !hasProject.value,
         },
         {
           title: 'Implementation',
@@ -103,6 +107,7 @@ const data = computed(() => ({
           action: () => navigate('/fpga-flow/implementation'),
           isActive: activeRouteName.value === 'fpga-flow-implementation',
           isRunning: isImplementationRunning.value,
+          disabled: !hasProject.value,
         },
       ],
     },
@@ -120,6 +125,7 @@ const data = computed(() => ({
       url: modulePathMap['virtual-device-platform'],
       icon: Bug,
       isActive: uiStore.activeModule.value === 'virtual-device-platform',
+      disabled: !hasProject.value,
       action: () => navigate(modulePathMap['virtual-device-platform']),
     },
   ],

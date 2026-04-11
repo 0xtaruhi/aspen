@@ -11,8 +11,12 @@ import {
   writeProjectBundle,
 } from '@/lib/project-persistence'
 import { ASPEN_PROJECT_FILENAME, getProjectMetadataPath, joinPath } from '@/lib/project-layout'
+import { hardwareStore } from '@/stores/hardware'
 import { projectStore } from '@/stores/project'
+import { requestProjectUnsavedChanges } from '@/stores/project-unsaved-changes'
 import { recentProjectsStore } from '@/stores/recent-projects'
+
+type UnsavedProjectAction = 'open-project' | 'create-project' | 'close-project' | 'quit-application'
 
 function getErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
@@ -25,6 +29,43 @@ function isTauriUnavailable(err: unknown): boolean {
     message.includes('window.__TAURI_INTERNALS__') ||
     message.includes('plugin')
   )
+}
+
+function getCurrentProjectName() {
+  return projectStore.files[0]?.name || translate('projectNameDefault')
+}
+
+function getUnsavedChangesActionLabel(action: UnsavedProjectAction) {
+  switch (action) {
+    case 'open-project':
+      return translate('openingAnotherProjectAction')
+    case 'create-project':
+      return translate('creatingNewProjectAction')
+    case 'close-project':
+      return translate('closingCurrentProjectAction')
+    case 'quit-application':
+      return translate('quittingAspenAction')
+  }
+}
+
+export async function resolveUnsavedProjectChanges(action: UnsavedProjectAction) {
+  if (!projectStore.hasProject || !projectStore.hasUnsavedChanges) {
+    return true
+  }
+
+  const decision = await requestProjectUnsavedChanges({
+    title: translate('unsavedChanges'),
+    description: translate('saveChangesBeforeAction', {
+      name: getCurrentProjectName(),
+      action: getUnsavedChangesActionLabel(action),
+    }),
+  })
+
+  if (decision === 'save') {
+    return await saveProject()
+  }
+
+  return decision === 'discard'
 }
 
 async function openProjectInBrowserFallback() {
@@ -55,6 +96,11 @@ async function openProjectInBrowserFallback() {
       ) {
         throw new Error('Directory-based Aspen projects require the desktop app to open.')
       }
+
+      if (!(await resolveUnsavedProjectChanges('open-project'))) {
+        return
+      }
+
       projectStore.loadFromSnapshot(data)
     } catch (err) {
       window.alert(translate('openProjectFailed', { message: getErrorMessage(err) }))
@@ -154,6 +200,10 @@ export async function openProject() {
       return false
     }
 
+    if (!(await resolveUnsavedProjectChanges('open-project'))) {
+      return false
+    }
+
     return await loadProjectFromPath(selected)
   } catch (err) {
     if (isTauriUnavailable(err)) {
@@ -166,8 +216,44 @@ export async function openProject() {
   }
 }
 
+async function clearCurrentProject() {
+  try {
+    await hardwareStore.stopDataStream()
+  } catch {
+    // Closing the project should still proceed if the runtime is already idle.
+  }
+
+  try {
+    await hardwareStore.clearCanvasDevices()
+  } catch {
+    // Project state is authoritative; runtime cleanup is best effort here.
+  }
+
+  projectStore.clearProject()
+}
+
+export async function closeProject(options: { promptForUnsavedChanges?: boolean } = {}) {
+  if (!projectStore.hasProject) {
+    return false
+  }
+
+  if (
+    options.promptForUnsavedChanges !== false &&
+    !(await resolveUnsavedProjectChanges('close-project'))
+  ) {
+    return false
+  }
+
+  await clearCurrentProject()
+  return true
+}
+
 export async function openRecentProject(path: string) {
   try {
+    if (!(await resolveUnsavedProjectChanges('open-project'))) {
+      return false
+    }
+
     return await loadProjectFromPath(path)
   } catch (err) {
     if (shouldForgetRecentProject(err)) {
@@ -301,6 +387,10 @@ export async function createProjectAtDirectory(options: {
       }
     }
 
+    if (!(await resolveUnsavedProjectChanges('create-project'))) {
+      return false
+    }
+
     projectStore.createNewProject(projectName, options.template)
 
     const importPaths = options.importPaths ?? []
@@ -323,6 +413,10 @@ export async function createProjectAtDirectory(options: {
     return true
   } catch (err) {
     if (isTauriUnavailable(err)) {
+      if (!(await resolveUnsavedProjectChanges('create-project'))) {
+        return false
+      }
+
       projectStore.createNewProject(options.name, options.template)
       return true
     }

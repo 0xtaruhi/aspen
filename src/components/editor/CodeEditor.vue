@@ -77,7 +77,7 @@ onMounted(() => {
     automaticLayout: true,
     minimap: { enabled: settingsStore.state.editorMinimap },
     fontSize: settingsStore.state.editorFontSize,
-    fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+    fontFamily: settingsStore.state.editorFontFamily,
     scrollBeyondLastLine: false,
     padding: { top: 16, bottom: 16 },
   })
@@ -108,6 +108,14 @@ watch(
   () => settingsStore.state.editorFontSize,
   (fontSize) => {
     editor?.updateOptions({ fontSize })
+  },
+)
+
+watch(
+  () => settingsStore.state.editorFontFamily,
+  (fontFamily) => {
+    editor?.updateOptions({ fontFamily })
+    monaco.editor.remeasureFonts()
   },
 )
 

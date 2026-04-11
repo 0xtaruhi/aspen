@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ChevronsUpDown, Plus, FolderOpen, Save, Box, Settings2 } from 'lucide-vue-next'
+import { ChevronsUpDown, Plus, FolderOpen, FolderX, Save, Box, Settings2 } from 'lucide-vue-next'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,7 +22,13 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { useI18n } from '@/lib/i18n'
-import { openProject, openRecentProject, saveProject, saveProjectAs } from '@/lib/project-io'
+import {
+  closeProject,
+  openProject,
+  openRecentProject,
+  saveProject,
+  saveProjectAs,
+} from '@/lib/project-io'
 import NewProjectDialog from './project/NewProjectDialog.vue'
 import { projectStore } from '@/stores/project'
 import { recentProjectsStore } from '@/stores/recent-projects'
@@ -44,6 +50,12 @@ function openSettings() {
 
 function handleOpenRecentProject(path: string) {
   void openRecentProject(path)
+}
+
+async function handleCloseProject() {
+  if (await closeProject()) {
+    void router.push({ name: 'project-management-dashboard' })
+  }
 }
 </script>
 
@@ -149,6 +161,17 @@ function handleOpenRecentProject(path: string) {
               <Save class="size-4" />
             </div>
             {{ t('saveProjectAs') }}
+          </DropdownMenuItem>
+
+          <DropdownMenuItem
+            class="gap-2 p-2"
+            :disabled="!projectStore.hasProject"
+            @click="handleCloseProject"
+          >
+            <div class="flex size-6 items-center justify-center rounded-sm border">
+              <FolderX class="size-4" />
+            </div>
+            {{ t('closeProject') }}
           </DropdownMenuItem>
 
           <DropdownMenuSeparator />

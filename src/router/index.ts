@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import { projectStore } from '@/stores/project'
 
 export type AppModule =
   | 'project-management'
@@ -103,6 +104,16 @@ export const modulePathMap: Record<AppModule, string> = {
   settings: '/settings',
 }
 
+export function routeRequiresProject(routeName: AppRouteName | undefined) {
+  return (
+    routeName === 'fpga-flow' ||
+    routeName === 'fpga-flow-synthesis' ||
+    routeName === 'fpga-flow-pin-planning' ||
+    routeName === 'fpga-flow-implementation' ||
+    routeName === 'virtual-device-platform'
+  )
+}
+
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
@@ -126,21 +137,25 @@ const routes: RouteRecordRaw[] = [
   {
     path: modulePathMap['fpga-flow'],
     name: 'fpga-flow',
+    meta: { requiresProject: true },
     redirect: { name: 'fpga-flow-synthesis' },
   },
   {
     path: '/fpga-flow/synthesis',
     name: 'fpga-flow-synthesis',
+    meta: { requiresProject: true },
     component: () => import('@/components/pages/Synthesis.vue'),
   },
   {
     path: '/fpga-flow/pin-planning',
     name: 'fpga-flow-pin-planning',
+    meta: { requiresProject: true },
     component: () => import('@/components/pages/PinPlanning.vue'),
   },
   {
     path: '/fpga-flow/implementation',
     name: 'fpga-flow-implementation',
+    meta: { requiresProject: true },
     component: () => import('@/components/pages/Implementation.vue'),
   },
   {
@@ -155,6 +170,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: modulePathMap['virtual-device-platform'],
     name: 'virtual-device-platform',
+    meta: { requiresProject: true },
     component: () => import('@/components/pages/VirtualDevicePlatform.vue'),
   },
   {
@@ -171,6 +187,14 @@ const routes: RouteRecordRaw[] = [
 const router = createRouter({
   history: createWebHistory(),
   routes,
+})
+
+router.beforeEach((to) => {
+  if (to.matched.some((record) => record.meta.requiresProject) && !projectStore.hasProject) {
+    return { name: 'project-management-dashboard' }
+  }
+
+  return true
 })
 
 export default router

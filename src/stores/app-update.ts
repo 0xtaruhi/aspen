@@ -68,6 +68,7 @@ const state = reactive<AppUpdateState>({
 
 let unlistenProgress: UnlistenFn | null = null
 let initializePromise: Promise<void> | null = null
+let autoCheckPromise: Promise<void> | null = null
 
 function getErrorMessage(error: unknown) {
   if (typeof error === 'string') {
@@ -192,6 +193,29 @@ export const appUpdateStore = {
       state.status = 'error'
       state.errorMessage = getErrorMessage(error)
     }
+  },
+
+  async maybeAutoCheck() {
+    await this.initialize()
+    if (
+      !state.supported ||
+      state.lastCheckedAt !== null ||
+      state.status === 'checking' ||
+      state.status === 'installing'
+    ) {
+      return
+    }
+
+    if (autoCheckPromise) {
+      await autoCheckPromise
+      return
+    }
+
+    autoCheckPromise = this.checkForUpdates().finally(() => {
+      autoCheckPromise = null
+    })
+
+    await autoCheckPromise
   },
 
   async installUpdate() {

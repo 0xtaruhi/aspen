@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { isTauri } from '@tauri-apps/api/core'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import {
@@ -15,6 +15,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -31,16 +32,51 @@ import {
   type AppThemePresetColor,
 } from '@/lib/theme-accent'
 import { appUpdateStore } from '@/stores/app-update'
-import { settingsStore, type AppLanguage } from '@/stores/settings'
+import { DEFAULT_EDITOR_FONT_FAMILY, settingsStore, type AppLanguage } from '@/stores/settings'
 import { UPDATE_RELEASES_URL } from '@/lib/app-update'
 
 const { t } = useI18n()
+const CUSTOM_EDITOR_FONT_PRESET = '__custom__'
+const EDITOR_FONT_PRESETS: Array<{
+  value: string
+  label?: string
+  labelKey?: 'editorFontDefault'
+}> = [
+  {
+    value: DEFAULT_EDITOR_FONT_FAMILY,
+    labelKey: 'editorFontDefault',
+  },
+  {
+    value: "'JetBrains Mono', monospace",
+    label: 'JetBrains Mono',
+  },
+  {
+    value: "'Fira Code', monospace",
+    label: 'Fira Code',
+  },
+  {
+    value: "'IBM Plex Mono', monospace",
+    label: 'IBM Plex Mono',
+  },
+  {
+    value: "'Cascadia Code', monospace",
+    label: 'Cascadia Code',
+  },
+  {
+    value: "'SF Mono', Menlo, Monaco, monospace",
+    label: 'SF Mono',
+  },
+  {
+    value: 'Menlo, Monaco, monospace',
+    label: 'Menlo',
+  },
+]
 
+const editorFontFamilyInput = ref(settingsStore.state.editorFontFamily)
 const fontSizeValue = computed(() => String(settingsStore.state.editorFontSize))
 const themeAccentInput = computed(() => normalizeThemeAccentColor(settingsStore.state.themeAccent))
 const themePresetOptions = Object.keys(APP_THEME_PRESET_COLORS) as AppThemePresetColor[]
 const updateState = appUpdateStore.state
-const showUpdateCard = computed(() => updateState.supported)
 const themeModeOptions = computed(() => [
   {
     value: 'system' as const,
@@ -64,6 +100,19 @@ const themeModeIndex = computed(() =>
 const themeModeThumbStyle = computed(() => ({
   transform: `translateX(${Math.max(0, themeModeIndex.value) * 100}%)`,
 }))
+const editorFontPresetOptions = computed(() => {
+  return EDITOR_FONT_PRESETS.map((preset) => ({
+    value: preset.value,
+    label: preset.labelKey ? t(preset.labelKey) : (preset.label ?? preset.value),
+  }))
+})
+const editorFontPresetValue = computed(() => {
+  return (
+    editorFontPresetOptions.value.find(
+      (option) => option.value === settingsStore.state.editorFontFamily,
+    )?.value ?? CUSTOM_EDITOR_FONT_PRESET
+  )
+})
 
 const updateStatusLabel = computed(() => {
   switch (updateState.status) {
@@ -159,6 +208,20 @@ function handleFontSizeChange(value: unknown) {
   }
 }
 
+function handleEditorFontPresetChange(value: unknown) {
+  if (typeof value !== 'string' || value === CUSTOM_EDITOR_FONT_PRESET) {
+    return
+  }
+
+  editorFontFamilyInput.value = value
+  settingsStore.setEditorFontFamily(value)
+}
+
+function commitEditorFontFamily() {
+  settingsStore.setEditorFontFamily(editorFontFamilyInput.value)
+  editorFontFamilyInput.value = settingsStore.state.editorFontFamily
+}
+
 function applyThemeAccentPreset(color: AppThemePresetColor) {
   settingsStore.setThemeAccent(APP_THEME_PRESET_COLORS[color])
 }
@@ -189,6 +252,15 @@ async function handleOpenReleases() {
 onMounted(() => {
   void appUpdateStore.initialize()
 })
+
+watch(
+  () => settingsStore.state.editorFontFamily,
+  (fontFamily) => {
+    if (fontFamily !== editorFontFamilyInput.value) {
+      editorFontFamilyInput.value = fontFamily
+    }
+  },
+)
 </script>
 
 <template>
@@ -326,7 +398,7 @@ onMounted(() => {
             </CardContent>
           </Card>
 
-          <Card v-if="showUpdateCard" class="border-border/70">
+          <Card class="border-border/70">
             <CardHeader>
               <div class="flex items-center gap-3">
                 <div class="rounded-2xl border border-border bg-muted p-2">
@@ -339,6 +411,39 @@ onMounted(() => {
               </div>
             </CardHeader>
             <CardContent class="grid gap-6 md:grid-cols-2">
+              <div class="grid gap-2 md:col-span-2">
+                <Label>{{ t('editorFont') }}</Label>
+                <Select
+                  :model-value="editorFontPresetValue"
+                  @update:model-value="handleEditorFontPresetChange"
+                >
+                  <SelectTrigger class="w-full">
+                    <SelectValue :placeholder="t('editorFont')" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem
+                      v-for="option in editorFontPresetOptions"
+                      :key="option.value"
+                      :value="option.value"
+                    >
+                      <span class="text-sm" :style="{ fontFamily: option.value }">
+                        {{ option.label }}
+                      </span>
+                    </SelectItem>
+                    <SelectItem :value="CUSTOM_EDITOR_FONT_PRESET">
+                      {{ t('custom') }}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  v-model="editorFontFamilyInput"
+                  :placeholder="DEFAULT_EDITOR_FONT_FAMILY"
+                  @blur="commitEditorFontFamily"
+                  @keydown.enter.prevent="commitEditorFontFamily"
+                />
+                <p class="text-sm text-muted-foreground">{{ t('editorFontDescription') }}</p>
+              </div>
+
               <div class="grid gap-2">
                 <Label>{{ t('editorFontSize') }}</Label>
                 <Select :model-value="fontSizeValue" @update:model-value="handleFontSizeChange">

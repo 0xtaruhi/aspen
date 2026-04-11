@@ -9,6 +9,7 @@ use tauri::{
 
 pub const MENU_ACTION_NEW_PROJECT: &str = "menu.new-project";
 pub const MENU_ACTION_OPEN_PROJECT: &str = "menu.open-project";
+pub const MENU_ACTION_CLOSE_PROJECT: &str = "menu.close-project";
 pub const MENU_ACTION_SAVE_PROJECT: &str = "menu.save-project";
 pub const MENU_ACTION_SAVE_PROJECT_AS: &str = "menu.save-project-as";
 pub const MENU_ACTION_OPEN_SETTINGS: &str = "menu.open-settings";
@@ -41,6 +42,7 @@ struct MenuStrings {
     fullscreen: &'static str,
     new_project: &'static str,
     open_project: &'static str,
+    close_project: &'static str,
     save_project: &'static str,
     save_project_as: &'static str,
     settings: &'static str,
@@ -73,6 +75,7 @@ impl MenuStrings {
                 fullscreen: "Toggle Full Screen",
                 new_project: "New Project...",
                 open_project: "Open Project...",
+                close_project: "Close Project",
                 save_project: "Save Project",
                 save_project_as: "Save Project As...",
                 settings: "Settings...",
@@ -101,6 +104,7 @@ impl MenuStrings {
                 fullscreen: "切换全屏",
                 new_project: "新建项目...",
                 open_project: "打开项目...",
+                close_project: "关闭项目",
                 save_project: "保存项目",
                 save_project_as: "项目另存为...",
                 settings: "设置...",
@@ -129,6 +133,7 @@ impl MenuStrings {
                 fullscreen: "切換全螢幕",
                 new_project: "新增專案...",
                 open_project: "開啟專案...",
+                close_project: "關閉專案",
                 save_project: "儲存專案",
                 save_project_as: "專案另存新檔...",
                 settings: "設定...",
@@ -198,6 +203,7 @@ pub fn menu_action_for_id(menu_id: &str) -> Option<&'static str> {
     match menu_id {
         MENU_ACTION_NEW_PROJECT => Some("new-project"),
         MENU_ACTION_OPEN_PROJECT => Some("open-project"),
+        MENU_ACTION_CLOSE_PROJECT => Some("close-project"),
         MENU_ACTION_SAVE_PROJECT => Some("save-project"),
         MENU_ACTION_SAVE_PROJECT_AS => Some("save-project-as"),
         MENU_ACTION_OPEN_SETTINGS => Some("open-settings"),
@@ -275,6 +281,13 @@ pub fn build_app_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> 
                         strings.open_project,
                         true,
                         Some("CmdOrCtrl+O"),
+                    )?,
+                    &MenuItem::with_id(
+                        app,
+                        MENU_ACTION_CLOSE_PROJECT,
+                        strings.close_project,
+                        true,
+                        Some("CmdOrCtrl+Shift+W"),
                     )?,
                     &PredefinedMenuItem::separator(app)?,
                     &MenuItem::with_id(
@@ -384,6 +397,10 @@ mod tests {
         assert_eq!(
             menu_action_for_id(super::MENU_ACTION_OPEN_PROJECT),
             Some("open-project")
+        );
+        assert_eq!(
+            menu_action_for_id(super::MENU_ACTION_CLOSE_PROJECT),
+            Some("close-project")
         );
         assert_eq!(menu_action_for_id("menu.unknown"), None);
     }
