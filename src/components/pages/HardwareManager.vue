@@ -27,6 +27,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable'
 import { getFpgaDeviceDescriptor, resolveFpgaDeviceId } from '@/lib/fpga-device-catalog'
+import { describeHardwareError } from '@/lib/hardware-errors'
 import { useI18n } from '@/lib/i18n'
 import { hardwareStore } from '@/stores/hardware'
 import { programmingCatalogStore } from '@/stores/programming-catalog'
@@ -248,10 +249,6 @@ function buildTargets(status: HardwareStatus): HardwareTarget[] {
   ]
 }
 
-function getErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
-}
-
 async function autoConnect() {
   if (isBusy.value) return
   programMessage.value = ''
@@ -260,7 +257,7 @@ async function autoConnect() {
     await hardwareStore.probe()
   } catch (err) {
     programMessageTone.value = 'error'
-    programMessage.value = t('probeFailed', { message: getErrorMessage(err) })
+    programMessage.value = t('probeFailed', { message: describeHardwareError(err) })
   }
 }
 
@@ -292,7 +289,7 @@ async function programDevice() {
     isProgramDialogOpen.value = false
   } catch (err) {
     programMessageTone.value = 'error'
-    programMessage.value = t('programmingFailed', { message: getErrorMessage(err) })
+    programMessage.value = t('programmingFailed', { message: describeHardwareError(err) })
   }
 }
 

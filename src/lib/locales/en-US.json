@@ -551,6 +551,8 @@
   "deleteSelectedDevicesConfirm": "Are you sure you want to delete {count} selected devices?",
   "deviceConnected": "Device connected",
   "deviceRemoved": "Device removed",
+  "hardwareDeviceNotDetected": "No FPGA board was detected. Check the USB connection, power, and driver, then try Auto Connect again.",
+  "hardwareDeviceDisconnectedError": "The FPGA board was disconnected. Check the USB connection and reconnect it.",
   "viewLog": "View log",
   "viewReleases": "View releases",
   "noLogAvailable": "No log available yet."
