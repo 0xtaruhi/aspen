@@ -1,5 +1,4 @@
 mod app_appearance;
-#[cfg(target_os = "macos")]
 mod app_menu;
 mod app_update;
 mod hardware;
@@ -419,7 +418,6 @@ pub fn run() {
             stop_hotplug_watch
         ]);
 
-    #[cfg(target_os = "macos")]
     let builder = builder
         .menu(app_menu::build_app_menu)
         .on_menu_event(|app, event| {

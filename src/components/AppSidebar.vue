@@ -23,11 +23,10 @@ import {
   SidebarRail,
 } from '@/components/ui/sidebar'
 import { useI18n } from '@/lib/i18n'
-import { type AppRouteName, modulePathMap } from '@/router'
+import { type AppRouteName, moduleForRouteName, modulePathMap } from '@/router'
 import { hardwareStore } from '@/stores/hardware'
 import { projectStore } from '@/stores/project'
 import { requestProjectTextInput } from '@/stores/project-text-input'
-import { uiStore } from '@/stores/ui'
 
 const props = withDefaults(defineProps<SidebarProps>(), {
   collapsible: 'icon',
@@ -42,6 +41,7 @@ function navigate(path: string) {
 }
 
 const activeRouteName = computed(() => route.name as AppRouteName | undefined)
+const activeModule = computed(() => moduleForRouteName(activeRouteName.value))
 const rootNode = computed(() => projectStore.rootNode)
 const hasProject = computed(() => projectStore.hasProject)
 const isSynthesisRunning = hardwareStore.synthesisRunning
@@ -61,7 +61,7 @@ const data = computed(() => ({
       label: t('projectManagement'),
       url: modulePathMap['project-management'],
       icon: FolderCog,
-      isActive: uiStore.activeModule.value === 'project-management',
+      isActive: activeModule.value === 'project-management',
       items: [
         {
           title: 'Dashboard',
@@ -79,7 +79,7 @@ const data = computed(() => ({
       label: t('fpgaFlow'),
       url: modulePathMap['fpga-flow'],
       icon: FileCode2,
-      isActive: uiStore.activeModule.value === 'fpga-flow',
+      isActive: activeModule.value === 'fpga-flow',
       isRunning: isSynthesisRunning.value || isImplementationRunning.value,
       disabled: !hasProject.value,
       items: [
@@ -116,7 +116,7 @@ const data = computed(() => ({
       label: t('hardwareManager'),
       url: modulePathMap['hardware-manager'],
       icon: Plug,
-      isActive: uiStore.activeModule.value === 'hardware-manager',
+      isActive: activeModule.value === 'hardware-manager',
       action: () => navigate(modulePathMap['hardware-manager']),
     },
     {
@@ -124,7 +124,7 @@ const data = computed(() => ({
       label: t('virtualDevicePlatform'),
       url: modulePathMap['virtual-device-platform'],
       icon: Bug,
-      isActive: uiStore.activeModule.value === 'virtual-device-platform',
+      isActive: activeModule.value === 'virtual-device-platform',
       disabled: !hasProject.value,
       action: () => navigate(modulePathMap['virtual-device-platform']),
     },

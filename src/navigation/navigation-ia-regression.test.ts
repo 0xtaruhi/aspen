@@ -2,8 +2,18 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-const canonicalLabels = ['Project Management', 'FPGA Flow', 'Virtual Device Platform'] as const
-const canonicalModules = ['project-management', 'fpga-flow', 'virtual-device-platform'] as const
+const canonicalLabels = [
+  'Project Management',
+  'FPGA Flow',
+  'Hardware Manager',
+  'Virtual Device Platform',
+] as const
+const canonicalModules = [
+  'project-management',
+  'fpga-flow',
+  'hardware-manager',
+  'virtual-device-platform',
+] as const
 
 function countLiteral(source: string, token: string): number {
   return source.split(token).length - 1
@@ -31,8 +41,8 @@ describe('navigation IA regression', () => {
 
     expect(
       topLevelCanonicalCount,
-      `Navigation IA violation: expected exactly 3 canonical top-level modules, found ${topLevelCanonicalCount}`,
-    ).toBe(3)
+      `Navigation IA violation: expected exactly 4 canonical top-level modules, found ${topLevelCanonicalCount}`,
+    ).toBe(4)
   })
 
   it('keeps route-to-module mapping unique and constrained to canonical modules', () => {
@@ -41,14 +51,16 @@ describe('navigation IA regression', () => {
 
     const mappedModules = new Set(
       Array.from(
-        routerSource.matchAll(/:\s*'(project-management|fpga-flow|virtual-device-platform)'/g),
+        routerSource.matchAll(
+          /:\s*'(project-management|fpga-flow|hardware-manager|virtual-device-platform)'/g,
+        ),
       ).map((match) => match[1]),
     )
 
     expect(
       mappedModules.size,
-      `Navigation IA violation: route-module mapping must contain exactly 3 unique modules, found ${mappedModules.size}`,
-    ).toBe(3)
+      `Navigation IA violation: route-module mapping must contain exactly 4 unique modules, found ${mappedModules.size}`,
+    ).toBe(4)
 
     expect(
       [...mappedModules].sort(),

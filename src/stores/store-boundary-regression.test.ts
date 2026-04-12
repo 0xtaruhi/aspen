@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-const rootStores = ['hardware.ts', 'hardware-runtime.ts', 'project.ts', 'ui.ts']
+const rootStores = ['hardware.ts', 'hardware-runtime.ts', 'project.ts']
 
 const runtimeDomainFields = ['phase', 'last_error', 'device', 'artifact', 'op_id']
 

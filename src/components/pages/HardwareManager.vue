@@ -377,7 +377,7 @@ async function pickBitstream() {
       </div>
       <ResizablePanelGroup direction="horizontal">
         <!-- Hardware Tree -->
-        <ResizablePanel :default-size="25" :min-size="20" class="border-r bg-muted/10">
+        <ResizablePanel :default-size="25" :min-size="20" class="bg-muted/10">
           <div class="p-2 font-medium text-xs text-muted-foreground uppercase tracking-wider mb-2">
             {{ t('hardwareTargets') }}
           </div>
@@ -428,7 +428,7 @@ async function pickBitstream() {
           </ScrollArea>
         </ResizablePanel>
 
-        <ResizableHandle />
+        <ResizableHandle class="bg-border/45" />
 
         <!-- Device Details & Operations -->
         <ResizablePanel :default-size="75" class="bg-transparent p-0">
