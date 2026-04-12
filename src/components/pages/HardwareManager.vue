@@ -322,9 +322,9 @@ async function pickBitstream() {
 </script>
 
 <template>
-  <div class="h-full flex flex-col bg-background">
+  <div class="h-full flex flex-col bg-transparent">
     <!-- Toolbar -->
-    <div class="h-12 border-b flex items-center px-4 gap-2 bg-muted/20">
+    <div class="app-toolbar-glass h-12 flex items-center px-4 gap-2">
       <Button variant="outline" size="sm" class="gap-2" :disabled="isBusy" @click="autoConnect">
         <Plug class="w-4 h-4" />
         {{ isConnecting ? t('connectingEllipsis') : t('autoConnect') }}
@@ -431,7 +431,7 @@ async function pickBitstream() {
         <ResizableHandle />
 
         <!-- Device Details & Operations -->
-        <ResizablePanel :default-size="75" class="bg-background p-0">
+        <ResizablePanel :default-size="75" class="bg-transparent p-0">
           <ScrollArea class="h-full">
             <div
               v-if="selectedDevice"

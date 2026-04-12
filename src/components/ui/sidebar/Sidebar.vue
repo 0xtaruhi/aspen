@@ -25,7 +25,10 @@ const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
     v-if="collapsible === 'none'"
     data-slot="sidebar"
     :class="
-      cn('bg-sidebar text-sidebar-foreground flex h-full w-(--sidebar-width) flex-col', props.class)
+      cn(
+        'sidebar-surface text-sidebar-foreground flex h-full w-(--sidebar-width) flex-col',
+        props.class,
+      )
     "
     v-bind="$attrs"
   >
@@ -38,7 +41,7 @@ const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
       data-slot="sidebar"
       data-mobile="true"
       :side="side"
-      class="bg-sidebar text-sidebar-foreground w-(--sidebar-width) p-0 [&>button]:hidden"
+      class="sidebar-surface text-sidebar-foreground w-(--sidebar-width) p-0 [&>button]:hidden"
       :style="{
         '--sidebar-width': SIDEBAR_WIDTH_MOBILE,
       }"
@@ -85,7 +88,7 @@ const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
           // Adjust the padding for floating and inset variants.
           variant === 'floating' || variant === 'inset'
             ? 'p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]'
-            : 'group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l',
+            : 'group-data-[collapsible=icon]:w-(--sidebar-width-icon)',
           props.class,
         )
       "
@@ -93,10 +96,16 @@ const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
     >
       <div
         data-sidebar="sidebar"
-        class="bg-sidebar group-data-[variant=floating]:border-sidebar-border flex h-full w-full flex-col group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border"
+        class="sidebar-surface group-data-[variant=floating]:border-sidebar-border flex h-full w-full flex-col group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border"
       >
         <slot />
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+.sidebar-surface {
+  background: var(--window-sidebar-surface);
+}
+</style>

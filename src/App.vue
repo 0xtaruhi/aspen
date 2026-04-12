@@ -2,13 +2,14 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { isTauri } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import { getCurrentWindow } from '@tauri-apps/api/window'
+import { getCurrentWindow, type Window } from '@tauri-apps/api/window'
 import { Settings2 } from 'lucide-vue-next'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 
 import AppSidebar from '@/components/AppSidebar.vue'
 import ProjectUnsavedChangesDialog from '@/components/project/ProjectUnsavedChangesDialog.vue'
 import NewProjectDialog from '@/components/project/NewProjectDialog.vue'
+import { Button } from '@/components/ui/button'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -28,6 +29,7 @@ import {
 } from '@/lib/project-io'
 import { routeLabelMap, routeRequiresProject, type AppRouteName } from '@/router'
 import { appUpdateStore } from '@/stores/app-update'
+import { hardwareStore } from '@/stores/hardware'
 import { hardwareWorkbenchStore } from '@/stores/hardware-workbench'
 import { projectStore } from '@/stores/project'
 import { uiStore } from '@/stores/ui'
@@ -40,12 +42,18 @@ type AppMenuAction =
   | 'save-project-as'
   | 'open-settings'
 
+interface BackgroundJobViewModel {
+  label: string
+  routeName: AppRouteName
+}
+
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
 const showNewProjectDialog = ref(false)
 let unlistenAppMenu: (() => void) | null = null
 let unlistenCloseRequested: (() => void) | null = null
+let closePromptPending = false
 const moduleLabelKeyMap = {
   'project-management': 'projectManagement',
   'fpga-flow': 'fpgaFlow',
@@ -68,6 +76,28 @@ const routeLabelKeyMap = {
 
 const activeRouteName = computed(() => route.name as AppRouteName | undefined)
 const hasAvailableUpdate = computed(() => appUpdateStore.state.status === 'available')
+const backgroundJobs = computed<BackgroundJobViewModel[]>(() => {
+  const jobs: BackgroundJobViewModel[] = []
+
+  if (hardwareStore.synthesisRunning.value && activeRouteName.value !== 'fpga-flow-synthesis') {
+    jobs.push({
+      label: t('synthesis'),
+      routeName: 'fpga-flow-synthesis',
+    })
+  }
+
+  if (
+    hardwareStore.implementationRunning.value &&
+    activeRouteName.value !== 'fpga-flow-implementation'
+  ) {
+    jobs.push({
+      label: t('implementation'),
+      routeName: 'fpga-flow-implementation',
+    })
+  }
+
+  return jobs
+})
 
 const activeModuleLabel = computed(() => {
   if (activeRouteName.value === 'settings') {
@@ -126,25 +156,25 @@ function openSettings() {
   void router.push({ name: 'settings' })
 }
 
-async function prepareApplicationClose() {
-  if (!(await resolveUnsavedProjectChanges('quit-application'))) {
-    return false
-  }
-
-  if (!projectStore.hasProject) {
-    return true
-  }
-
-  return await closeProject({ promptForUnsavedChanges: false })
+function openBackgroundJob(routeName: AppRouteName) {
+  void router.push({ name: routeName })
 }
 
-function handleBrowserBeforeUnload(event: BeforeUnloadEvent) {
-  if (!projectStore.hasProject || !projectStore.hasUnsavedChanges) {
+async function confirmUnsavedChangesBeforeWindowClose(currentWindow: Window) {
+  if (closePromptPending) {
     return
   }
 
-  event.preventDefault()
-  event.returnValue = ''
+  closePromptPending = true
+  try {
+    if (await resolveUnsavedProjectChanges('quit-application')) {
+      await currentWindow.destroy()
+    }
+  } catch (error) {
+    console.error('Failed to resolve close confirmation', error)
+  } finally {
+    closePromptPending = false
+  }
 }
 
 function handleAppMenuAction(action: AppMenuAction) {
@@ -176,7 +206,6 @@ function handleAppMenuAction(action: AppMenuAction) {
 onMounted(() => {
   if (typeof window !== 'undefined') {
     window.addEventListener('keydown', handleGlobalKeydown, { capture: true })
-    window.addEventListener('beforeunload', handleBrowserBeforeUnload)
   }
 
   void hardwareWorkbenchStore.boot().catch((err) => {
@@ -197,14 +226,13 @@ onMounted(() => {
 
   const currentWindow = getCurrentWindow()
   void currentWindow
-    .onCloseRequested(async (event) => {
-      event.preventDefault()
-
-      if (!(await prepareApplicationClose())) {
+    .onCloseRequested((event) => {
+      if (!projectStore.hasProject || !projectStore.hasUnsavedChanges) {
         return
       }
 
-      await currentWindow.destroy()
+      event.preventDefault()
+      void confirmUnsavedChangesBeforeWindowClose(currentWindow)
     })
     .then((unlisten) => {
       unlistenCloseRequested = unlisten
@@ -224,7 +252,6 @@ watch(
 onUnmounted(() => {
   if (typeof window !== 'undefined') {
     window.removeEventListener('keydown', handleGlobalKeydown, { capture: true })
-    window.removeEventListener('beforeunload', handleBrowserBeforeUnload)
   }
 
   if (unlistenAppMenu) {
@@ -243,14 +270,14 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-background text-foreground transition-colors">
+  <div class="app-shell-root min-h-screen text-foreground transition-colors">
     <NewProjectDialog v-model:open="showNewProjectDialog" />
     <ProjectUnsavedChangesDialog />
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset class="relative h-screen overflow-hidden flex flex-col">
         <header
-          class="flex h-16 shrink-0 items-center gap-2 border-b border-border bg-background/50 transition-[width,height] ease-linear backdrop-blur z-10 group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12"
+          class="app-shell-header app-navigation-glass flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear z-10 group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12"
         >
           <div class="flex items-center gap-2 px-4 w-full">
             <SidebarTrigger class="-ml-1" />
@@ -288,10 +315,58 @@ onUnmounted(() => {
           </div>
         </header>
 
-        <div class="flex-1 min-h-0 overflow-hidden bg-background">
-          <RouterView />
+        <div class="app-shell-workspace flex-1 min-h-0 overflow-hidden flex flex-col">
+          <section
+            v-if="backgroundJobs.length > 0"
+            class="app-shell-jobs shrink-0 border-b border-border/70 px-4 py-3"
+          >
+            <div class="flex flex-wrap items-center gap-3">
+              <span class="text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground">
+                {{ t('backgroundJobs') }}
+              </span>
+              <div
+                v-for="job in backgroundJobs"
+                :key="job.routeName"
+                class="app-shell-job-card flex flex-wrap items-center gap-2 rounded-md border border-border px-3 py-2"
+              >
+                <span class="text-sm font-medium">{{ job.label }}</span>
+                <span class="text-xs text-muted-foreground">
+                  {{ t('runningInBackground') }}
+                </span>
+                <Button size="sm" variant="outline" @click="openBackgroundJob(job.routeName)">
+                  {{ t('view') }}
+                </Button>
+              </div>
+            </div>
+          </section>
+
+          <div class="flex-1 min-h-0 overflow-hidden">
+            <RouterView />
+          </div>
         </div>
       </SidebarInset>
     </SidebarProvider>
   </div>
 </template>
+
+<style scoped>
+.app-shell-root {
+  background: transparent;
+}
+
+.app-shell-header {
+  background: transparent;
+}
+
+.app-shell-workspace {
+  background: var(--window-workspace-surface);
+}
+
+.app-shell-jobs {
+  background: var(--window-muted-surface);
+}
+
+.app-shell-job-card {
+  background: var(--window-card-surface);
+}
+</style>

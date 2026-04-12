@@ -62,14 +62,19 @@ const panelStyle = computed(() => ({ width: props.width + 'px' }))
   top: 0;
   right: 0;
   height: 100vh;
-  background: var(--popover);
+  background:
+    linear-gradient(to bottom, color-mix(in oklab, white 8%, transparent), transparent 28px),
+    var(--window-drawer-surface);
   color: var(--popover-foreground);
   z-index: 51;
   display: flex;
   flex-direction: column;
   border-left: 1px solid var(--border);
-  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.08);
-  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: saturate(135%) blur(10px);
+  backdrop-filter: saturate(135%) blur(10px);
+  box-shadow:
+    -14px 0 32px color-mix(in oklab, black 14%, transparent),
+    inset 1px 0 0 color-mix(in oklab, white 8%, transparent);
 }
 
 .rd-header {
@@ -108,6 +113,7 @@ const panelStyle = computed(() => ({ width: props.width + 'px' }))
   padding: 12px;
   overflow: auto;
   flex: 1 1 auto;
+  background: transparent;
 }
 
 .rd-content-polish {

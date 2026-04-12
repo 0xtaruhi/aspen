@@ -1,3 +1,4 @@
+mod app_appearance;
 #[cfg(target_os = "macos")]
 mod app_menu;
 mod app_update;
@@ -371,10 +372,13 @@ fn stop_hotplug_watch(state: tauri::State<'_, Arc<HotplugState>>) -> Result<(), 
 pub fn run() {
     let hardware_runtime = Arc::new(HardwareRuntime::default());
     let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_liquid_glass::init())
         .setup({
             let hardware_runtime = Arc::clone(&hardware_runtime);
             move |app| {
-                hardware_runtime.attach_app_handle(app.handle().clone());
+                let app_handle = app.handle().clone();
+                hardware_runtime.attach_app_handle(app_handle.clone());
+                app_appearance::configure_window_material(&app_handle);
                 Ok(())
             }
         })
@@ -405,6 +409,8 @@ pub fn run() {
             generate_bitstream,
             run_yosys_synthesis,
             run_fde_implementation,
+            app_appearance::app_get_system_theme,
+            app_appearance::app_set_window_appearance,
             read_project_file,
             write_project_file,
             write_project_bundle,

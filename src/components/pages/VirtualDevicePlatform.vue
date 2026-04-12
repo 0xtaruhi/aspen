@@ -530,7 +530,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="h-full flex flex-col bg-background">
+  <div class="h-full flex flex-col bg-transparent">
     <VirtualDeviceToolbar
       :show-gallery="showGallery"
       :interaction-mode="canvasInteractionMode"

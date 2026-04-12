@@ -250,7 +250,7 @@ async function removeDevice() {
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-col bg-card/85">
+  <div class="flex h-full min-h-0 flex-col bg-transparent">
     <ScrollArea class="h-full">
       <div v-if="device" class="flex min-h-full flex-col p-5">
         <div class="flex items-start gap-3">

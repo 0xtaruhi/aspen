@@ -375,7 +375,7 @@ fn implementation_smoke_test_runs_with_in_process_rust_fde_when_yosys_is_availab
     assert!(report.success, "{}", report.log);
     assert!(report.timing_success, "{}", report.log);
     assert!(report.log.contains(">>> starting map"));
-    assert!(report.log.contains("stage: bitgen"));
+    assert!(report.log.contains(">>> starting bitgen"));
     assert!(report
         .artifacts
         .bitstream_path
@@ -520,7 +520,7 @@ fn implementation_smoke_test_runs_with_division_logic_lowered_by_bundled_yosys()
 
     assert!(report.success, "{}", report.log);
     assert!(report.log.contains(">>> starting route"), "{}", report.log);
-    assert!(report.log.contains("stage: bitgen"), "{}", report.log);
+    assert!(report.log.contains(">>> starting bitgen"), "{}", report.log);
     assert!(report
         .artifacts
         .bitstream_path
