@@ -6,7 +6,7 @@ import type {
   ImplementationStageResultV1,
 } from '@/lib/hardware-client'
 
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import TextReportDialog from '@/components/flow/TextReportDialog.vue'
 import { useI18n } from '@/lib/i18n'
@@ -25,6 +25,8 @@ const reportDialogTitle = ref('')
 const reportDialogDescription = ref('')
 const reportDialogContent = ref('')
 const reportDialogEmptyText = ref('')
+const activeStageLog = ref<ImplementationStageKindV1 | null>(null)
+const activeStageLogPath = ref<string | null>(null)
 
 const visibleStageOrder = [
   'map',
@@ -324,17 +326,72 @@ const summaryStageCardRows = computed(() => {
   }))
 })
 
+async function syncActiveStageLogFromFile() {
+  if (!activeStageLog.value) {
+    activeStageLogPath.value = null
+    return
+  }
+
+  const stage = stageCards.value.find((entry) => entry.stage === activeStageLog.value)
+  const liveLog = stage?.live?.liveLog.trim().length ? stage.live.liveLog : ''
+  if (liveLog.length > 0) {
+    reportDialogContent.value = liveLog
+    activeStageLogPath.value = null
+    return
+  }
+
+  const logPath = stage?.result?.log_path ?? null
+  if (!logPath) {
+    reportDialogContent.value = ''
+    activeStageLogPath.value = null
+    return
+  }
+
+  if (activeStageLogPath.value === logPath) {
+    return
+  }
+
+  try {
+    reportDialogContent.value = await invoke<string>('read_project_file', {
+      path: logPath,
+    })
+    activeStageLogPath.value = logPath
+  } catch (error) {
+    reportDialogContent.value = String(error instanceof Error ? error.message : (error ?? ''))
+    activeStageLogPath.value = logPath
+  }
+}
+
+watch(
+  [reportDialogOpen, activeStageLog, stageCards],
+  () => {
+    void syncActiveStageLogFromFile()
+  },
+  { deep: true },
+)
+
+watch(reportDialogOpen, (open) => {
+  if (open) {
+    return
+  }
+
+  activeStageLog.value = null
+  activeStageLogPath.value = null
+})
+
 async function openStageLog(stageKind: string) {
   const stage = stageCards.value.find((entry) => entry.stage === stageKind)
   if (!stage) {
     return
   }
 
+  activeStageLog.value = stage.stage
+  activeStageLogPath.value = null
   reportDialogTitle.value = `${stage.title} · ${t('viewLog')}`
   reportDialogDescription.value = `${stageStatusLabel(stage)} · ${stageDurationText(stage)}`
   reportDialogEmptyText.value = t('noLogAvailable')
 
-  if (stage.live?.liveLog.trim().length && !stage.result?.log_path) {
+  if (stage.live?.liveLog.trim().length) {
     reportDialogContent.value = stage.live.liveLog
     reportDialogOpen.value = true
     return
@@ -346,15 +403,8 @@ async function openStageLog(stageKind: string) {
     return
   }
 
-  try {
-    reportDialogContent.value = await invoke<string>('read_project_file', {
-      path: stage.result.log_path,
-    })
-  } catch (error) {
-    reportDialogContent.value = String(error instanceof Error ? error.message : (error ?? ''))
-  }
-
   reportDialogOpen.value = true
+  await syncActiveStageLogFromFile()
 }
 
 function openTimingReport() {

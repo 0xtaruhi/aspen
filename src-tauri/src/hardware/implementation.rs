@@ -24,7 +24,7 @@ use self::{
     },
     stages::{
         run_bitgen_stage, run_map_stage, run_pack_stage, run_place_stage, run_route_stage,
-        run_sta_stage,
+        run_sta_stage, BitgenStageContext,
     },
     toolchain::{resolve_resource_paths, ImplementationResourcePaths},
 };
@@ -87,6 +87,7 @@ where
     let mut sink = StageLogSink {
         on_log_chunk: &mut on_log_chunk,
         combined_log: &mut combined_log,
+        stage_logs: Default::default(),
     };
     let mut stage_results = Vec::new();
     let reusable_edif_path = Path::new(
@@ -143,7 +144,11 @@ where
             output_path: Some(&artifacts.map_path),
             timing_report_on_failure: String::new(),
         },
-        || run_map_stage(resource_paths, &artifacts),
+        |stage_sink| {
+            let mut logger = |line: String| stage_sink.push(ImplementationStageKindV1::Map, line);
+            let mut reporter = fde::LineStageReporter::runtime_only(&mut logger);
+            run_map_stage(resource_paths, &artifacts, &mut reporter)
+        },
     ) {
         Ok(design) => design,
         Err(report) => return Ok(*report),
@@ -164,7 +169,11 @@ where
             output_path: Some(&artifacts.pack_path),
             timing_report_on_failure: String::new(),
         },
-        || run_pack_stage(resource_paths, map_result, &artifacts),
+        |stage_sink| {
+            let mut logger = |line: String| stage_sink.push(ImplementationStageKindV1::Pack, line);
+            let mut reporter = fde::LineStageReporter::runtime_only(&mut logger);
+            run_pack_stage(resource_paths, map_result, &artifacts, &mut reporter)
+        },
     ) {
         Ok(design) => design,
         Err(report) => return Ok(*report),
@@ -185,7 +194,9 @@ where
             output_path: Some(&artifacts.place_path),
             timing_report_on_failure: String::new(),
         },
-        || {
+        |stage_sink| {
+            let mut logger = |line: String| stage_sink.push(ImplementationStageKindV1::Place, line);
+            let mut reporter = fde::LineStageReporter::runtime_only(&mut logger);
             run_place_stage(
                 request.place_mode,
                 pack_result,
@@ -193,6 +204,7 @@ where
                 &arch,
                 &delay,
                 &constraints,
+                &mut reporter,
             )
         },
     ) {
@@ -215,7 +227,9 @@ where
             output_path: Some(&artifacts.route_path),
             timing_report_on_failure: String::new(),
         },
-        || {
+        |stage_sink| {
+            let mut logger = |line: String| stage_sink.push(ImplementationStageKindV1::Route, line);
+            let mut reporter = fde::LineStageReporter::runtime_only(&mut logger);
             run_route_stage(
                 place_result,
                 &artifacts,
@@ -223,6 +237,7 @@ where
                 &arch,
                 &constraints,
                 &cil,
+                &mut reporter,
             )
             .map(|(design, device_design, route_image, report)| {
                 ((design, device_design, route_image), report)
@@ -238,7 +253,15 @@ where
         let log_path = workdir.join("sta.log");
         start_stage(stage, &mut sink);
         let stage_started = Instant::now();
-        match run_sta_stage(routed_design.clone(), &artifacts, &arch, &delay) {
+        let mut logger = |line: String| sink.push(stage, line);
+        let mut reporter = fde::LineStageReporter::runtime_only(&mut logger);
+        match run_sta_stage(
+            routed_design.clone(),
+            &artifacts,
+            &arch,
+            &delay,
+            &mut reporter,
+        ) {
             Ok((artifact, report)) => {
                 let result = finish_success_stage(
                     stage,
@@ -283,15 +306,21 @@ where
             output_path: Some(&artifacts.bitstream_path),
             timing_report_on_failure: timing_report.clone(),
         },
-        || {
+        |stage_sink| {
+            let mut logger =
+                |line: String| stage_sink.push(ImplementationStageKindV1::Bitgen, line);
+            let mut reporter = fde::LineStageReporter::runtime_only(&mut logger);
             run_bitgen_stage(
                 design_for_bitgen,
-                &artifacts,
-                resource_paths,
-                arch.as_ref().name.as_str(),
-                &cil,
-                device_design,
-                route_image,
+                BitgenStageContext {
+                    artifacts: &artifacts,
+                    resource_paths,
+                    arch_name: arch.as_ref().name.as_str(),
+                    cil: &cil,
+                    device_design,
+                    route_image,
+                },
+                &mut reporter,
             )
             .map(|report| ((), report))
         },
@@ -423,18 +452,18 @@ struct RequiredStageSpec<'a> {
     timing_report_on_failure: String,
 }
 
-fn run_required_stage<F, T, Run>(
-    ctx: &mut ImplementationRunContext<'_, '_, F>,
+fn run_required_stage<'sink, F, T, Run>(
+    ctx: &mut ImplementationRunContext<'_, 'sink, F>,
     spec: RequiredStageSpec<'_>,
     run: Run,
 ) -> Result<T, Box<ImplementationReportV1>>
 where
     F: FnMut(ImplementationStageKindV1, String),
-    Run: FnOnce() -> Result<(T, fde::StageReport), String>,
+    Run: FnOnce(&mut StageLogSink<'sink, F>) -> Result<(T, fde::StageReport), String>,
 {
     start_stage(spec.stage, ctx.sink);
     let stage_started = Instant::now();
-    match run() {
+    match run(ctx.sink) {
         Ok((value, report)) => {
             let result = finish_success_stage(
                 spec.stage,

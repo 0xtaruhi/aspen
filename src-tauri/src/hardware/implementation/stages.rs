@@ -1,8 +1,9 @@
 use std::{fs, sync::Arc};
 
 use fde::{
-    load_map_input, run_bitgen, run_map, run_pack, run_place, run_sta, BitgenOptions, Design,
-    PlaceMode, PlaceOptions, RouteOptions, StaArtifact, StaOptions,
+    load_map_input, run_bitgen_with_reporter, run_map_with_reporter, run_pack_with_reporter,
+    run_place_with_reporter, run_sta_with_reporter, BitgenOptions, Design, PlaceMode, PlaceOptions,
+    RouteOptions, StaArtifact, StaOptions, StageReporter,
 };
 
 use super::super::types::ImplementationPlaceModeV1;
@@ -14,17 +15,28 @@ const FDE_DEFAULT_LUT_SIZE: usize = 4;
 const FDE_DEFAULT_PACK_CAPACITY: usize = 4;
 const FDE_DEFAULT_PLACE_SEED: u64 = 1;
 
+pub(super) struct BitgenStageContext<'a> {
+    pub(super) artifacts: &'a PlannedArtifacts,
+    pub(super) resource_paths: &'a ImplementationResourcePaths,
+    pub(super) arch_name: &'a str,
+    pub(super) cil: &'a fde::Cil,
+    pub(super) device_design: fde::DeviceDesign,
+    pub(super) route_image: fde::DeviceRouteImage,
+}
+
 pub(super) fn run_map_stage(
     resource_paths: &ImplementationResourcePaths,
     artifacts: &PlannedArtifacts,
+    reporter: &mut dyn StageReporter,
 ) -> Result<(Design, fde::StageReport), String> {
-    let mut result = run_map(
+    let mut result = run_map_with_reporter(
         load_map_input(&artifacts.edif_path).map_err(|err| err.to_string())?,
         &fde::MapOptions {
             lut_size: FDE_DEFAULT_LUT_SIZE,
             cell_library: Some(resource_paths.dc_cell.clone()),
             emit_structural_verilog: false,
         },
+        reporter,
     )
     .map_err(|err| err.to_string())?;
     fde::io::save_design(&result.value.design, &artifacts.map_path)
@@ -37,8 +49,9 @@ pub(super) fn run_pack_stage(
     resource_paths: &ImplementationResourcePaths,
     design: Design,
     artifacts: &PlannedArtifacts,
+    reporter: &mut dyn StageReporter,
 ) -> Result<(Design, fde::StageReport), String> {
-    let mut result = run_pack(
+    let mut result = run_pack_with_reporter(
         design,
         &fde::PackOptions {
             family: Some(FDE_FAMILY_NAME.to_string()),
@@ -47,6 +60,7 @@ pub(super) fn run_pack_stage(
             dcp_library: Some(resource_paths.pack_dcp_lib.clone()),
             config: Some(resource_paths.pack_config.clone()),
         },
+        reporter,
     )
     .map_err(|err| err.to_string())?;
     fde::io::save_design(&result.value, &artifacts.pack_path).map_err(|err| err.to_string())?;
@@ -61,8 +75,9 @@ pub(super) fn run_place_stage(
     arch: &Arc<fde::Arch>,
     delay: &Arc<fde::DelayModel>,
     constraints: &Arc<[fde::ConstraintEntry]>,
+    reporter: &mut dyn StageReporter,
 ) -> Result<(Design, fde::StageReport), String> {
-    let mut result = run_place(
+    let mut result = run_place_with_reporter(
         design,
         &PlaceOptions {
             arch: Arc::clone(arch),
@@ -71,6 +86,7 @@ pub(super) fn run_place_stage(
             mode: place_mode_to_fde(place_mode),
             seed: FDE_DEFAULT_PLACE_SEED,
         },
+        reporter,
     )
     .map_err(|err| err.to_string())?;
     fde::io::save_design_with_context(
@@ -94,6 +110,7 @@ pub(super) fn run_route_stage(
     arch: &Arc<fde::Arch>,
     constraints: &Arc<[fde::ConstraintEntry]>,
     cil: &fde::Cil,
+    reporter: &mut dyn StageReporter,
 ) -> Result<
     (
         Design,
@@ -110,7 +127,7 @@ pub(super) fn run_route_stage(
         constraints.as_ref(),
     )
     .map_err(|err| err.to_string())?;
-    let mut result = fde::route::run_with_artifacts(
+    let mut result = fde::route::run_with_artifacts_and_reporter(
         design,
         &RouteOptions {
             arch: Arc::clone(arch),
@@ -119,6 +136,7 @@ pub(super) fn run_route_stage(
             cil: Some(cil.clone()),
             device_design: Some(lowered),
         },
+        reporter,
     )
     .map_err(|err| err.to_string())?;
 
@@ -147,13 +165,15 @@ pub(super) fn run_sta_stage(
     artifacts: &PlannedArtifacts,
     arch: &Arc<fde::Arch>,
     delay: &Arc<fde::DelayModel>,
+    reporter: &mut dyn StageReporter,
 ) -> Result<(StaArtifact, fde::StageReport), String> {
-    let mut result = run_sta(
+    let mut result = run_sta_with_reporter(
         design,
         &StaOptions {
             arch: Some(Arc::clone(arch)),
             delay: Some(Arc::clone(delay)),
         },
+        reporter,
     )
     .map_err(|err| err.to_string())?;
     fde::io::save_design_with_context(
@@ -176,28 +196,26 @@ pub(super) fn run_sta_stage(
 
 pub(super) fn run_bitgen_stage(
     design: Design,
-    artifacts: &PlannedArtifacts,
-    resource_paths: &ImplementationResourcePaths,
-    arch_name: &str,
-    cil: &fde::Cil,
-    device_design: fde::DeviceDesign,
-    route_image: fde::DeviceRouteImage,
+    context: BitgenStageContext<'_>,
+    reporter: &mut dyn StageReporter,
 ) -> Result<fde::StageReport, String> {
-    let mut result = run_bitgen(
+    let mut result = run_bitgen_with_reporter(
         design,
         &BitgenOptions {
-            arch_name: Some(arch_name.to_string()),
-            arch_path: Some(resource_paths.arch.clone()),
-            cil_path: Some(resource_paths.cil.clone()),
-            cil: Some(cil.clone()),
-            device_design: Some(device_design),
-            route_image: Some(route_image),
+            arch_name: Some(context.arch_name.to_string()),
+            arch_path: Some(context.resource_paths.arch.clone()),
+            cil_path: Some(context.resource_paths.cil.clone()),
+            cil: Some(context.cil.clone()),
+            device_design: Some(context.device_design),
+            route_image: Some(context.route_image),
         },
+        reporter,
     )
     .map_err(|err| err.to_string())?;
-    fs::write(&artifacts.bitstream_path, &result.value.bytes).map_err(|err| err.to_string())?;
+    fs::write(&context.artifacts.bitstream_path, &result.value.bytes)
+        .map_err(|err| err.to_string())?;
     fs::write(
-        &artifacts.bitstream_sidecar_path,
+        &context.artifacts.bitstream_sidecar_path,
         &result.value.sidecar_text,
     )
     .map_err(|err| err.to_string())?;
@@ -206,10 +224,10 @@ pub(super) fn run_bitgen_stage(
         .metric("bitstream_sha256", result.value.sha256.clone());
     result
         .report
-        .artifact("bitstream", &artifacts.bitstream_path);
+        .artifact("bitstream", &context.artifacts.bitstream_path);
     result
         .report
-        .artifact("sidecar", &artifacts.bitstream_sidecar_path);
+        .artifact("sidecar", &context.artifacts.bitstream_sidecar_path);
     Ok(result.report)
 }
 
