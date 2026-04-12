@@ -174,7 +174,7 @@ function handleImportFiles() {
 </script>
 
 <template>
-  <Sidebar v-bind="props" class="border-r border-sidebar-border bg-sidebar">
+  <Sidebar v-bind="props">
     <ProjectTextInputDialog />
     <SidebarHeader>
       <ProjectMenu />

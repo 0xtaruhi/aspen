@@ -804,7 +804,7 @@ onUnmounted(() => {
 <template>
   <div
     ref="canvasRef"
-    class="w-full h-full bg-background overflow-hidden relative transition-colors"
+    class="w-full h-full bg-transparent overflow-hidden relative transition-colors"
     :class="[
       {
         'cursor-grab': resolvedInteractionMode === 'pan' && !isDraggingCanvas,

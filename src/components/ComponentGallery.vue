@@ -90,7 +90,7 @@ const sections = computed(() => {
   inset: 0;
   z-index: 10;
   pointer-events: auto;
-  background: color-mix(in oklab, var(--background) 74%, transparent);
+  background: color-mix(in oklab, var(--background) 82%, transparent);
 }
 
 .cg-panel {
@@ -99,8 +99,7 @@ const sections = computed(() => {
   max-height: min(48vh, 420px);
   overflow: auto;
   border-bottom: 1px solid var(--border);
-  background: color-mix(in oklab, var(--background) 96%, var(--foreground) 4%);
-  backdrop-filter: blur(10px);
+  background: var(--window-panel-surface);
 }
 
 .cg-sections {

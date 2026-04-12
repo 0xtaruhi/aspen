@@ -1,0 +1,15 @@
+{
+  "app": {
+    "windows": [
+      {
+        "title": "aspen",
+        "width": 1200,
+        "height": 800,
+        "transparent": true,
+        "windowEffects": {
+          "effects": ["mica"]
+        }
+      }
+    ]
+  }
+}

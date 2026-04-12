@@ -23,7 +23,7 @@ const { t } = useI18n()
   <Dialog :open="props.open" @update:open="(open) => (!open ? emit('close') : null)">
     <DialogScrollContent
       :show-close-button="false"
-      class="h-[90vh] max-h-[90vh] border-border/80 bg-background/98 p-0 sm:max-w-[1100px]"
+      class="h-[90vh] max-h-[90vh] border-border/80 p-0 sm:max-w-[1100px]"
     >
       <div class="flex h-full min-h-0 flex-col">
         <Button

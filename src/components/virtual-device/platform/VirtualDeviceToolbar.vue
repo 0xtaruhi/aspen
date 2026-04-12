@@ -39,7 +39,7 @@ const { t } = useI18n()
 </script>
 
 <template>
-  <div class="h-12 border-b border-border bg-muted/20 px-4 flex items-center gap-3">
+  <div class="app-toolbar-glass h-12 px-4 flex items-center gap-3">
     <div class="flex items-center gap-1">
       <Button
         type="button"

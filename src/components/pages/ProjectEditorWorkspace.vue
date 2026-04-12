@@ -15,8 +15,8 @@ const activeFileDirty = computed(() =>
 </script>
 
 <template>
-  <div class="h-full flex flex-col bg-background">
-    <div class="h-12 border-b border-border bg-muted/20 px-4 flex items-center gap-3">
+  <div class="h-full flex flex-col bg-transparent">
+    <div class="app-toolbar-glass h-12 px-4 flex items-center gap-3">
       <div class="min-w-0">
         <p class="text-sm font-medium truncate">
           {{ activeFileName }}<span v-if="activeFileDirty" class="text-amber-600"> *</span>
@@ -27,8 +27,14 @@ const activeFileDirty = computed(() =>
       >
     </div>
 
-    <div class="flex-1 min-h-0 overflow-hidden bg-card">
+    <div class="project-editor-surface flex-1 min-h-0 overflow-hidden">
       <CodeEditor :value="projectStore.code" @update:value="projectStore.updateCode($event)" />
     </div>
   </div>
 </template>
+
+<style scoped>
+.project-editor-surface {
+  background: var(--window-editor-surface);
+}
+</style>
