@@ -11,7 +11,7 @@
 
       <transition name="rd-panel">
         <aside v-if="modelValue" class="rd-panel" :style="panelStyle" @click.stop>
-          <header class="rd-header rd-header-border">
+          <header v-if="title" class="rd-header rd-header-border">
             <div class="rd-title">{{ title }}</div>
           </header>
           <div class="rd-content rd-content-polish">

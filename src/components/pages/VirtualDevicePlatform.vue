@@ -579,14 +579,7 @@ onBeforeUnmount(() => {
       />
     </div>
 
-    <RightDrawer
-      v-model:modelValue="inspectorOpen"
-      :title="
-        selectedDevice
-          ? t('selectedDeviceSettings', { name: selectedDevice.label })
-          : t('deviceSettingsTitle')
-      "
-    >
+    <RightDrawer v-model:modelValue="inspectorOpen">
       <DeviceInspector
         :device="selectedDevice"
         @close="inspectorOpen = false"
