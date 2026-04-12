@@ -3,8 +3,10 @@
     "windows": [
       {
         "title": "aspen",
-        "width": 1200,
-        "height": 800,
+        "width": 1440,
+        "height": 920,
+        "minWidth": 1180,
+        "minHeight": 720,
         "transparent": true,
         "windowEffects": {
           "effects": ["mica"]
