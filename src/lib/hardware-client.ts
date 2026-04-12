@@ -353,33 +353,51 @@ export interface HardwareDataSignalCatalogV1 {
   entries: HardwareDataSignalCatalogEntryV1[]
 }
 
-export interface HardwareCanvasDeviceTelemetryEntryV1 {
+export type HardwareCanvasDeviceTelemetryPayload =
+  | {
+      kind: 'none'
+    }
+  | {
+      kind: 'bitset'
+      bits: number[]
+    }
+  | {
+      kind: 'segment_display'
+      segment_mask: number
+      digit_segment_masks: number[]
+    }
+  | {
+      kind: 'framebuffer'
+      columns: number
+      rows: number
+      pixels: number[]
+    }
+  | {
+      kind: 'text_lines'
+      lines: string[]
+    }
+  | {
+      kind: 'text_log'
+      log: string
+    }
+  | {
+      kind: 'audio_pwm'
+      edge_count: number
+      sample_count: number
+      period_samples: number
+    }
+
+export interface HardwareCanvasDeviceTelemetryEntry {
   device_id: string
   latest: boolean
   high_ratio: number
-  segment_mask: number | null
-  digit_segment_masks: number[]
-  pixel_columns: number
-  pixel_rows: number
-  pixels: number[]
-  bit_values: number[]
-  text_lines: string[]
-  text_log: string
-  memory_words: number[]
-  sample_values: number[]
-  audio_edge_count: number
-  audio_sample_count: number
-  audio_period_samples: number
-  memory_word_count: number
-  memory_preview_start: number
-  memory_address: number
-  memory_output_word: number
+  payload: HardwareCanvasDeviceTelemetryPayload
 }
 
-export interface HardwareCanvasDeviceTelemetryV1 {
+export interface HardwareCanvasDeviceTelemetry {
   version: 1
   generated_at_ms: number
-  devices: HardwareCanvasDeviceTelemetryEntryV1[]
+  devices: HardwareCanvasDeviceTelemetryEntry[]
 }
 
 export interface HardwareDataStreamConfigV1 {
@@ -563,9 +581,9 @@ export async function listenHardwareDataCatalog(
 }
 
 export async function listenHardwareDeviceSnapshot(
-  callback: (snapshot: HardwareCanvasDeviceTelemetryV1) => void,
+  callback: (snapshot: HardwareCanvasDeviceTelemetry) => void,
 ): Promise<UnlistenFn> {
-  return listen<HardwareCanvasDeviceTelemetryV1>('hardware:device_snapshot', (event) => {
+  return listen<HardwareCanvasDeviceTelemetry>('hardware:device_snapshot', (event) => {
     callback(event.payload)
   })
 }

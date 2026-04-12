@@ -439,34 +439,51 @@ pub struct HardwareDataSignalCatalogV1 {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct HardwareCanvasDeviceTelemetryEntryV1 {
-    pub device_id: String,
-    pub latest: bool,
-    pub high_ratio: f32,
-    pub segment_mask: Option<u16>,
-    pub digit_segment_masks: Vec<u16>,
-    pub pixel_columns: u16,
-    pub pixel_rows: u16,
-    pub pixels: Vec<u8>,
-    pub bit_values: Vec<u8>,
-    pub text_lines: Vec<String>,
-    pub text_log: String,
-    pub memory_words: Vec<u16>,
-    pub sample_values: Vec<u16>,
-    pub audio_edge_count: u32,
-    pub audio_sample_count: u32,
-    pub audio_period_samples: f32,
-    pub memory_word_count: u32,
-    pub memory_preview_start: u32,
-    pub memory_address: u32,
-    pub memory_output_word: u16,
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum HardwareCanvasDeviceTelemetryPayload {
+    None,
+    Bitset {
+        #[serde(default)]
+        bits: Vec<u8>,
+    },
+    SegmentDisplay {
+        segment_mask: u16,
+        #[serde(default)]
+        digit_segment_masks: Vec<u16>,
+    },
+    Framebuffer {
+        columns: u16,
+        rows: u16,
+        #[serde(default)]
+        pixels: Vec<u8>,
+    },
+    TextLines {
+        #[serde(default)]
+        lines: Vec<String>,
+    },
+    TextLog {
+        log: String,
+    },
+    AudioPwm {
+        edge_count: u32,
+        sample_count: u32,
+        period_samples: f32,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct HardwareCanvasDeviceTelemetryV1 {
+pub struct HardwareCanvasDeviceTelemetryEntry {
+    pub device_id: String,
+    pub latest: bool,
+    pub high_ratio: f32,
+    pub payload: HardwareCanvasDeviceTelemetryPayload,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct HardwareCanvasDeviceTelemetry {
     pub version: u8,
     pub generated_at_ms: u64,
-    pub devices: Vec<HardwareCanvasDeviceTelemetryEntryV1>,
+    pub devices: Vec<HardwareCanvasDeviceTelemetryEntry>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

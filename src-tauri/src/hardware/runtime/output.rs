@@ -5,7 +5,8 @@ use std::{
 
 use crate::hardware::types::{
     CanvasDeviceSnapshot, CanvasHd44780BusMode, CanvasUartMode, CanvasVgaColorMode,
-    HardwareCanvasDeviceTelemetryEntryV1, HardwareCanvasDeviceTelemetryV1, HardwareStateV1,
+    HardwareCanvasDeviceTelemetry, HardwareCanvasDeviceTelemetryEntry,
+    HardwareCanvasDeviceTelemetryPayload, HardwareStateV1,
 };
 
 use super::registry::{output_compiler_for_device_type, SignalIndexLookup};
@@ -14,7 +15,7 @@ use super::*;
 
 pub(super) trait OutputDeviceDecoder: Send {
     fn ingest_cycle(&mut self, cycle: &[u16]);
-    fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntryV1;
+    fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntry;
 }
 
 struct LedOutputDecoder {
@@ -210,13 +211,13 @@ impl HardwareRuntime {
     pub(super) fn flush_output_decoders(
         decoders: &mut [Box<dyn OutputDeviceDecoder>],
         generated_at_ms: u64,
-    ) -> HardwareCanvasDeviceTelemetryV1 {
+    ) -> HardwareCanvasDeviceTelemetry {
         let devices = decoders
             .iter_mut()
             .map(|decoder| decoder.flush_snapshot())
             .collect();
 
-        HardwareCanvasDeviceTelemetryV1 {
+        HardwareCanvasDeviceTelemetry {
             version: 1,
             generated_at_ms,
             devices,
@@ -253,28 +254,17 @@ impl HardwareRuntime {
     }
 }
 
-fn empty_device_snapshot(device_id: &str) -> HardwareCanvasDeviceTelemetryEntryV1 {
-    HardwareCanvasDeviceTelemetryEntryV1 {
+fn device_snapshot(
+    device_id: &str,
+    latest: bool,
+    high_ratio: f32,
+    payload: HardwareCanvasDeviceTelemetryPayload,
+) -> HardwareCanvasDeviceTelemetryEntry {
+    HardwareCanvasDeviceTelemetryEntry {
         device_id: device_id.to_string(),
-        latest: false,
-        high_ratio: 0.0,
-        segment_mask: None,
-        digit_segment_masks: Vec::new(),
-        pixel_columns: 0,
-        pixel_rows: 0,
-        pixels: Vec::new(),
-        bit_values: Vec::new(),
-        text_lines: Vec::new(),
-        text_log: String::new(),
-        memory_words: Vec::new(),
-        sample_values: Vec::new(),
-        audio_edge_count: 0,
-        audio_sample_count: 0,
-        audio_period_samples: 0.0,
-        memory_word_count: 0,
-        memory_preview_start: 0,
-        memory_address: 0,
-        memory_output_word: 0,
+        latest,
+        high_ratio,
+        payload,
     }
 }
 
@@ -628,11 +618,14 @@ impl OutputDeviceDecoder for LedOutputDecoder {
         }
     }
 
-    fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntryV1 {
+    fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntry {
         let total_count = self.total_count.max(1);
-        let mut entry = empty_device_snapshot(&self.device_id);
-        entry.latest = self.latest;
-        entry.high_ratio = self.high_count as f32 / total_count as f32;
+        let entry = device_snapshot(
+            &self.device_id,
+            self.latest,
+            self.high_count as f32 / total_count as f32,
+            HardwareCanvasDeviceTelemetryPayload::None,
+        );
         self.latest = false;
         self.high_count = 0;
         self.total_count = 0;
@@ -663,12 +656,16 @@ impl OutputDeviceDecoder for LedBarOutputDecoder {
         }
     }
 
-    fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntryV1 {
+    fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntry {
         let total_count = self.total_count.max(1);
-        let mut entry = empty_device_snapshot(&self.device_id);
-        entry.latest = self.latest_bits.iter().any(|value| *value != 0);
-        entry.high_ratio = self.high_count as f32 / total_count as f32;
-        entry.bit_values = self.latest_bits.clone();
+        let entry = device_snapshot(
+            &self.device_id,
+            self.latest_bits.iter().any(|value| *value != 0),
+            self.high_count as f32 / total_count as f32,
+            HardwareCanvasDeviceTelemetryPayload::Bitset {
+                bits: self.latest_bits.clone(),
+            },
+        );
         self.high_count = 0;
         self.total_count = 0;
         entry
@@ -705,20 +702,25 @@ impl OutputDeviceDecoder for AudioPwmOutputDecoder {
         self.previous = value;
     }
 
-    fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntryV1 {
+    fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntry {
         let total_count = self.total_count.max(1);
-        let mut entry = empty_device_snapshot(&self.device_id);
-        entry.latest = self.latest;
-        entry.high_ratio = self.high_count as f32 / total_count as f32;
-        entry.audio_edge_count = self.edge_count;
-        entry.audio_sample_count = self.total_count;
-        entry.audio_period_samples = if self.edge_count == 0
+        let period_samples = if self.edge_count == 0
             && self.samples_since_rising as f32 > self.period_samples * 3.0
         {
             0.0
         } else {
             self.period_samples
         };
+        let entry = device_snapshot(
+            &self.device_id,
+            self.latest,
+            self.high_count as f32 / total_count as f32,
+            HardwareCanvasDeviceTelemetryPayload::AudioPwm {
+                edge_count: self.edge_count,
+                sample_count: self.total_count,
+                period_samples,
+            },
+        );
 
         self.high_count = 0;
         self.total_count = 0;
@@ -781,7 +783,7 @@ impl OutputDeviceDecoder for SegmentDisplayOutputDecoder {
         }
     }
 
-    fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntryV1 {
+    fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntry {
         let total_samples = self
             .sample_counts
             .iter()
@@ -805,33 +807,20 @@ impl OutputDeviceDecoder for SegmentDisplayOutputDecoder {
             digit_masks.push(digit_mask);
         }
 
-        let entry = HardwareCanvasDeviceTelemetryEntryV1 {
-            device_id: self.device_id.clone(),
-            latest: digit_masks.iter().any(|mask| *mask != 0)
+        let entry = device_snapshot(
+            &self.device_id,
+            digit_masks.iter().any(|mask| *mask != 0)
                 || self.latest_masks.iter().any(|mask| *mask != 0),
-            high_ratio: if total_samples == 0 {
+            if total_samples == 0 {
                 0.0
             } else {
                 total_on_counts as f32 / (total_samples as f32 * 8.0)
             },
-            segment_mask: digit_masks.first().copied(),
-            digit_segment_masks: digit_masks,
-            pixel_columns: 0,
-            pixel_rows: 0,
-            pixels: Vec::new(),
-            bit_values: Vec::new(),
-            text_lines: Vec::new(),
-            text_log: String::new(),
-            memory_words: Vec::new(),
-            sample_values: Vec::new(),
-            audio_edge_count: 0,
-            audio_sample_count: 0,
-            audio_period_samples: 0.0,
-            memory_word_count: 0,
-            memory_preview_start: 0,
-            memory_address: 0,
-            memory_output_word: 0,
-        };
+            HardwareCanvasDeviceTelemetryPayload::SegmentDisplay {
+                segment_mask: digit_masks.first().copied().unwrap_or(0),
+                digit_segment_masks: digit_masks,
+            },
+        );
         self.sample_counts.fill(0);
         for segment_counts in &mut self.segment_on_counts {
             segment_counts.fill(0);
@@ -879,7 +868,7 @@ impl OutputDeviceDecoder for LedMatrixOutputDecoder {
         }
     }
 
-    fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntryV1 {
+    fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntry {
         let mut pixels = vec![0_u8; self.rows * self.columns];
         let mut latest = false;
         let mut total_intensity = 0_f32;
@@ -903,32 +892,20 @@ impl OutputDeviceDecoder for LedMatrixOutputDecoder {
             }
         }
 
-        let entry = HardwareCanvasDeviceTelemetryEntryV1 {
-            device_id: self.device_id.clone(),
+        let entry = device_snapshot(
+            &self.device_id,
             latest,
-            high_ratio: if pixels.is_empty() {
+            if pixels.is_empty() {
                 0.0
             } else {
                 total_intensity / pixels.len() as f32
             },
-            segment_mask: None,
-            digit_segment_masks: Vec::new(),
-            pixel_columns: self.columns as u16,
-            pixel_rows: self.rows as u16,
-            pixels,
-            bit_values: Vec::new(),
-            text_lines: Vec::new(),
-            text_log: String::new(),
-            memory_words: Vec::new(),
-            sample_values: Vec::new(),
-            audio_edge_count: 0,
-            audio_sample_count: 0,
-            audio_period_samples: 0.0,
-            memory_word_count: 0,
-            memory_preview_start: 0,
-            memory_address: 0,
-            memory_output_word: 0,
-        };
+            HardwareCanvasDeviceTelemetryPayload::Framebuffer {
+                columns: self.columns as u16,
+                rows: self.rows as u16,
+                pixels,
+            },
+        );
         self.row_samples.fill(0);
         self.pixel_on_counts.fill(0);
         entry
@@ -1174,7 +1151,7 @@ impl OutputDeviceDecoder for VgaDisplayOutputDecoder {
         self.prev_vsync_active = vsync_active;
     }
 
-    fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntryV1 {
+    fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntry {
         let lit_pixels = self
             .frame_pixels
             .iter()
@@ -1182,32 +1159,20 @@ impl OutputDeviceDecoder for VgaDisplayOutputDecoder {
             .filter(|pixel| *pixel != 0)
             .count();
 
-        HardwareCanvasDeviceTelemetryEntryV1 {
-            device_id: self.device_id.clone(),
-            latest: lit_pixels > 0,
-            high_ratio: if self.frame_pixels.is_empty() {
+        device_snapshot(
+            &self.device_id,
+            lit_pixels > 0,
+            if self.frame_pixels.is_empty() {
                 0.0
             } else {
                 lit_pixels as f32 / self.frame_pixels.len() as f32
             },
-            segment_mask: None,
-            digit_segment_masks: Vec::new(),
-            pixel_columns: self.target_columns as u16,
-            pixel_rows: self.target_rows as u16,
-            pixels: self.frame_pixels.clone(),
-            bit_values: Vec::new(),
-            text_lines: Vec::new(),
-            text_log: String::new(),
-            memory_words: Vec::new(),
-            sample_values: Vec::new(),
-            audio_edge_count: 0,
-            audio_sample_count: 0,
-            audio_period_samples: 0.0,
-            memory_word_count: 0,
-            memory_preview_start: 0,
-            memory_address: 0,
-            memory_output_word: 0,
-        }
+            HardwareCanvasDeviceTelemetryPayload::Framebuffer {
+                columns: self.target_columns as u16,
+                rows: self.target_rows as u16,
+                pixels: self.frame_pixels.clone(),
+            },
+        )
     }
 }
 
@@ -1256,29 +1221,15 @@ impl OutputDeviceDecoder for UartTerminalOutputDecoder {
         self.state.countdown = self.cycles_per_bit.saturating_sub(1);
     }
 
-    fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntryV1 {
-        HardwareCanvasDeviceTelemetryEntryV1 {
-            device_id: self.device_id.clone(),
-            latest: !self.text_log.is_empty(),
-            high_ratio: 0.0,
-            segment_mask: None,
-            digit_segment_masks: Vec::new(),
-            pixel_columns: 0,
-            pixel_rows: 0,
-            pixels: Vec::new(),
-            bit_values: Vec::new(),
-            text_lines: Vec::new(),
-            text_log: self.text_log.clone(),
-            memory_words: Vec::new(),
-            sample_values: Vec::new(),
-            audio_edge_count: 0,
-            audio_sample_count: 0,
-            audio_period_samples: 0.0,
-            memory_word_count: 0,
-            memory_preview_start: 0,
-            memory_address: 0,
-            memory_output_word: 0,
-        }
+    fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntry {
+        device_snapshot(
+            &self.device_id,
+            !self.text_log.is_empty(),
+            0.0,
+            HardwareCanvasDeviceTelemetryPayload::TextLog {
+                log: self.text_log.clone(),
+            },
+        )
     }
 }
 
@@ -1298,11 +1249,15 @@ impl OutputDeviceDecoder for MatrixKeypadOutputDecoder {
         }
     }
 
-    fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntryV1 {
-        let mut entry = empty_device_snapshot(&self.device_id);
-        entry.latest = self.latest_rows.iter().any(|value| *value != 0);
-        entry.bit_values = self.latest_rows.clone();
-        entry
+    fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntry {
+        device_snapshot(
+            &self.device_id,
+            self.latest_rows.iter().any(|value| *value != 0),
+            0.0,
+            HardwareCanvasDeviceTelemetryPayload::Bitset {
+                bits: self.latest_rows.clone(),
+            },
+        )
     }
 }
 
@@ -1346,30 +1301,14 @@ impl OutputDeviceDecoder for Hd44780LcdOutputDecoder {
         self.prev_enable = enable;
     }
 
-    fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntryV1 {
+    fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntry {
         let text_lines = hd44780_text_lines(&self.ddram, self.columns, self.rows);
-        HardwareCanvasDeviceTelemetryEntryV1 {
-            device_id: self.device_id.clone(),
-            latest: text_lines.iter().any(|line| !line.trim_end().is_empty()),
-            high_ratio: 0.0,
-            segment_mask: None,
-            digit_segment_masks: Vec::new(),
-            pixel_columns: 0,
-            pixel_rows: 0,
-            pixels: Vec::new(),
-            bit_values: Vec::new(),
-            text_lines,
-            text_log: String::new(),
-            memory_words: Vec::new(),
-            sample_values: Vec::new(),
-            audio_edge_count: 0,
-            audio_sample_count: 0,
-            audio_period_samples: 0.0,
-            memory_word_count: 0,
-            memory_preview_start: 0,
-            memory_address: 0,
-            memory_output_word: 0,
-        }
+        device_snapshot(
+            &self.device_id,
+            text_lines.iter().any(|line| !line.trim_end().is_empty()),
+            0.0,
+            HardwareCanvasDeviceTelemetryPayload::TextLines { lines: text_lines },
+        )
     }
 }
 
