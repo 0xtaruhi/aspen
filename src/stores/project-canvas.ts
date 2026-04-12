@@ -4,7 +4,7 @@ import type {
   HardwareActionV1,
 } from '@/lib/hardware-client'
 
-import { ref } from 'vue'
+import { ref, toRaw } from 'vue'
 
 import {
   deviceDrivesSignal as deviceTypeDrivesSignal,
@@ -42,6 +42,10 @@ const canvasDevices = ref<CanvasDeviceSnapshot[]>([])
 resetState()
 
 function cloneDevice(device: CanvasDeviceSnapshot): CanvasDeviceSnapshot {
+  if (typeof structuredClone === 'function') {
+    return structuredClone(toRaw(device))
+  }
+
   return JSON.parse(JSON.stringify(device)) as CanvasDeviceSnapshot
 }
 
