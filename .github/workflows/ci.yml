@@ -64,6 +64,7 @@ jobs:
               - 'src-tauri/src/**'
               - 'src-tauri/Cargo.toml'
               - 'src-tauri/Cargo.lock'
+              - 'src-tauri/tauri*.json'
             toolchain:
               - 'scripts/prepare-yosys-bundle.mjs'
               - 'scripts/restore-bundled-toolchain-perms.sh'
