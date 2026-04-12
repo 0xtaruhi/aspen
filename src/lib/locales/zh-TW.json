@@ -121,8 +121,6 @@
   "outputs": "輸出",
   "inouts": "雙向",
   "running": "執行中",
-  "cancelling": "取消中",
-  "cancelled": "已取消",
   "completed": "已完成",
   "failed": "失敗",
   "ready": "就緒",

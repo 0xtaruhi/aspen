@@ -22,8 +22,6 @@ const { t } = useI18n()
 const activeFileLabel = computed(() => activeFileName.value || t('topFileNotSelected'))
 
 const isBusy = hardwareStore.synthesisRunning
-const isCancelling = hardwareStore.synthesisCancelling
-const isCancelled = hardwareStore.synthesisCancelled
 const synthesisMessage = hardwareStore.synthesisMessage
 const synthesisLiveLog = hardwareStore.synthesisLiveLog
 const synthesisReport = synthesisCatalogStore.currentSynthesisReport
@@ -39,14 +37,6 @@ const canRunSynthesis = computed(() => {
 })
 
 const synthesisStatus = computed(() => {
-  if (isCancelling.value) {
-    return t('cancelling')
-  }
-
-  if (isCancelled.value) {
-    return t('cancelled')
-  }
-
   if (isBusy.value) {
     return t('running')
   }
@@ -59,14 +49,6 @@ const synthesisStatus = computed(() => {
 })
 
 const synthesisStatusBadgeClass = computed(() => {
-  if (isCancelling.value) {
-    return statusBadgeClass('warning')
-  }
-
-  if (isCancelled.value) {
-    return statusBadgeClass('warning')
-  }
-
   if (isBusy.value) {
     return statusBadgeClass('running')
   }
@@ -177,14 +159,6 @@ async function runSynthesis() {
   }
 }
 
-async function cancelSynthesis() {
-  try {
-    await hardwareStore.cancelSynthesis()
-  } catch {
-    // The store publishes synthesisMessage for the page to render.
-  }
-}
-
 function projectDirectory() {
   return getProjectRootDirectory(projectStore.projectPath)
 }
@@ -222,16 +196,6 @@ function projectDirectory() {
         <span class="text-sm text-muted-foreground">
           {{ synthesisReport ? formatDuration(synthesisReport.elapsed_ms) : activeFileLabel }}
         </span>
-        <Button
-          v-if="isBusy"
-          type="button"
-          size="sm"
-          variant="outline"
-          :disabled="isCancelling"
-          @click="cancelSynthesis"
-        >
-          {{ isCancelling ? `${t('cancelling')}...` : t('cancel') }}
-        </Button>
         <Button
           type="button"
           size="sm"

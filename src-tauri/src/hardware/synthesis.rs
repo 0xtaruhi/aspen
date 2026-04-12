@@ -22,7 +22,6 @@ use self::{
         SynthesisToolchainPaths,
     },
 };
-use super::jobs::{HardwareJobRegistry, SynthesisJobHandle};
 use super::types::{SynthesisLogChunkV1, SynthesisReportV1, SynthesisRequestV1, SynthesisStatsV1};
 
 #[cfg(test)]
@@ -40,7 +39,6 @@ const SYNTHESIS_ARTIFACT_FLOW_REVISION: &str = "fde-yosys-edif-v3";
 
 pub fn run_yosys_synthesis(
     app: &AppHandle,
-    jobs: &HardwareJobRegistry,
     request: SynthesisRequestV1,
 ) -> Result<SynthesisReportV1, String> {
     validate_request(&request)?;
@@ -62,12 +60,10 @@ pub fn run_yosys_synthesis(
     let started_at = Instant::now();
     let generated_at_ms = now_millis()?;
     let (workdir, should_cleanup) = resolve_workdir(&request, generated_at_ms)?;
-    let job = jobs.register_synthesis(&request.op_id)?;
     let result = run_yosys_in_workdir(
         &toolchain,
         &workdir,
         &request,
-        job.as_ref(),
         generated_at_ms,
         started_at,
         |chunk| emit_log_chunk(app, &request.op_id, chunk, generated_at_ms),
@@ -75,7 +71,6 @@ pub fn run_yosys_synthesis(
     if should_cleanup {
         let _ = fs::remove_dir_all(&workdir);
     }
-    jobs.finish_synthesis(&request.op_id);
     result
 }
 
@@ -83,7 +78,6 @@ fn run_yosys_in_workdir<F>(
     toolchain: &SynthesisToolchainPaths<'_>,
     workdir: &Path,
     request: &SynthesisRequestV1,
-    job: &SynthesisJobHandle,
     generated_at_ms: u64,
     started_at: Instant,
     mut on_log_chunk: F,
@@ -144,7 +138,6 @@ where
     let stderr_tx = tx.clone();
     std::thread::spawn(move || stream_output(stderr, stderr_tx));
     drop(tx);
-    job.attach_child(child)?;
 
     let mut log = String::new();
     for chunk in rx {
@@ -152,16 +145,13 @@ where
         on_log_chunk(chunk);
     }
 
-    let output_status = job.wait_for_exit().map_err(|err| {
+    let output_status = child.wait().map_err(|err| {
         format!(
             "Failed to wait for Yosys at '{}': {}",
             toolchain.yosys_bin.display(),
             err
         )
     })?;
-    if job.is_cancelled() {
-        return Err("Synthesis cancelled".to_string());
-    }
 
     let warnings = log.matches("Warning:").count() as u32;
     let logged_errors = log.matches("ERROR:").count() as u32;

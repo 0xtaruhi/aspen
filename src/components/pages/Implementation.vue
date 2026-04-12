@@ -31,8 +31,6 @@ const { t } = useI18n()
 const showNewProjectDialog = ref(false)
 
 const isBusy = hardwareStore.implementationRunning
-const isCancelling = hardwareStore.implementationCancelling
-const isCancelled = hardwareStore.implementationCancelled
 const implementationLiveLog = hardwareStore.implementationLiveLog
 const implementationMessage = hardwareStore.implementationMessage
 const implementationReport = implementationCatalogStore.currentImplementationReport
@@ -79,14 +77,6 @@ const canRunImplementation = computed(() => {
 })
 
 const implementationStatus = computed(() => {
-  if (isCancelling.value) {
-    return t('cancelling')
-  }
-
-  if (isCancelled.value) {
-    return t('cancelled')
-  }
-
   if (isBusy.value) {
     return t('running')
   }
@@ -200,14 +190,6 @@ function formatDuration(elapsedMs: number) {
 }
 
 const implementationStatusBadgeClass = computed(() => {
-  if (isCancelling.value) {
-    return statusBadgeClass('warning')
-  }
-
-  if (isCancelled.value) {
-    return statusBadgeClass('warning')
-  }
-
   if (isBusy.value) {
     return statusBadgeClass('running')
   }
@@ -266,14 +248,6 @@ async function runImplementation() {
   }
 }
 
-async function cancelImplementation() {
-  try {
-    await hardwareStore.cancelImplementation()
-  } catch {
-    // The store publishes implementationMessage for rendering.
-  }
-}
-
 function openPinPlanning() {
   void router.push({ name: 'fpga-flow-pin-planning' })
 }
@@ -304,16 +278,6 @@ function goToSynthesis() {
           {{ implementationHeaderMeta }}
         </span>
         <Button
-          v-if="isBusy"
-          type="button"
-          size="sm"
-          variant="outline"
-          :disabled="isCancelling"
-          @click="cancelImplementation"
-        >
-          {{ isCancelling ? `${t('cancelling')}...` : t('cancel') }}
-        </Button>
-        <Button
           type="button"
           size="sm"
           :disabled="!canRunImplementation"
@@ -342,9 +306,6 @@ function goToSynthesis() {
       v-else
       :report="implementationReportSnapshot"
       :live-log="implementationLiveLog"
-      :is-running="isBusy"
-      :is-cancelling="isCancelling"
-      :is-cancelled="isCancelled"
     />
   </div>
 </template>

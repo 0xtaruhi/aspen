@@ -13,10 +13,7 @@ use std::{
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
-use fde::{
-    load_arch, load_cil, load_constraints, load_delay_model, LineStageReporter, StageEvent,
-    StageReporter,
-};
+use fde::{load_arch, load_cil, load_constraints, load_delay_model};
 use tauri::AppHandle;
 
 use self::{
@@ -31,7 +28,6 @@ use self::{
     },
     toolchain::{resolve_resource_paths, ImplementationResourcePaths},
 };
-use super::jobs::{HardwareJobRegistry, ImplementationJobHandle};
 use super::types::{
     ImplementationReportV1, ImplementationRequestV1, ImplementationStageKindV1,
     ImplementationStageResultV1, SynthesisSourceFileV1,
@@ -45,26 +41,9 @@ const FDE_PACK_CONFIG_FILE: &str = "fdp3_config.xml";
 const FDE_ARCH_FILE: &str = "fdp3p7_arch.xml";
 const FDE_DELAY_FILE: &str = "fdp3p7_dly.xml";
 const FDE_CIL_FILE: &str = "fdp3p7_cil.xml";
-const IMPLEMENTATION_CANCELLED_MESSAGE: &str = "Implementation cancelled";
-
-struct CancelableLineStageReporter<'a> {
-    inner: LineStageReporter<'a>,
-    job: Arc<ImplementationJobHandle>,
-}
-
-impl StageReporter for CancelableLineStageReporter<'_> {
-    fn on_stage_event(&mut self, event: StageEvent) {
-        self.inner.on_stage_event(event);
-    }
-
-    fn is_cancelled(&self) -> bool {
-        self.job.is_cancelled()
-    }
-}
 
 pub fn run_fde_implementation(
     app: &AppHandle,
-    jobs: &HardwareJobRegistry,
     request: ImplementationRequestV1,
 ) -> Result<ImplementationReportV1, String> {
     validate_request(&request)?;
@@ -74,25 +53,21 @@ pub fn run_fde_implementation(
     let generated_at_ms = now_millis()?;
     let started_at = Instant::now();
     let workdir = resolve_workdir(&request, generated_at_ms)?;
-    let job = jobs.register_implementation(&request.op_id)?;
-    let result = run_fde_implementation_in_workdir(
+
+    run_fde_implementation_in_workdir(
         &resource_paths,
         &workdir,
         &request,
-        job,
         generated_at_ms,
         started_at,
         |stage, chunk| emit_log_chunk(app, &request.op_id, stage, chunk, generated_at_ms),
-    );
-    jobs.finish_implementation(&request.op_id);
-    result
+    )
 }
 
 fn run_fde_implementation_in_workdir<F>(
     resource_paths: &ImplementationResourcePaths,
     workdir: &Path,
     request: &ImplementationRequestV1,
-    job: Arc<ImplementationJobHandle>,
     generated_at_ms: u64,
     started_at: Instant,
     mut on_log_chunk: F,
@@ -100,7 +75,6 @@ fn run_fde_implementation_in_workdir<F>(
 where
     F: FnMut(ImplementationStageKindV1, String),
 {
-    ensure_implementation_not_cancelled(job.as_ref())?;
     fs::create_dir_all(workdir).map_err(|err| err.to_string())?;
     let artifacts = plan_artifacts(workdir, request)?;
     fs::write(
@@ -139,7 +113,6 @@ where
         )
     })?;
 
-    ensure_implementation_not_cancelled(job.as_ref())?;
     let constraints = Arc::<[_]>::from(
         load_constraints(&artifacts.constraint_path).map_err(|err| err.to_string())?,
     );
@@ -159,7 +132,6 @@ where
     let map_result = match run_required_stage(
         &mut ImplementationRunContext {
             request,
-            job: job.as_ref(),
             generated_at_ms,
             started_at,
             artifacts: &artifacts,
@@ -174,22 +146,17 @@ where
         },
         |stage_sink| {
             let mut logger = |line: String| stage_sink.push(ImplementationStageKindV1::Map, line);
-            let mut reporter = CancelableLineStageReporter {
-                inner: LineStageReporter::runtime_only(&mut logger),
-                job: Arc::clone(&job),
-            };
+            let mut reporter = fde::LineStageReporter::runtime_only(&mut logger);
             run_map_stage(resource_paths, &artifacts, &mut reporter)
         },
     ) {
         Ok(design) => design,
-        Err(RequiredStageFailure::Report(report)) => return Ok(*report),
-        Err(RequiredStageFailure::Cancelled(message)) => return Err(message),
+        Err(report) => return Ok(*report),
     };
 
     let pack_result = match run_required_stage(
         &mut ImplementationRunContext {
             request,
-            job: job.as_ref(),
             generated_at_ms,
             started_at,
             artifacts: &artifacts,
@@ -204,22 +171,17 @@ where
         },
         |stage_sink| {
             let mut logger = |line: String| stage_sink.push(ImplementationStageKindV1::Pack, line);
-            let mut reporter = CancelableLineStageReporter {
-                inner: LineStageReporter::runtime_only(&mut logger),
-                job: Arc::clone(&job),
-            };
+            let mut reporter = fde::LineStageReporter::runtime_only(&mut logger);
             run_pack_stage(resource_paths, map_result, &artifacts, &mut reporter)
         },
     ) {
         Ok(design) => design,
-        Err(RequiredStageFailure::Report(report)) => return Ok(*report),
-        Err(RequiredStageFailure::Cancelled(message)) => return Err(message),
+        Err(report) => return Ok(*report),
     };
 
     let place_result = match run_required_stage(
         &mut ImplementationRunContext {
             request,
-            job: job.as_ref(),
             generated_at_ms,
             started_at,
             artifacts: &artifacts,
@@ -234,10 +196,7 @@ where
         },
         |stage_sink| {
             let mut logger = |line: String| stage_sink.push(ImplementationStageKindV1::Place, line);
-            let mut reporter = CancelableLineStageReporter {
-                inner: LineStageReporter::runtime_only(&mut logger),
-                job: Arc::clone(&job),
-            };
+            let mut reporter = fde::LineStageReporter::runtime_only(&mut logger);
             run_place_stage(
                 request.place_mode,
                 pack_result,
@@ -250,14 +209,12 @@ where
         },
     ) {
         Ok(design) => design,
-        Err(RequiredStageFailure::Report(report)) => return Ok(*report),
-        Err(RequiredStageFailure::Cancelled(message)) => return Err(message),
+        Err(report) => return Ok(*report),
     };
 
     let (routed_design, device_design, route_image) = match run_required_stage(
         &mut ImplementationRunContext {
             request,
-            job: job.as_ref(),
             generated_at_ms,
             started_at,
             artifacts: &artifacts,
@@ -272,10 +229,7 @@ where
         },
         |stage_sink| {
             let mut logger = |line: String| stage_sink.push(ImplementationStageKindV1::Route, line);
-            let mut reporter = CancelableLineStageReporter {
-                inner: LineStageReporter::runtime_only(&mut logger),
-                job: Arc::clone(&job),
-            };
+            let mut reporter = fde::LineStageReporter::runtime_only(&mut logger);
             run_route_stage(
                 place_result,
                 &artifacts,
@@ -291,8 +245,7 @@ where
         },
     ) {
         Ok(routed) => routed,
-        Err(RequiredStageFailure::Report(report)) => return Ok(*report),
-        Err(RequiredStageFailure::Cancelled(message)) => return Err(message),
+        Err(report) => return Ok(*report),
     };
 
     let (design_for_bitgen, timing_report, timing_success) = {
@@ -300,12 +253,8 @@ where
         let log_path = workdir.join("sta.log");
         start_stage(stage, &mut sink);
         let stage_started = Instant::now();
-        ensure_implementation_not_cancelled(job.as_ref())?;
         let mut logger = |line: String| sink.push(stage, line);
-        let mut reporter = CancelableLineStageReporter {
-            inner: LineStageReporter::runtime_only(&mut logger),
-            job: Arc::clone(&job),
-        };
+        let mut reporter = fde::LineStageReporter::runtime_only(&mut logger);
         match run_sta_stage(
             routed_design.clone(),
             &artifacts,
@@ -327,9 +276,6 @@ where
                 (artifact.design, artifact.report_text, true)
             }
             Err(err) => {
-                if job.is_cancelled() || is_cancelled_message(&err) {
-                    return Err(IMPLEMENTATION_CANCELLED_MESSAGE.to_string());
-                }
                 let result = finish_failed_stage(
                     stage,
                     true,
@@ -345,10 +291,9 @@ where
         }
     };
 
-    if let Err(failure) = run_required_stage(
+    if let Err(report) = run_required_stage(
         &mut ImplementationRunContext {
             request,
-            job: job.as_ref(),
             generated_at_ms,
             started_at,
             artifacts: &artifacts,
@@ -364,10 +309,7 @@ where
         |stage_sink| {
             let mut logger =
                 |line: String| stage_sink.push(ImplementationStageKindV1::Bitgen, line);
-            let mut reporter = CancelableLineStageReporter {
-                inner: LineStageReporter::runtime_only(&mut logger),
-                job: Arc::clone(&job),
-            };
+            let mut reporter = fde::LineStageReporter::runtime_only(&mut logger);
             run_bitgen_stage(
                 design_for_bitgen,
                 BitgenStageContext {
@@ -383,10 +325,7 @@ where
             .map(|report| ((), report))
         },
     ) {
-        match failure {
-            RequiredStageFailure::Report(report) => return Ok(*report),
-            RequiredStageFailure::Cancelled(message) => return Err(message),
-        }
+        return Ok(*report);
     }
 
     Ok(ImplementationReportV1 {
@@ -470,7 +409,6 @@ pub(super) fn count_verilog_sources(files: &[SynthesisSourceFileV1]) -> usize {
 
 struct ImplementationRunContext<'a, 'sink, F> {
     request: &'a ImplementationRequestV1,
-    job: &'a ImplementationJobHandle,
     generated_at_ms: u64,
     started_at: Instant,
     artifacts: &'a PlannedArtifacts,
@@ -507,18 +445,6 @@ where
     }
 }
 
-fn ensure_implementation_not_cancelled(job: &ImplementationJobHandle) -> Result<(), String> {
-    if job.is_cancelled() {
-        return Err(IMPLEMENTATION_CANCELLED_MESSAGE.to_string());
-    }
-
-    Ok(())
-}
-
-fn is_cancelled_message(message: &str) -> bool {
-    message.to_ascii_lowercase().contains("cancelled")
-}
-
 struct RequiredStageSpec<'a> {
     stage: ImplementationStageKindV1,
     log_path: &'a Path,
@@ -526,25 +452,15 @@ struct RequiredStageSpec<'a> {
     timing_report_on_failure: String,
 }
 
-enum RequiredStageFailure {
-    Report(Box<ImplementationReportV1>),
-    Cancelled(String),
-}
-
 fn run_required_stage<'sink, F, T, Run>(
     ctx: &mut ImplementationRunContext<'_, 'sink, F>,
     spec: RequiredStageSpec<'_>,
     run: Run,
-) -> Result<T, RequiredStageFailure>
+) -> Result<T, Box<ImplementationReportV1>>
 where
     F: FnMut(ImplementationStageKindV1, String),
     Run: FnOnce(&mut StageLogSink<'sink, F>) -> Result<(T, fde::StageReport), String>,
 {
-    if ctx.job.is_cancelled() {
-        return Err(RequiredStageFailure::Cancelled(
-            IMPLEMENTATION_CANCELLED_MESSAGE.to_string(),
-        ));
-    }
     start_stage(spec.stage, ctx.sink);
     let stage_started = Instant::now();
     match run(ctx.sink) {
@@ -558,20 +474,11 @@ where
                 &report,
                 ctx.sink,
             )
-            .map_err(|err| {
-                RequiredStageFailure::Report(
-                    ctx.failure_report(spec.timing_report_on_failure.clone(), Some(err)),
-                )
-            })?;
+            .map_err(|err| ctx.failure_report(spec.timing_report_on_failure.clone(), Some(err)))?;
             ctx.stage_results.push(result);
             Ok(value)
         }
         Err(err) => {
-            if ctx.job.is_cancelled() || is_cancelled_message(&err) {
-                return Err(RequiredStageFailure::Cancelled(
-                    IMPLEMENTATION_CANCELLED_MESSAGE.to_string(),
-                ));
-            }
             let result = finish_failed_stage(
                 spec.stage,
                 false,
@@ -582,14 +489,10 @@ where
                 ctx.sink,
             )
             .map_err(|io_err| {
-                RequiredStageFailure::Report(
-                    ctx.failure_report(spec.timing_report_on_failure.clone(), Some(io_err)),
-                )
+                ctx.failure_report(spec.timing_report_on_failure.clone(), Some(io_err))
             })?;
             ctx.stage_results.push(result);
-            Err(RequiredStageFailure::Report(
-                ctx.failure_report(spec.timing_report_on_failure, None),
-            ))
+            Err(ctx.failure_report(spec.timing_report_on_failure, None))
         }
     }
 }

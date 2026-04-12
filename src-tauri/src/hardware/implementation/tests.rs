@@ -8,7 +8,6 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::Arc,
     time::Instant,
 };
 
@@ -227,7 +226,7 @@ fn cargo_manifest_uses_semver_rust_fde_dependency() {
     let cargo_toml =
         fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml")).unwrap();
     assert!(
-        cargo_toml.contains("fde = \"1.0\"") || cargo_toml.contains("fde = { version = \"1.0\""),
+        cargo_toml.contains("fde = \"1.0\""),
         "Aspen should depend on crates.io fde via a semver-compatible 1.0 requirement"
     );
 }
@@ -363,12 +362,10 @@ fn implementation_smoke_test_runs_with_in_process_rust_fde_when_yosys_is_availab
         synthesized_edif_path: Some(synthesized_edif_path.to_string_lossy().to_string()),
     };
 
-    let job = Arc::new(ImplementationJobHandle::default());
     let report = run_fde_implementation_in_workdir(
         &resources,
         &workdir,
         &request,
-        job,
         generated_at_ms,
         Instant::now(),
         |_, _| {},
@@ -511,12 +508,10 @@ fn implementation_smoke_test_runs_with_division_logic_lowered_by_bundled_yosys()
         synthesized_edif_path: Some(synthesized_edif_path.to_string_lossy().to_string()),
     };
 
-    let job = Arc::new(ImplementationJobHandle::default());
     let report = run_fde_implementation_in_workdir(
         &resources,
         &workdir,
         &request,
-        job,
         generated_at_ms,
         Instant::now(),
         |_, _| {},

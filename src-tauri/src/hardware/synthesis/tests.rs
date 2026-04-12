@@ -145,13 +145,11 @@ endmodule
     };
     let generated_at_ms = now_millis().unwrap();
     let (workdir, _) = resolve_workdir(&request, generated_at_ms).unwrap();
-    let job = SynthesisJobHandle::default();
 
     let report = run_yosys_in_workdir(
         &toolchain,
         &workdir,
         &request,
-        &job,
         generated_at_ms,
         Instant::now(),
         |_| {},
@@ -228,13 +226,11 @@ endmodule
         generated_at_ms
     ));
     fs::create_dir_all(&workdir).unwrap();
-    let job = SynthesisJobHandle::default();
 
     let report = run_yosys_in_workdir(
         &toolchain,
         &workdir,
         &request,
-        &job,
         generated_at_ms,
         Instant::now(),
         |_| {},
@@ -290,13 +286,11 @@ endmodule
     };
     let generated_at_ms = now_millis().unwrap();
     let (workdir, _) = resolve_workdir(&request, generated_at_ms).unwrap();
-    let job = SynthesisJobHandle::default();
 
     let report = run_yosys_in_workdir(
         &toolchain,
         &workdir,
         &request,
-        &job,
         generated_at_ms,
         Instant::now(),
         |_| {},
@@ -373,13 +367,11 @@ endmodule
     };
     let generated_at_ms = now_millis().unwrap();
     let (workdir, _) = resolve_workdir(&request, generated_at_ms).unwrap();
-    let job = SynthesisJobHandle::default();
 
     let report = run_yosys_in_workdir(
         &toolchain,
         &workdir,
         &request,
-        &job,
         generated_at_ms,
         Instant::now(),
         |_| {},
@@ -475,13 +467,11 @@ endmodule
     };
     let generated_at_ms = now_millis().unwrap();
     let (workdir, _) = resolve_workdir(&request, generated_at_ms).unwrap();
-    let job = SynthesisJobHandle::default();
 
     let report = run_yosys_in_workdir(
         &toolchain,
         &workdir,
         &request,
-        &job,
         generated_at_ms,
         Instant::now(),
         |_| {},
@@ -541,13 +531,11 @@ endmodule
     };
     let generated_at_ms = now_millis().unwrap();
     let (workdir, _) = resolve_workdir(&request, generated_at_ms).unwrap();
-    let job = SynthesisJobHandle::default();
 
     let report = run_yosys_in_workdir(
         &toolchain,
         &workdir,
         &request,
-        &job,
         generated_at_ms,
         Instant::now(),
         |_| {},

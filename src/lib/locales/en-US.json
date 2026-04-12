@@ -121,8 +121,6 @@
   "outputs": "Outputs",
   "inouts": "Inouts",
   "running": "Running",
-  "cancelling": "Cancelling",
-  "cancelled": "Cancelled",
   "completed": "Completed",
   "failed": "Failed",
   "ready": "Ready",

@@ -43,10 +43,8 @@ type AppMenuAction =
   | 'open-settings'
 
 interface BackgroundJobViewModel {
-  kind: 'synthesis' | 'implementation'
   label: string
   routeName: AppRouteName
-  cancelling: boolean
 }
 
 const route = useRoute()
@@ -82,10 +80,8 @@ const backgroundJobs = computed<BackgroundJobViewModel[]>(() => {
 
   if (hardwareStore.synthesisRunning.value && activeRouteName.value !== 'fpga-flow-synthesis') {
     jobs.push({
-      kind: 'synthesis',
       label: t('synthesis'),
       routeName: 'fpga-flow-synthesis',
-      cancelling: hardwareStore.synthesisCancelling.value,
     })
   }
 
@@ -94,10 +90,8 @@ const backgroundJobs = computed<BackgroundJobViewModel[]>(() => {
     activeRouteName.value !== 'fpga-flow-implementation'
   ) {
     jobs.push({
-      kind: 'implementation',
       label: t('implementation'),
       routeName: 'fpga-flow-implementation',
-      cancelling: hardwareStore.implementationCancelling.value,
     })
   }
 
@@ -163,19 +157,6 @@ function openSettings() {
 
 function openBackgroundJob(routeName: AppRouteName) {
   void router.push({ name: routeName })
-}
-
-async function cancelBackgroundJob(kind: BackgroundJobViewModel['kind']) {
-  try {
-    if (kind === 'synthesis') {
-      await hardwareStore.cancelSynthesis()
-      return
-    }
-
-    await hardwareStore.cancelImplementation()
-  } catch (err) {
-    console.error('Failed to cancel background job', err)
-  }
 }
 
 async function prepareApplicationClose() {
@@ -351,23 +332,15 @@ onUnmounted(() => {
               </span>
               <div
                 v-for="job in backgroundJobs"
-                :key="job.kind"
+                :key="job.routeName"
                 class="flex flex-wrap items-center gap-2 rounded-md border border-border bg-background px-3 py-2"
               >
                 <span class="text-sm font-medium">{{ job.label }}</span>
                 <span class="text-xs text-muted-foreground">
-                  {{ job.cancelling ? `${t('cancelling')}...` : t('runningInBackground') }}
+                  {{ t('runningInBackground') }}
                 </span>
                 <Button size="sm" variant="outline" @click="openBackgroundJob(job.routeName)">
                   {{ t('view') }}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  :disabled="job.cancelling"
-                  @click="cancelBackgroundJob(job.kind)"
-                >
-                  {{ job.cancelling ? `${t('cancelling')}...` : t('cancel') }}
                 </Button>
               </div>
             </div>
