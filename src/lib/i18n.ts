@@ -11,7 +11,9 @@ const messages = {
   'zh-TW': zhTwMessages,
 } as const
 
-type MessageKey = keyof typeof enUsMessages
+export type SupportedLanguage = keyof typeof messages
+
+export type MessageKey = keyof typeof enUsMessages
 
 type MessageParams = Record<string, string | number>
 
@@ -28,6 +30,15 @@ function formatMessage(template: string, params?: MessageParams) {
 
 export function translate(key: MessageKey, params?: MessageParams) {
   const template = messages[settingsStore.state.language][key] ?? messages['en-US'][key]
+  return formatMessage(template, params)
+}
+
+export function translateWithLanguage(
+  language: SupportedLanguage,
+  key: MessageKey,
+  params?: MessageParams,
+) {
+  const template = messages[language][key] ?? messages['en-US'][key]
   return formatMessage(template, params)
 }
 

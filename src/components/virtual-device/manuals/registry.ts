@@ -3,7 +3,7 @@ import zhTwGeneratedTextRaw from './zh-TW.generated.json'
 import {
   CANVAS_DEVICE_PRESET_COLORS,
   getCanvasButtonConfig,
-  getCanvasDeviceDefinition,
+  getCanvasDeviceTitle,
   getCanvasDipSwitchBankConfig,
   getCanvasHd44780LcdConfig,
   getCanvasLedBarConfig,
@@ -1084,7 +1084,7 @@ export function resolveCanvasDeviceManual(
 ): ResolvedCanvasDeviceManual {
   const definition = canvasDeviceManualDefinitions[device.type]
   return {
-    title: getCanvasDeviceDefinition(device.type).title,
+    title: getCanvasDeviceTitle(device.type, language),
     summary: resolveText(definition.summary, language),
     markdown: resolveMarkdown(device.type, language),
     pins: definition.resolvePins(device, language),

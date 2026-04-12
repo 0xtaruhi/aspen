@@ -44,7 +44,7 @@ import DeviceUartTerminalSettings from '@/components/virtual-device/settings/Dev
 import DeviceVgaDisplaySettings from '@/components/virtual-device/settings/DeviceVgaDisplaySettings.vue'
 import {
   getCanvasDeviceBoundSignals,
-  getCanvasDeviceDefinition,
+  getCanvasDeviceTitle,
   getCanvasDeviceRendererProps,
   getCanvasHd44780LcdConfig,
   getCanvasLedBarConfig,
@@ -52,6 +52,7 @@ import {
   getCanvasSegmentDisplayConfig,
   getCanvasVgaDisplayConfig,
 } from '@/lib/canvas-devices'
+import { translate, type MessageKey } from '@/lib/i18n'
 import type {
   CanvasDeviceSnapshot,
   CanvasDeviceType,
@@ -63,7 +64,7 @@ export type CanvasDeviceGallerySectionId = 'input' | 'display' | 'debug'
 type CanvasDeviceGalleryItem = {
   section: CanvasDeviceGallerySectionId
   order: number
-  meta: string
+  metaKey: MessageKey
   icon: Component
 }
 
@@ -102,21 +103,21 @@ export type CanvasDeviceUiDefinition = {
 const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefinition> = {
   led: {
     renderer: LedDevice,
-    gallery: { section: 'display', order: 10, meta: '1-bit output', icon: Lightbulb },
+    gallery: { section: 'display', order: 10, metaKey: 'galleryMetaOneBitOutput', icon: Lightbulb },
     supportsColor: true,
   },
   switch: {
     renderer: SwitchDevice,
-    gallery: { section: 'input', order: 10, meta: '1-bit input', icon: ToggleLeft },
+    gallery: { section: 'input', order: 10, metaKey: 'galleryMetaOneBitInput', icon: ToggleLeft },
   },
   button: {
     renderer: ButtonDevice,
-    gallery: { section: 'input', order: 20, meta: 'momentary input', icon: CircleDot },
+    gallery: { section: 'input', order: 20, metaKey: 'galleryMetaMomentaryInput', icon: CircleDot },
     settingsComponent: DeviceButtonSettings,
   },
   dip_switch_bank: {
     renderer: DipSwitchBankDevice,
-    gallery: { section: 'input', order: 30, meta: 'banked input', icon: Rows3 },
+    gallery: { section: 'input', order: 30, metaKey: 'galleryMetaBankedInput', icon: Rows3 },
     settingsComponent: DeviceDipSwitchBankSettings,
     bindingAssistantComponent: DipSwitchBankBindingAssistant,
     buildRendererListeners: (device, actions) => ({
@@ -127,7 +128,7 @@ const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefiniti
   },
   led_bar: {
     renderer: LedBarDevice,
-    gallery: { section: 'display', order: 20, meta: 'bus monitor', icon: Rows3 },
+    gallery: { section: 'display', order: 20, metaKey: 'galleryMetaBusMonitor', icon: Rows3 },
     supportsColor: true,
     settingsComponent: DeviceLedBarSettings,
     bindingAssistantComponent: LedBarBindingAssistant,
@@ -157,7 +158,7 @@ const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefiniti
   },
   audio_pwm: {
     renderer: AudioPwmDevice,
-    gallery: { section: 'display', order: 30, meta: 'tone monitor', icon: Volume2 },
+    gallery: { section: 'display', order: 30, metaKey: 'galleryMetaToneMonitor', icon: Volume2 },
     buildRuntimeProps: (_device, context) => {
       const periodSamples = context.telemetry?.audio_period_samples ?? 0
       const frequencyHz =
@@ -176,7 +177,7 @@ const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefiniti
   },
   quadrature_encoder: {
     renderer: QuadratureEncoderDevice,
-    gallery: { section: 'input', order: 40, meta: 'A/B + push', icon: Move3D },
+    gallery: { section: 'input', order: 40, metaKey: 'galleryMetaEncoder', icon: Move3D },
     settingsComponent: DeviceQuadratureEncoderSettings,
     buildRendererListeners: (device, actions) => ({
       rotate: (delta: number) => {
@@ -189,7 +190,7 @@ const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefiniti
   },
   matrix_keypad: {
     renderer: MatrixKeypadDevice,
-    gallery: { section: 'input', order: 50, meta: 'row/column scan', icon: Grid2x2 },
+    gallery: { section: 'input', order: 50, metaKey: 'galleryMetaRowColumnScan', icon: Grid2x2 },
     settingsComponent: DeviceMatrixKeypadSettings,
     bindingAssistantComponent: MatrixKeypadBindingAssistant,
     buildRendererListeners: (device, actions) => ({
@@ -200,7 +201,7 @@ const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefiniti
   },
   uart_terminal: {
     renderer: UartTerminalDevice,
-    gallery: { section: 'debug', order: 10, meta: 'serial console', icon: Waypoints },
+    gallery: { section: 'debug', order: 10, metaKey: 'galleryMetaSerialConsole', icon: Waypoints },
     settingsComponent: DeviceUartTerminalSettings,
     buildRuntimeProps: (_device, context) => ({
       textLog: context.telemetry?.text_log ?? '',
@@ -213,7 +214,12 @@ const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefiniti
   },
   hd44780_lcd: {
     renderer: Hd44780LcdDevice,
-    gallery: { section: 'display', order: 50, meta: 'character LCD', icon: MonitorSmartphone },
+    gallery: {
+      section: 'display',
+      order: 50,
+      metaKey: 'galleryMetaCharacterLcd',
+      icon: MonitorSmartphone,
+    },
     settingsComponent: DeviceHd44780LcdSettings,
     buildRuntimeProps: (device, context) => ({
       lines:
@@ -223,7 +229,7 @@ const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefiniti
   },
   vga_display: {
     renderer: VgaDisplayDevice,
-    gallery: { section: 'display', order: 70, meta: 'raster display', icon: Tv },
+    gallery: { section: 'display', order: 70, metaKey: 'galleryMetaRasterDisplay', icon: Tv },
     settingsComponent: DeviceVgaDisplaySettings,
     bindingAssistantComponent: VgaDisplayBindingAssistant,
     buildRuntimeProps: (device, context) => {
@@ -238,7 +244,7 @@ const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefiniti
   },
   segment_display: {
     renderer: SegmentDisplayDevice,
-    gallery: { section: 'display', order: 40, meta: '7-seg output', icon: Binary },
+    gallery: { section: 'display', order: 40, metaKey: 'galleryMetaSevenSegOutput', icon: Binary },
     settingsComponent: DeviceSegmentDisplaySettings,
     bindingAssistantComponent: SegmentDisplayBindingAssistant,
     buildRuntimeProps: (device, context) => {
@@ -257,7 +263,7 @@ const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefiniti
   },
   led_matrix: {
     renderer: LedMatrixDevice,
-    gallery: { section: 'display', order: 45, meta: 'scanned display', icon: Grid2x2 },
+    gallery: { section: 'display', order: 45, metaKey: 'galleryMetaScannedDisplay', icon: Grid2x2 },
     supportsColor: true,
     settingsComponent: DeviceLedMatrixSettings,
     bindingAssistantComponent: LedMatrixBindingAssistant,
@@ -302,7 +308,7 @@ export function canvasDeviceSupportsColor(type: CanvasDeviceType) {
 }
 
 export function getCanvasDeviceDisplayTitle(type: CanvasDeviceType) {
-  return getCanvasDeviceDefinition(type).title
+  return getCanvasDeviceTitle(type)
 }
 
 export function listCanvasDeviceGallerySections() {
@@ -319,7 +325,7 @@ export function listCanvasDeviceGallerySections() {
         .map((type) => ({
           type,
           title: getCanvasDeviceDisplayTitle(type),
-          meta: getCanvasDeviceUiDefinition(type).gallery.meta,
+          meta: translate(getCanvasDeviceUiDefinition(type).gallery.metaKey),
           icon: getCanvasDeviceUiDefinition(type).gallery.icon,
         }))
 

@@ -9,7 +9,7 @@ import type {
   CanvasVgaColorMode,
 } from './hardware-client'
 import { alignShellSize, measureMatrixShellSize } from './device-shell-metrics'
-import { translate } from './i18n'
+import { translate, translateWithLanguage, type MessageKey, type SupportedLanguage } from './i18n'
 
 type CanvasDeviceCapabilities = {
   drivesSignal: boolean
@@ -88,7 +88,7 @@ export const CANVAS_DEVICE_PRESET_COLORS: Record<CanvasDeviceColorOption, string
 }
 
 type CanvasDeviceDefinition = {
-  title: string
+  titleKey: MessageKey
   dropAliases: string[]
   defaultState: () => CanvasDeviceState
   toRendererProps: (device: CanvasDeviceSnapshot) => Record<string, unknown>
@@ -623,13 +623,13 @@ export function resolveCanvasDeviceColor(device: Pick<CanvasDeviceSnapshot, 'typ
 }
 
 function createMatrixDeviceDefinition(
-  title: string,
+  titleKey: MessageKey,
   dropAliases: string[],
 ): CanvasDeviceDefinition {
   const defaults = defaultMatrixDimensionsForType()
 
   return {
-    title,
+    titleKey,
     dropAliases,
     defaultState: () =>
       createDefaultState({
@@ -664,7 +664,7 @@ function createMatrixDeviceDefinition(
 function createSegmentDisplayDefinition(): CanvasDeviceDefinition {
   const defaults = defaultSegmentDisplayConfig()
   return {
-    title: translate('segmentDisplay'),
+    titleKey: 'segmentDisplay',
     dropAliases: ['segment_display'],
     defaultState: () =>
       createDefaultState({
@@ -695,7 +695,7 @@ function createSegmentDisplayDefinition(): CanvasDeviceDefinition {
 function createVgaDisplayDefinition(): CanvasDeviceDefinition {
   const defaults = defaultVgaDisplayConfig()
   return {
-    title: translate('vgaDisplay'),
+    titleKey: 'vgaDisplay',
     dropAliases: ['vga_display', 'vga'],
     defaultState: () =>
       createDefaultState({
@@ -726,7 +726,7 @@ function createVgaDisplayDefinition(): CanvasDeviceDefinition {
 
 const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> = {
   led: {
-    title: translate('led'),
+    titleKey: 'led',
     dropAliases: ['led'],
     defaultState: () =>
       createDefaultState({
@@ -742,7 +742,7 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
     capabilities: { drivesSignal: false, receivesSignal: true },
   },
   switch: {
-    title: translate('switchDevice'),
+    titleKey: 'switchDevice',
     dropAliases: ['switch'],
     defaultState: () => createDefaultState({ binding: createSingleBinding() }),
     toRendererProps: (device) => ({ isOn: device.state.is_on }),
@@ -751,7 +751,7 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
     capabilities: { drivesSignal: true, receivesSignal: false },
   },
   button: {
-    title: translate('button'),
+    titleKey: 'button',
     dropAliases: ['button'],
     defaultState: () =>
       createDefaultState({
@@ -764,7 +764,7 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
     capabilities: { drivesSignal: true, receivesSignal: false },
   },
   dip_switch_bank: {
-    title: translate('dipSwitchBank'),
+    titleKey: 'dipSwitchBank',
     dropAliases: ['dip_switch_bank', 'dip'],
     defaultState: () => {
       const defaults = defaultDipSwitchBankConfig()
@@ -790,7 +790,7 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
     },
   },
   led_bar: {
-    title: translate('ledBar'),
+    titleKey: 'ledBar',
     dropAliases: ['led_bar'],
     defaultState: () => {
       const defaults = defaultLedBarConfig()
@@ -820,7 +820,7 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
     },
   },
   quadrature_encoder: {
-    title: translate('quadratureEncoder'),
+    titleKey: 'quadratureEncoder',
     dropAliases: ['quadrature_encoder', 'encoder'],
     defaultState: () => {
       const defaults = defaultQuadratureEncoderConfig()
@@ -848,7 +848,7 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
     },
   },
   audio_pwm: {
-    title: translate('audioPwm'),
+    titleKey: 'audioPwm',
     dropAliases: ['audio_pwm', 'audio', 'buzzer'],
     defaultState: () => createDefaultState({ binding: createSingleBinding() }),
     toRendererProps: () => ({}),
@@ -857,7 +857,7 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
     capabilities: { drivesSignal: false, receivesSignal: true },
   },
   matrix_keypad: {
-    title: translate('matrixKeypad'),
+    titleKey: 'matrixKeypad',
     dropAliases: ['matrix_keypad'],
     defaultState: () => {
       const defaults = defaultMatrixKeypadConfig()
@@ -899,7 +899,7 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
     },
   },
   uart_terminal: {
-    title: translate('uartTerminal'),
+    titleKey: 'uartTerminal',
     dropAliases: ['uart_terminal', 'uart'],
     defaultState: () => {
       const defaults = defaultUartTerminalConfig()
@@ -928,7 +928,7 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
     },
   },
   hd44780_lcd: {
-    title: translate('hd44780Lcd'),
+    titleKey: 'hd44780Lcd',
     dropAliases: ['hd44780_lcd', 'lcd'],
     defaultState: () => {
       const defaults = defaultHd44780Config()
@@ -964,7 +964,7 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
   },
   vga_display: createVgaDisplayDefinition(),
   segment_display: createSegmentDisplayDefinition(),
-  led_matrix: createMatrixDeviceDefinition(translate('matrix'), ['led_matrix', 'matrix']),
+  led_matrix: createMatrixDeviceDefinition('matrix', ['led_matrix', 'matrix']),
 }
 
 const dropAliasToType = new Map<string, CanvasDeviceType>(
@@ -998,9 +998,14 @@ export function createCanvasDeviceSnapshot(
     type,
     x,
     y,
-    label: `${definition.title} ${index}`,
+    label: `${translate(definition.titleKey)} ${index}`,
     state: definition.defaultState(),
   }
+}
+
+export function getCanvasDeviceTitle(type: CanvasDeviceType, language?: SupportedLanguage) {
+  const { titleKey } = getCanvasDeviceDefinition(type)
+  return language ? translateWithLanguage(language, titleKey) : translate(titleKey)
 }
 
 export function getCanvasDeviceRendererProps(
