@@ -82,8 +82,10 @@ const hardwareStatus = computed<HardwareStatus | null>(() => {
 })
 
 const flowPhase = computed<HardwarePhase>(() => hardwareState.value.phase)
-const flowError = computed(() => hardwareState.value.last_error ?? '')
-const errorMessage = computed(() => flowError.value)
+const errorMessage = computed(() => {
+  const message = hardwareState.value.last_error
+  return message ? describeHardwareError(message, { phase: flowPhase.value }) : ''
+})
 
 const isBusy = computed(() => {
   return (

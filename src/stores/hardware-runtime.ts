@@ -27,7 +27,6 @@ import {
   startHardwareDataStream,
   stopHardwareDataStream,
 } from '@/lib/hardware-client'
-import { describeHardwareError } from '@/lib/hardware-errors'
 import { translate } from '@/lib/i18n'
 
 type HotplugPayload = {
@@ -122,20 +121,14 @@ function setRuntimeState(nextState: RuntimeState) {
 }
 
 function applyHardwareState(nextState: HardwareStateV1) {
-  const runtimeOnlyState = extractRuntimeState(nextState)
-  setRuntimeState({
-    ...runtimeOnlyState,
-    last_error: runtimeOnlyState.last_error
-      ? describeHardwareError(runtimeOnlyState.last_error, { phase: runtimeOnlyState.phase })
-      : null,
-  })
+  setRuntimeState(extractRuntimeState(nextState))
 }
 
 function setError(message: string) {
   runtimeState.value = {
     ...runtimeState.value,
     phase: 'error',
-    last_error: describeHardwareError(message, { phase: 'error' }),
+    last_error: message,
     updated_at_ms: Date.now(),
   }
 }
