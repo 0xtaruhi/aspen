@@ -12,13 +12,15 @@ const canvasRef = ref<HTMLCanvasElement | null>(null)
 let imageData: ImageData | null = null
 let drawFrameHandle: number | null = null
 
-function channel3To8(value: number) {
-  return Math.round((value / 0x7) * 255)
-}
-
-function channel2To8(value: number) {
-  return Math.round((value / 0x3) * 255)
-}
+const LITTLE_ENDIAN = new Uint8Array(new Uint32Array([0x11223344]).buffer)[0] === 0x44
+const RGB332_TO_RGBA = new Uint32Array(
+  Array.from({ length: 256 }, (_, encoded) => {
+    const red = Math.round((((encoded >> 5) & 0x7) / 0x7) * 255)
+    const green = Math.round((((encoded >> 2) & 0x7) / 0x7) * 255)
+    const blue = Math.round(((encoded & 0x3) / 0x3) * 255)
+    return red | (green << 8) | (blue << 16) | (255 << 24)
+  }),
+)
 
 function ensureImageData(context: CanvasRenderingContext2D, columns: number, rows: number) {
   if (!imageData || imageData.width !== columns || imageData.height !== rows) {
@@ -52,13 +54,27 @@ function drawFrame() {
 
   const nextImage = ensureImageData(context, columns, rows)
   const total = columns * rows
-  for (let index = 0; index < total; index += 1) {
-    const encoded = props.pixels?.[index] ?? 0
-    const imageOffset = index * 4
-    nextImage.data[imageOffset] = channel3To8((encoded >> 5) & 0x7)
-    nextImage.data[imageOffset + 1] = channel3To8((encoded >> 2) & 0x7)
-    nextImage.data[imageOffset + 2] = channel2To8(encoded & 0x3)
-    nextImage.data[imageOffset + 3] = 255
+  const encodedPixels = props.pixels ?? []
+
+  if (LITTLE_ENDIAN) {
+    const rgbaWords = new Uint32Array(
+      nextImage.data.buffer,
+      nextImage.data.byteOffset,
+      nextImage.data.byteLength / 4,
+    )
+
+    for (let index = 0; index < total; index += 1) {
+      rgbaWords[index] = RGB332_TO_RGBA[encodedPixels[index] ?? 0] ?? RGB332_TO_RGBA[0]
+    }
+  } else {
+    for (let index = 0; index < total; index += 1) {
+      const encoded = encodedPixels[index] ?? 0
+      const imageOffset = index * 4
+      nextImage.data[imageOffset] = Math.round((((encoded >> 5) & 0x7) / 0x7) * 255)
+      nextImage.data[imageOffset + 1] = Math.round((((encoded >> 2) & 0x7) / 0x7) * 255)
+      nextImage.data[imageOffset + 2] = Math.round(((encoded & 0x3) / 0x3) * 255)
+      nextImage.data[imageOffset + 3] = 255
+    }
   }
 
   context.putImageData(nextImage, 0, 0)
