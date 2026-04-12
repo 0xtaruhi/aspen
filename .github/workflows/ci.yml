@@ -118,7 +118,6 @@ jobs:
           else
             if [ "$rust" = true ] || [ "$toolchain" = true ]; then
               run_rust=true
-              run_toolchain_windows=true
             fi
 
             if [ "$frontend" = true ]; then
@@ -347,22 +346,34 @@ jobs:
       - name: Rust clippy
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets
 
-  rust-checks-windows:
-    name: Rust Checks (windows-latest)
-    runs-on: windows-latest
+  pipeline:
+    name: Pipeline
+    runs-on: ubuntu-latest
     needs:
       - changes
-      - toolchain-windows
-    if: needs.changes.outputs.run_toolchain_windows == 'true'
+      - frontend-checks
+      - rust-checks
+    if: always()
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - name: Verify required jobs
+        shell: bash
+        run: |
+          set -euo pipefail
 
-      - name: Download bundled FPGA toolchains
-        uses: actions/download-artifact@v8
-        with:
-          name: bundled-fpga-toolchains-windows-latest
-          path: src-tauri/vendor/yosys
+          changes_result="${{ needs.changes.result }}"
+          frontend_result="${{ needs.frontend-checks.result }}"
+          rust_result="${{ needs.rust-checks.result }}"
+
+          for result in "$changes_result" "$frontend_result" "$rust_result"; do
+            case "$result" in
+              success|skipped)
+                ;;
+              *)
+                echo "Pipeline dependency result '$result' is not mergeable." >&2
+                exit 1
+                ;;
+            esac
+          done
 
   packages-linux:
     name: Aspen Packages (ubuntu-22.04)
