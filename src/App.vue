@@ -9,6 +9,7 @@ import { RouterView, useRoute, useRouter } from 'vue-router'
 import AppSidebar from '@/components/AppSidebar.vue'
 import ProjectUnsavedChangesDialog from '@/components/project/ProjectUnsavedChangesDialog.vue'
 import NewProjectDialog from '@/components/project/NewProjectDialog.vue'
+import { Button } from '@/components/ui/button'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -28,6 +29,7 @@ import {
 } from '@/lib/project-io'
 import { routeLabelMap, routeRequiresProject, type AppRouteName } from '@/router'
 import { appUpdateStore } from '@/stores/app-update'
+import { hardwareStore } from '@/stores/hardware'
 import { hardwareWorkbenchStore } from '@/stores/hardware-workbench'
 import { projectStore } from '@/stores/project'
 import { uiStore } from '@/stores/ui'
@@ -39,6 +41,13 @@ type AppMenuAction =
   | 'save-project'
   | 'save-project-as'
   | 'open-settings'
+
+interface BackgroundJobViewModel {
+  kind: 'synthesis' | 'implementation'
+  label: string
+  routeName: AppRouteName
+  cancelling: boolean
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -68,6 +77,32 @@ const routeLabelKeyMap = {
 
 const activeRouteName = computed(() => route.name as AppRouteName | undefined)
 const hasAvailableUpdate = computed(() => appUpdateStore.state.status === 'available')
+const backgroundJobs = computed<BackgroundJobViewModel[]>(() => {
+  const jobs: BackgroundJobViewModel[] = []
+
+  if (hardwareStore.synthesisRunning.value && activeRouteName.value !== 'fpga-flow-synthesis') {
+    jobs.push({
+      kind: 'synthesis',
+      label: t('synthesis'),
+      routeName: 'fpga-flow-synthesis',
+      cancelling: hardwareStore.synthesisCancelling.value,
+    })
+  }
+
+  if (
+    hardwareStore.implementationRunning.value &&
+    activeRouteName.value !== 'fpga-flow-implementation'
+  ) {
+    jobs.push({
+      kind: 'implementation',
+      label: t('implementation'),
+      routeName: 'fpga-flow-implementation',
+      cancelling: hardwareStore.implementationCancelling.value,
+    })
+  }
+
+  return jobs
+})
 
 const activeModuleLabel = computed(() => {
   if (activeRouteName.value === 'settings') {
@@ -124,6 +159,23 @@ function handleGlobalKeydown(event: KeyboardEvent) {
 
 function openSettings() {
   void router.push({ name: 'settings' })
+}
+
+function openBackgroundJob(routeName: AppRouteName) {
+  void router.push({ name: routeName })
+}
+
+async function cancelBackgroundJob(kind: BackgroundJobViewModel['kind']) {
+  try {
+    if (kind === 'synthesis') {
+      await hardwareStore.cancelSynthesis()
+      return
+    }
+
+    await hardwareStore.cancelImplementation()
+  } catch (err) {
+    console.error('Failed to cancel background job', err)
+  }
 }
 
 async function prepareApplicationClose() {
@@ -288,8 +340,42 @@ onUnmounted(() => {
           </div>
         </header>
 
-        <div class="flex-1 min-h-0 overflow-hidden bg-background">
-          <RouterView />
+        <div class="flex-1 min-h-0 overflow-hidden bg-background flex flex-col">
+          <section
+            v-if="backgroundJobs.length > 0"
+            class="shrink-0 border-b border-border/70 bg-muted/30 px-4 py-3"
+          >
+            <div class="flex flex-wrap items-center gap-3">
+              <span class="text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground">
+                {{ t('backgroundJobs') }}
+              </span>
+              <div
+                v-for="job in backgroundJobs"
+                :key="job.kind"
+                class="flex flex-wrap items-center gap-2 rounded-md border border-border bg-background px-3 py-2"
+              >
+                <span class="text-sm font-medium">{{ job.label }}</span>
+                <span class="text-xs text-muted-foreground">
+                  {{ job.cancelling ? `${t('cancelling')}...` : t('runningInBackground') }}
+                </span>
+                <Button size="sm" variant="outline" @click="openBackgroundJob(job.routeName)">
+                  {{ t('view') }}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  :disabled="job.cancelling"
+                  @click="cancelBackgroundJob(job.kind)"
+                >
+                  {{ job.cancelling ? `${t('cancelling')}...` : t('cancel') }}
+                </Button>
+              </div>
+            </div>
+          </section>
+
+          <div class="flex-1 min-h-0 overflow-hidden">
+            <RouterView />
+          </div>
         </div>
       </SidebarInset>
     </SidebarProvider>

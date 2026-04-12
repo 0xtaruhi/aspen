@@ -9,7 +9,12 @@ import type {
 
 import { readonly, ref, watch } from 'vue'
 
-import { runHardwareImplementation, runHardwareSynthesis } from '@/lib/hardware-client'
+import {
+  cancelHardwareImplementation,
+  cancelHardwareSynthesis,
+  runHardwareImplementation,
+  runHardwareSynthesis,
+} from '@/lib/hardware-client'
 import { saveProjectToCurrentPath } from '@/lib/project-io'
 import { translate } from '@/lib/i18n'
 import { buildImplementationInputSignature } from '@/lib/implementation-request-signature'
@@ -29,12 +34,16 @@ const synthesisReportSignature = ref<string | null>(null)
 const synthesisLiveLog = ref('')
 const synthesisMessage = ref('')
 const synthesisOperationId = ref<string | null>(null)
+const synthesisCancelling = ref(false)
+const synthesisCancelled = ref(false)
 const implementationRunning = ref(false)
 const implementationReport = ref<ImplementationReportV1 | null>(null)
 const implementationReportSignature = ref<string | null>(null)
 const implementationLiveLog = ref('')
 const implementationMessage = ref('')
 const implementationOperationId = ref<string | null>(null)
+const implementationCancelling = ref(false)
+const implementationCancelled = ref(false)
 let synthesisLogBuffer = ''
 let synthesisLogFlushTimer: ReturnType<typeof setTimeout> | null = null
 let implementationLogBuffer = ''
@@ -46,6 +55,10 @@ let implementationLogListenerPromise: Promise<void> | null = null
 
 function getErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
+}
+
+function isCancelledMessage(message: string) {
+  return message.toLowerCase().includes('cancelled')
 }
 
 function onSynthesisLogChunk(chunk: SynthesisLogChunkV1) {
@@ -134,6 +147,8 @@ function flushImplementationLogBuffer() {
 function applyPersistedSynthesisState(snapshot: ProjectSynthesisCacheSnapshot | null) {
   flushSynthesisLogBuffer()
   synthesisRunning.value = false
+  synthesisCancelling.value = false
+  synthesisCancelled.value = false
   synthesisOperationId.value = null
   synthesisMessage.value = ''
   synthesisLiveLog.value = ''
@@ -145,6 +160,8 @@ function applyPersistedSynthesisState(snapshot: ProjectSynthesisCacheSnapshot | 
 function applyPersistedImplementationState(snapshot: ProjectImplementationCacheSnapshot | null) {
   flushImplementationLogBuffer()
   implementationRunning.value = false
+  implementationCancelling.value = false
+  implementationCancelled.value = false
   implementationOperationId.value = null
   implementationMessage.value = ''
   implementationLiveLog.value = ''
@@ -208,6 +225,8 @@ async function ensureImplementationLogListener() {
 async function runSynthesis(request: SynthesisRequestV1): Promise<SynthesisReportV1> {
   await ensureSynthesisLogListener()
   synthesisRunning.value = true
+  synthesisCancelling.value = false
+  synthesisCancelled.value = false
   synthesisMessage.value = ''
   synthesisLiveLog.value = ''
   synthesisLogBuffer = ''
@@ -239,10 +258,12 @@ async function runSynthesis(request: SynthesisRequestV1): Promise<SynthesisRepor
     return report
   } catch (err) {
     synthesisMessage.value = getErrorMessage(err)
+    synthesisCancelled.value = isCancelledMessage(synthesisMessage.value)
     throw err
   } finally {
     flushSynthesisLogBuffer()
     synthesisRunning.value = false
+    synthesisCancelling.value = false
     synthesisOperationId.value = null
   }
 }
@@ -252,6 +273,8 @@ async function runImplementation(
 ): Promise<ImplementationReportV1> {
   await ensureImplementationLogListener()
   implementationRunning.value = true
+  implementationCancelling.value = false
+  implementationCancelled.value = false
   implementationReport.value = null
   implementationMessage.value = ''
   implementationLiveLog.value = ''
@@ -288,11 +311,51 @@ async function runImplementation(
   } catch (err) {
     flushImplementationLogBuffer()
     implementationMessage.value = getErrorMessage(err)
+    implementationCancelled.value = isCancelledMessage(implementationMessage.value)
     throw err
   } finally {
     flushImplementationLogBuffer()
     implementationRunning.value = false
+    implementationCancelling.value = false
     implementationOperationId.value = null
+  }
+}
+
+async function cancelSynthesis() {
+  const opId = synthesisOperationId.value
+  if (!opId || !synthesisRunning.value || synthesisCancelling.value) {
+    return false
+  }
+
+  synthesisCancelling.value = true
+  synthesisLogBuffer += `${translate('cancel')}...\n`
+  scheduleSynthesisLogFlush()
+
+  try {
+    return await cancelHardwareSynthesis(opId)
+  } catch (err) {
+    synthesisCancelling.value = false
+    synthesisMessage.value = getErrorMessage(err)
+    throw err
+  }
+}
+
+async function cancelImplementation() {
+  const opId = implementationOperationId.value
+  if (!opId || !implementationRunning.value || implementationCancelling.value) {
+    return false
+  }
+
+  implementationCancelling.value = true
+  implementationLogBuffer += `[control] ${translate('cancel')}...\n`
+  scheduleImplementationLogFlush()
+
+  try {
+    return await cancelHardwareImplementation(opId)
+  } catch (err) {
+    implementationCancelling.value = false
+    implementationMessage.value = getErrorMessage(err)
+    throw err
   }
 }
 
@@ -314,15 +377,21 @@ watch(
 
 export const hardwareFlowStore = {
   synthesisRunning: readonly(synthesisRunning),
+  synthesisCancelling: readonly(synthesisCancelling),
+  synthesisCancelled: readonly(synthesisCancelled),
   synthesisReport: readonly(synthesisReport),
   synthesisReportSignature: readonly(synthesisReportSignature),
   synthesisLiveLog: readonly(synthesisLiveLog),
   synthesisMessage: readonly(synthesisMessage),
   implementationRunning: readonly(implementationRunning),
+  implementationCancelling: readonly(implementationCancelling),
+  implementationCancelled: readonly(implementationCancelled),
   implementationReport: readonly(implementationReport),
   implementationReportSignature: readonly(implementationReportSignature),
   implementationLiveLog: readonly(implementationLiveLog),
   implementationMessage: readonly(implementationMessage),
   runSynthesis,
+  cancelSynthesis,
   runImplementation,
+  cancelImplementation,
 }

@@ -11,9 +11,9 @@ use std::{
 
 use hardware::{
     BitstreamGenerationResult, HardwareActionV1, HardwareDataStreamConfigV1,
-    HardwareDataStreamStatusV1, HardwareEventReason, HardwareRuntime, HardwareStateV1,
-    HardwareStatus, ImplementationReportV1, ImplementationRequestV1, SynthesisReportV1,
-    SynthesisRequestV1,
+    HardwareDataStreamStatusV1, HardwareEventReason, HardwareJobRegistry, HardwareRuntime,
+    HardwareStateV1, HardwareStatus, ImplementationReportV1, ImplementationRequestV1,
+    SynthesisReportV1, SynthesisRequestV1,
 };
 use serde::Deserialize;
 use serde::Serialize;
@@ -162,21 +162,45 @@ async fn generate_bitstream(
 #[tauri::command]
 async fn run_yosys_synthesis(
     app: tauri::AppHandle,
+    jobs: tauri::State<'_, Arc<HardwareJobRegistry>>,
     request: SynthesisRequestV1,
 ) -> Result<SynthesisReportV1, String> {
-    tauri::async_runtime::spawn_blocking(move || hardware::run_yosys_synthesis(&app, request))
-        .await
-        .map_err(|err| err.to_string())?
+    let jobs = Arc::clone(jobs.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        hardware::run_yosys_synthesis(&app, jobs.as_ref(), request)
+    })
+    .await
+    .map_err(|err| err.to_string())?
 }
 
 #[tauri::command]
 async fn run_fde_implementation(
     app: tauri::AppHandle,
+    jobs: tauri::State<'_, Arc<HardwareJobRegistry>>,
     request: ImplementationRequestV1,
 ) -> Result<ImplementationReportV1, String> {
-    tauri::async_runtime::spawn_blocking(move || hardware::run_fde_implementation(&app, request))
-        .await
-        .map_err(|err| err.to_string())?
+    let jobs = Arc::clone(jobs.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        hardware::run_fde_implementation(&app, jobs.as_ref(), request)
+    })
+    .await
+    .map_err(|err| err.to_string())?
+}
+
+#[tauri::command]
+fn cancel_yosys_synthesis(
+    jobs: tauri::State<'_, Arc<HardwareJobRegistry>>,
+    op_id: String,
+) -> Result<bool, String> {
+    jobs.cancel_synthesis(&op_id)
+}
+
+#[tauri::command]
+fn cancel_fde_implementation(
+    jobs: tauri::State<'_, Arc<HardwareJobRegistry>>,
+    op_id: String,
+) -> Result<bool, String> {
+    jobs.cancel_implementation(&op_id)
 }
 
 #[tauri::command]
@@ -387,6 +411,7 @@ pub fn run() {
         )
         .manage(Arc::new(app_update::PendingUpdateState::default()))
         .manage(Arc::new(HotplugState::default()))
+        .manage(Arc::new(HardwareJobRegistry::default()))
         .manage(hardware_runtime)
         .invoke_handler(tauri::generate_handler![
             greet,
@@ -405,6 +430,8 @@ pub fn run() {
             generate_bitstream,
             run_yosys_synthesis,
             run_fde_implementation,
+            cancel_yosys_synthesis,
+            cancel_fde_implementation,
             read_project_file,
             write_project_file,
             write_project_bundle,

@@ -115,17 +115,23 @@ describe('hardware canvas ownership regression', () => {
     vi.doMock('./hardware-flow', () => ({
       hardwareFlowStore: {
         synthesisRunning: ref(false),
+        synthesisCancelling: ref(false),
+        synthesisCancelled: ref(false),
         synthesisReport: ref(null),
         synthesisReportSignature: ref(null),
         synthesisLiveLog: ref(''),
         synthesisMessage: ref(''),
         implementationRunning: ref(false),
+        implementationCancelling: ref(false),
+        implementationCancelled: ref(false),
         implementationReport: ref(null),
         implementationReportSignature: ref(null),
         implementationLiveLog: ref(''),
         implementationMessage: ref(''),
         runSynthesis: vi.fn(),
+        cancelSynthesis: vi.fn(),
         runImplementation: vi.fn(),
+        cancelImplementation: vi.fn(),
       },
     }))
 

@@ -474,10 +474,18 @@ export async function runHardwareSynthesis(
   return invoke<SynthesisReportV1>('run_yosys_synthesis', { request })
 }
 
+export async function cancelHardwareSynthesis(opId: string): Promise<boolean> {
+  return invoke<boolean>('cancel_yosys_synthesis', { opId })
+}
+
 export async function runHardwareImplementation(
   request: ImplementationRequestV1,
 ): Promise<ImplementationReportV1> {
   return invoke<ImplementationReportV1>('run_fde_implementation', { request })
+}
+
+export async function cancelHardwareImplementation(opId: string): Promise<boolean> {
+  return invoke<boolean>('cancel_fde_implementation', { opId })
 }
 
 export async function listenHardwareSynthesisLog(

@@ -16,6 +16,9 @@ import ImplementationSummaryCards from './ImplementationSummaryCards.vue'
 const props = defineProps<{
   report: ImplementationReportV1 | null
   liveLog: string
+  isRunning: boolean
+  isCancelling: boolean
+  isCancelled: boolean
 }>()
 
 const { t } = useI18n()
@@ -238,7 +241,10 @@ const stageCards = computed(() => {
 
 function stageStatusLabel(stage: (typeof stageCards.value)[number]) {
   if (stage.live?.running) {
-    return t('running')
+    if (!props.isRunning && props.isCancelled) {
+      return t('cancelled')
+    }
+    return props.isCancelling ? t('cancelling') : t('running')
   }
 
   if (!stage.result) {
@@ -262,7 +268,10 @@ function stageStatusLabel(stage: (typeof stageCards.value)[number]) {
 
 function stageStatusDotClass(stage: (typeof stageCards.value)[number]) {
   if (stage.live?.running) {
-    return 'bg-blue-500 animate-pulse'
+    if (!props.isRunning && props.isCancelled) {
+      return 'bg-amber-500'
+    }
+    return props.isCancelling ? 'bg-amber-500 animate-pulse' : 'bg-blue-500 animate-pulse'
   }
 
   if (!stage.result) {
@@ -306,7 +315,10 @@ function stageDurationText(stage: (typeof stageCards.value)[number]) {
   }
 
   if (stage.live?.running) {
-    return `${t('running')}...`
+    if (!props.isRunning && props.isCancelled) {
+      return t('cancelled')
+    }
+    return `${props.isCancelling ? t('cancelling') : t('running')}...`
   }
 
   return t('notRunYet')
