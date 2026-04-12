@@ -76,9 +76,6 @@ const { t } = useI18n()
       </Button>
     </div>
     <Badge variant="outline">
-      {{ props.streamRunning ? t('runningState') : t('stoppedState') }}
-    </Badge>
-    <Badge variant="outline">
       {{ props.configuredSignalCount || props.visibleSignalCount }} /
       {{ props.availableSignalCount }}
       {{ t('portsUnit') }}
