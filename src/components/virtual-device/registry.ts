@@ -56,7 +56,7 @@ import { translate, type MessageKey } from '@/lib/i18n'
 import type {
   CanvasDeviceSnapshot,
   CanvasDeviceType,
-  HardwareCanvasDeviceTelemetryEntryV1,
+  HardwareCanvasDeviceTelemetryEntry,
 } from '@/lib/hardware-client'
 
 export type CanvasDeviceGallerySectionId = 'input' | 'display' | 'debug'
@@ -70,7 +70,7 @@ type CanvasDeviceGalleryItem = {
 
 type CanvasDeviceRuntimeContext = {
   streamRunning: boolean
-  telemetry: HardwareCanvasDeviceTelemetryEntryV1 | undefined
+  telemetry: HardwareCanvasDeviceTelemetryEntry | undefined
   signalTelemetry: Record<string, { latest: boolean } | undefined>
   sampleRateHz: number
 }
@@ -98,6 +98,30 @@ export type CanvasDeviceUiDefinition = {
     device: CanvasDeviceSnapshot,
     actions: CanvasDeviceActionContext,
   ) => Record<string, (...args: any[]) => void> | undefined
+}
+
+function getBitsetTelemetry(telemetry: HardwareCanvasDeviceTelemetryEntry | undefined) {
+  return telemetry?.payload.kind === 'bitset' ? telemetry.payload.bits : null
+}
+
+function getAudioTelemetry(telemetry: HardwareCanvasDeviceTelemetryEntry | undefined) {
+  return telemetry?.payload.kind === 'audio_pwm' ? telemetry.payload : null
+}
+
+function getTextLogTelemetry(telemetry: HardwareCanvasDeviceTelemetryEntry | undefined) {
+  return telemetry?.payload.kind === 'text_log' ? telemetry.payload.log : null
+}
+
+function getTextLinesTelemetry(telemetry: HardwareCanvasDeviceTelemetryEntry | undefined) {
+  return telemetry?.payload.kind === 'text_lines' ? telemetry.payload.lines : null
+}
+
+function getFramebufferTelemetry(telemetry: HardwareCanvasDeviceTelemetryEntry | undefined) {
+  return telemetry?.payload.kind === 'framebuffer' ? telemetry.payload : null
+}
+
+function getSegmentTelemetry(telemetry: HardwareCanvasDeviceTelemetryEntry | undefined) {
+  return telemetry?.payload.kind === 'segment_display' ? telemetry.payload : null
 }
 
 const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefinition> = {
@@ -140,9 +164,8 @@ const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefiniti
         }
       }
 
-      const telemetryBits = context.telemetry?.bit_values?.length
-        ? context.telemetry.bit_values.map((value) => Boolean(value))
-        : null
+      const telemetryBits =
+        getBitsetTelemetry(context.telemetry)?.map((value) => Boolean(value)) ?? null
       const fallbackBits = getCanvasDeviceBoundSignals(device).map((signal) => {
         if (!signal) {
           return false
@@ -160,7 +183,8 @@ const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefiniti
     renderer: AudioPwmDevice,
     gallery: { section: 'display', order: 30, metaKey: 'galleryMetaToneMonitor', icon: Volume2 },
     buildRuntimeProps: (_device, context) => {
-      const periodSamples = context.telemetry?.audio_period_samples ?? 0
+      const audioTelemetry = getAudioTelemetry(context.telemetry)
+      const periodSamples = audioTelemetry?.period_samples ?? 0
       const frequencyHz =
         context.streamRunning && context.sampleRateHz > 0 && periodSamples > 0
           ? context.sampleRateHz / periodSamples
@@ -170,7 +194,7 @@ const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefiniti
         frequencyHz,
         dutyRatio: context.telemetry?.high_ratio ?? 0,
         sampleRateHz: context.sampleRateHz,
-        edgeCount: context.telemetry?.audio_edge_count ?? 0,
+        edgeCount: audioTelemetry?.edge_count ?? 0,
         isOn: context.telemetry?.latest ?? false,
       }
     },
@@ -204,7 +228,7 @@ const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefiniti
     gallery: { section: 'debug', order: 10, metaKey: 'galleryMetaSerialConsole', icon: Waypoints },
     settingsComponent: DeviceUartTerminalSettings,
     buildRuntimeProps: (_device, context) => ({
-      textLog: context.telemetry?.text_log ?? '',
+      textLog: getTextLogTelemetry(context.telemetry) ?? '',
     }),
     buildRendererListeners: (device, actions) => ({
       'queue-text': (value: string) => {
@@ -223,7 +247,7 @@ const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefiniti
     settingsComponent: DeviceHd44780LcdSettings,
     buildRuntimeProps: (device, context) => ({
       lines:
-        context.telemetry?.text_lines ??
+        getTextLinesTelemetry(context.telemetry) ??
         Array.from({ length: getCanvasHd44780LcdConfig(device)?.rows ?? 2 }, () => ''),
     }),
   },
@@ -234,11 +258,12 @@ const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefiniti
     bindingAssistantComponent: VgaDisplayBindingAssistant,
     buildRuntimeProps: (device, context) => {
       const config = getCanvasVgaDisplayConfig(device)
+      const framebufferTelemetry = getFramebufferTelemetry(context.telemetry)
       return {
         isOn: context.streamRunning ? Boolean(context.telemetry?.latest) : false,
-        columns: context.telemetry?.pixel_columns || config?.columns || 320,
-        rows: context.telemetry?.pixel_rows || config?.rows || 240,
-        pixels: context.streamRunning ? (context.telemetry?.pixels ?? []) : [],
+        columns: framebufferTelemetry?.columns || config?.columns || 320,
+        rows: framebufferTelemetry?.rows || config?.rows || 240,
+        pixels: context.streamRunning ? (framebufferTelemetry?.pixels ?? []) : [],
       }
     },
   },
@@ -250,14 +275,15 @@ const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefiniti
     buildRuntimeProps: (device, context) => {
       const config = getCanvasSegmentDisplayConfig(device)
       const digits = config?.digits || 1
+      const segmentTelemetry = getSegmentTelemetry(context.telemetry)
       return {
         digitSegmentMasks: context.streamRunning
-          ? (context.telemetry?.digit_segment_masks ??
+          ? (segmentTelemetry?.digit_segment_masks ??
             Array.from({ length: digits }, (_, index) => {
-              return index === 0 ? (context.telemetry?.segment_mask ?? 0) : 0
+              return index === 0 ? (segmentTelemetry?.segment_mask ?? 0) : 0
             }))
           : Array.from({ length: digits }, () => 0),
-        segmentMask: context.streamRunning ? (context.telemetry?.segment_mask ?? 0) : 0,
+        segmentMask: context.streamRunning ? (segmentTelemetry?.segment_mask ?? 0) : 0,
       }
     },
   },
@@ -269,10 +295,11 @@ const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefiniti
     bindingAssistantComponent: LedMatrixBindingAssistant,
     buildRuntimeProps: (device, context) => {
       const dimensions = getCanvasMatrixDimensions(device)
+      const framebufferTelemetry = getFramebufferTelemetry(context.telemetry)
       return {
-        columns: context.telemetry?.pixel_columns || dimensions?.columns || 8,
-        rows: context.telemetry?.pixel_rows || dimensions?.rows || 8,
-        pixels: context.streamRunning ? (context.telemetry?.pixels ?? []) : [],
+        columns: framebufferTelemetry?.columns || dimensions?.columns || 8,
+        rows: framebufferTelemetry?.rows || dimensions?.rows || 8,
+        pixels: context.streamRunning ? (framebufferTelemetry?.pixels ?? []) : [],
       }
     },
   },

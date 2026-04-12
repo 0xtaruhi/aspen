@@ -6,6 +6,7 @@ use std::{
 use crate::hardware::types::{
     CanvasDeviceBindingSnapshot, CanvasDeviceConfigSnapshot, CanvasDeviceDataSnapshot,
     CanvasDeviceSnapshot, CanvasDeviceStateSnapshot, CanvasDeviceType, CanvasVgaColorMode,
+    HardwareCanvasDeviceTelemetryEntry, HardwareCanvasDeviceTelemetryPayload,
     HardwareDataStreamConfigV1, HardwareSignalAggregateByIdV1,
 };
 
@@ -62,6 +63,38 @@ fn packed_cycle(active_signal_indices: &[usize]) -> u16 {
         .iter()
         .copied()
         .fold(0_u16, |word, signal_index| word | (1_u16 << signal_index))
+}
+
+fn expect_segment_display(snapshot: &HardwareCanvasDeviceTelemetryEntry) -> (u16, &[u16]) {
+    match &snapshot.payload {
+        HardwareCanvasDeviceTelemetryPayload::SegmentDisplay {
+            segment_mask,
+            digit_segment_masks,
+        } => (*segment_mask, digit_segment_masks),
+        payload => panic!("expected segment display payload, got {payload:?}"),
+    }
+}
+
+fn expect_framebuffer(snapshot: &HardwareCanvasDeviceTelemetryEntry) -> (u16, u16, &[u8]) {
+    match &snapshot.payload {
+        HardwareCanvasDeviceTelemetryPayload::Framebuffer {
+            columns,
+            rows,
+            pixels,
+        } => (*columns, *rows, pixels),
+        payload => panic!("expected framebuffer payload, got {payload:?}"),
+    }
+}
+
+fn expect_audio_pwm(snapshot: &HardwareCanvasDeviceTelemetryEntry) -> (u32, u32, f32) {
+    match &snapshot.payload {
+        HardwareCanvasDeviceTelemetryPayload::AudioPwm {
+            edge_count,
+            sample_count,
+            period_samples,
+        } => (*edge_count, *sample_count, *period_samples),
+        payload => panic!("expected audio pwm payload, got {payload:?}"),
+    }
 }
 
 fn fill_write_frame(
@@ -593,8 +626,9 @@ fn segment_display_decoder_uses_dynamic_digit_count() {
     assert_eq!(snapshot.devices.len(), 1);
     let segment = &snapshot.devices[0];
     assert!(segment.latest);
-    assert_eq!(segment.segment_mask, Some(1));
-    assert_eq!(segment.digit_segment_masks, vec![1, 0, 0, 0, 0, 0]);
+    let (segment_mask, digit_segment_masks) = expect_segment_display(segment);
+    assert_eq!(segment_mask, 1);
+    assert_eq!(digit_segment_masks, &[1, 0, 0, 0, 0, 0]);
 }
 
 #[test]
@@ -630,7 +664,8 @@ fn segment_display_decoder_honors_active_low_polarity() {
 
     assert_eq!(snapshot.devices.len(), 1);
     let segment = &snapshot.devices[0];
-    assert_eq!(segment.segment_mask, Some(1));
+    let (segment_mask, _) = expect_segment_display(segment);
+    assert_eq!(segment_mask, 1);
 }
 
 #[test]
@@ -680,9 +715,10 @@ fn matrix_decoder_normalizes_scanned_pixels_by_row_activity() {
 
     assert_eq!(snapshot.devices.len(), 1);
     let matrix = &snapshot.devices[0];
-    assert_eq!(matrix.pixel_columns, 2);
-    assert_eq!(matrix.pixel_rows, 2);
-    assert_eq!(matrix.pixels, vec![128, 128, 128, 128]);
+    let (columns, rows, pixels) = expect_framebuffer(matrix);
+    assert_eq!(columns, 2);
+    assert_eq!(rows, 2);
+    assert_eq!(pixels, &[128, 128, 128, 128]);
     assert!(matrix.latest);
 }
 
@@ -747,11 +783,12 @@ fn vga_display_decoder_rasterizes_rgb332_frame() {
 
     assert_eq!(snapshot.devices.len(), 1);
     let display = &snapshot.devices[0];
-    assert_eq!(display.pixel_columns, 160);
-    assert_eq!(display.pixel_rows, 120);
+    let (columns, rows, pixels) = expect_framebuffer(display);
+    assert_eq!(columns, 160);
+    assert_eq!(rows, 120);
     assert!(display.latest);
 
-    let sample = |x: usize, y: usize| -> u8 { display.pixels[y * 160 + x] };
+    let sample = |x: usize, y: usize| -> u8 { pixels[y * 160 + x] };
     assert_eq!(sample(20, 20), 0b1110_0000);
     assert_eq!(sample(120, 20), 0b0001_1100);
     assert_eq!(sample(20, 90), 0b0000_0011);
@@ -796,9 +833,10 @@ fn vga_display_decoder_honors_resolution_and_mono_mode() {
     let snapshot = HardwareRuntime::flush_output_decoders(&mut decoders, 1);
 
     let display = &snapshot.devices[0];
-    assert_eq!(display.pixel_columns, 2);
-    assert_eq!(display.pixel_rows, 2);
-    assert_eq!(display.pixels, vec![255, 0, 0, 255]);
+    let (columns, rows, pixels) = expect_framebuffer(display);
+    assert_eq!(columns, 2);
+    assert_eq!(rows, 2);
+    assert_eq!(pixels, &[255, 0, 0, 255]);
 }
 
 #[test]
@@ -863,11 +901,12 @@ fn vga_display_decoder_prefers_active_window_over_blanking() {
     let snapshot = HardwareRuntime::flush_output_decoders(&mut decoders, 1);
 
     let display = &snapshot.devices[0];
-    assert_eq!(display.pixel_columns, 2);
-    assert_eq!(display.pixel_rows, 2);
+    let (columns, rows, pixels) = expect_framebuffer(display);
+    assert_eq!(columns, 2);
+    assert_eq!(rows, 2);
     assert_eq!(
-        display.pixels,
-        vec![0b1110_0000, 0b0001_1100, 0b0000_0011, 0b1111_1111]
+        pixels,
+        &[0b1110_0000, 0b0001_1100, 0b0000_0011, 0b1111_1111]
     );
 }
 
@@ -913,8 +952,9 @@ fn audio_pwm_decoder_reports_period_edges_and_duty_ratio() {
     }
 
     let snapshot = decoders[0].flush_snapshot();
-    assert_eq!(snapshot.audio_edge_count, 5);
-    assert_eq!(snapshot.audio_sample_count, 12);
-    assert!((snapshot.audio_period_samples - 4.0).abs() < 0.01);
+    let (edge_count, sample_count, period_samples) = expect_audio_pwm(&snapshot);
+    assert_eq!(edge_count, 5);
+    assert_eq!(sample_count, 12);
+    assert!((period_samples - 4.0).abs() < 0.01);
     assert!((snapshot.high_ratio - 0.5).abs() < 0.01);
 }

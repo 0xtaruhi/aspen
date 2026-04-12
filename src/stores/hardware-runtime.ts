@@ -6,8 +6,8 @@ import { markRaw, ref } from 'vue'
 
 import {
   type HardwareActionV1,
-  type HardwareCanvasDeviceTelemetryEntryV1,
-  type HardwareCanvasDeviceTelemetryV1,
+  type HardwareCanvasDeviceTelemetry,
+  type HardwareCanvasDeviceTelemetryEntry,
   type HardwareDataBatchBinaryV1,
   type HardwareDataStreamConfigV1,
   type HardwareDataSignalCatalogV1,
@@ -43,9 +43,7 @@ type SignalTelemetrySnapshot = {
   updated_at_ms: number
 }
 
-type DeviceTelemetrySnapshot = HardwareCanvasDeviceTelemetryEntryV1 & {
-  updated_at_ms: number
-}
+type DeviceTelemetrySnapshot = HardwareCanvasDeviceTelemetryEntry
 
 const DATA_DEFAULT_MIN_BATCH_CYCLES = 128
 const DATA_DEFAULT_MAX_WAIT_US = 2000
@@ -226,15 +224,9 @@ function onDataCatalog(catalog: HardwareDataSignalCatalogV1) {
   }
 }
 
-function onDeviceSnapshot(snapshot: HardwareCanvasDeviceTelemetryV1) {
+function onDeviceSnapshot(snapshot: HardwareCanvasDeviceTelemetry) {
   for (const device of snapshot.devices) {
-    pendingDeviceTelemetry.set(
-      device.device_id,
-      markRaw({
-        ...device,
-        updated_at_ms: snapshot.generated_at_ms,
-      }),
-    )
+    pendingDeviceTelemetry.set(device.device_id, markRaw(device))
   }
 
   scheduleTelemetryFlush()

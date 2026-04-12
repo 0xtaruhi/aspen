@@ -158,4 +158,74 @@ describe('hardware canvas ownership regression', () => {
     expect(disconnectView).toHaveBeenCalledTimes(1)
     expect(hardwareStore.canvasDevices.value).toEqual([renamedProjectLed])
   })
+
+  it('persists upserted device settings when nested state still contains Vue proxies', async () => {
+    const dispatch = vi.fn(async (_action: HardwareActionV1) => createHardwareState([]))
+    const runtimeState = ref<Omit<HardwareStateV1, 'canvas_devices'>>({
+      version: 1,
+      phase: 'idle',
+      device: null,
+      artifact: null,
+      last_error: null,
+      op_id: null,
+      updated_at_ms: 0,
+    })
+
+    vi.doMock('./hardware-runtime', () => ({
+      configureDataStream: vi.fn(),
+      dispatch,
+      disconnectView: vi.fn(),
+      hardwareRuntimeStore: {
+        runtimeState,
+        signalTelemetry: ref({}),
+        deviceTelemetry: ref({}),
+        dataStreamStatus: ref(createDataStreamStatus()),
+        hotplugLog: ref(''),
+        isStarted: ref(false),
+        isTauriUnavailable: vi.fn(() => false),
+      },
+      refreshDataStreamStatus: vi.fn(),
+      setDataStreamRate: vi.fn(),
+      startDataStream: vi.fn(),
+      start: vi.fn(),
+      stopDataStream: vi.fn(),
+      stop: vi.fn(),
+      syncState: vi.fn(async () => createHardwareState([])),
+    }))
+
+    vi.doMock('./hardware-flow', () => ({
+      hardwareFlowStore: {
+        synthesisRunning: ref(false),
+        synthesisReport: ref(null),
+        synthesisReportSignature: ref(null),
+        synthesisLiveLog: ref(''),
+        synthesisMessage: ref(''),
+        implementationRunning: ref(false),
+        implementationReport: ref(null),
+        implementationReportSignature: ref(null),
+        implementationLiveLog: ref(''),
+        implementationMessage: ref(''),
+        runSynthesis: vi.fn(),
+        runImplementation: vi.fn(),
+      },
+    }))
+
+    const { projectCanvasStore } = await import('./project-canvas')
+    const { hardwareStore } = await import('./hardware')
+
+    const projectLed = createLedDevice('project-led', 'Project LED')
+    projectCanvasStore.setCanvasDevices([projectLed])
+
+    const proxiedDevice = hardwareStore.canvasDevices.value[0]
+    const recoloredDevice = {
+      ...proxiedDevice,
+      state: {
+        ...proxiedDevice.state,
+        color: '#3b82f6',
+      },
+    }
+
+    await expect(hardwareStore.upsertCanvasDevice(recoloredDevice)).resolves.toBeTruthy()
+    expect(hardwareStore.canvasDevices.value[0]?.state.color).toBe('#3b82f6')
+  })
 })
