@@ -20,6 +20,7 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { useI18n } from '@/lib/i18n'
+import { installNativeContextMenuGuard } from '@/lib/native-context-menu'
 import {
   closeProject,
   openProject,
@@ -27,12 +28,16 @@ import {
   saveProject,
   saveProjectAs,
 } from '@/lib/project-io'
-import { routeLabelMap, routeRequiresProject, type AppRouteName } from '@/router'
+import {
+  moduleForRouteName,
+  routeLabelMap,
+  routeRequiresProject,
+  type AppRouteName,
+} from '@/router'
 import { appUpdateStore } from '@/stores/app-update'
 import { hardwareStore } from '@/stores/hardware'
 import { hardwareWorkbenchStore } from '@/stores/hardware-workbench'
 import { projectStore } from '@/stores/project'
-import { uiStore } from '@/stores/ui'
 
 type AppMenuAction =
   | 'new-project'
@@ -53,6 +58,7 @@ const { t } = useI18n()
 const showNewProjectDialog = ref(false)
 let unlistenAppMenu: (() => void) | null = null
 let unlistenCloseRequested: (() => void) | null = null
+let uninstallContextMenuGuard: (() => void) | null = null
 let closePromptPending = false
 const moduleLabelKeyMap = {
   'project-management': 'projectManagement',
@@ -104,7 +110,13 @@ const activeModuleLabel = computed(() => {
     return t('application')
   }
 
-  const key = moduleLabelKeyMap[uiStore.activeModule.value]
+  const routeName = activeRouteName.value
+  if (!routeName) {
+    return t('workspace')
+  }
+
+  const moduleName = moduleForRouteName(routeName)
+  const key = moduleName ? moduleLabelKeyMap[moduleName] : null
   return key ? t(key) : t('workspace')
 })
 
@@ -113,7 +125,7 @@ const activeSurfaceLabel = computed(() => {
     return t('settings')
   }
 
-  if (uiStore.activePage.value === 'project-editor') {
+  if (activeRouteName.value === 'project-management-editor') {
     const fileName = projectStore.activeFile?.name || t('noFileSelected')
     return projectStore.activeFileId && projectStore.isFileDirty(projectStore.activeFileId)
       ? `${fileName} *`
@@ -130,7 +142,7 @@ const activeSurfaceLabel = computed(() => {
 })
 
 const shouldShowModuleBreadcrumb = computed(() => {
-  return uiStore.activePage.value !== 'project-editor'
+  return activeRouteName.value !== 'project-management-editor'
 })
 
 const shouldShowSurfaceBreadcrumb = computed(() => {
@@ -142,12 +154,52 @@ const shouldShowSurfaceBreadcrumb = computed(() => {
 })
 
 function handleGlobalKeydown(event: KeyboardEvent) {
-  if (
-    (event.ctrlKey || event.metaKey) &&
-    event.key.toLowerCase() === 's' &&
-    projectStore.hasProject
-  ) {
+  const commandKey = event.ctrlKey || event.metaKey
+  const key = event.key.toLowerCase()
+
+  if (isTauri() && (key === 'f5' || (commandKey && key === 'r'))) {
     event.preventDefault()
+    return
+  }
+
+  if (!commandKey) {
+    return
+  }
+
+  if (key === 'n') {
+    event.preventDefault()
+    showNewProjectDialog.value = true
+    return
+  }
+
+  if (key === 'o') {
+    event.preventDefault()
+    void openProject()
+    return
+  }
+
+  if (key === ',') {
+    event.preventDefault()
+    openSettings()
+    return
+  }
+
+  if (key === 'w' && event.shiftKey) {
+    event.preventDefault()
+    void closeProject().then((closed) => {
+      if (closed) {
+        void router.push({ name: 'project-management-dashboard' })
+      }
+    })
+    return
+  }
+
+  if (key === 's' && projectStore.hasProject) {
+    event.preventDefault()
+    if (event.shiftKey) {
+      void saveProjectAs()
+      return
+    }
     void saveProject()
   }
 }
@@ -218,6 +270,8 @@ onMounted(() => {
     return
   }
 
+  uninstallContextMenuGuard = installNativeContextMenuGuard()
+
   void listen<AppMenuAction>('aspen://menu-action', (event) => {
     handleAppMenuAction(event.payload)
   }).then((unlisten) => {
@@ -262,6 +316,11 @@ onUnmounted(() => {
   if (unlistenCloseRequested) {
     unlistenCloseRequested()
     unlistenCloseRequested = null
+  }
+
+  if (uninstallContextMenuGuard) {
+    uninstallContextMenuGuard()
+    uninstallContextMenuGuard = null
   }
 
   void hardwareWorkbenchStore.shutdown().catch(() => undefined)

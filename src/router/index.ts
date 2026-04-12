@@ -104,6 +104,14 @@ export const modulePathMap: Record<AppModule, string> = {
   settings: '/settings',
 }
 
+export function moduleForRouteName(routeName: AppRouteName | undefined): AppModule | null {
+  return routeName ? routeModuleMap[routeName] : null
+}
+
+export function pageForRouteName(routeName: AppRouteName | undefined): Page | null {
+  return routeName ? (routePageMap[routeName] ?? null) : null
+}
+
 export function routeRequiresProject(routeName: AppRouteName | undefined) {
   return (
     routeName === 'fpga-flow' ||

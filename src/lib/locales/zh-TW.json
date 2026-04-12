@@ -550,6 +550,8 @@
   "deleteSelectedDevicesConfirm": "確定要刪除已選取的 {count} 個裝置嗎？",
   "deviceConnected": "裝置已連線",
   "deviceRemoved": "裝置已移除",
+  "hardwareDeviceNotDetected": "未偵測到 FPGA 板卡。請檢查 USB 連線、供電與驅動程式，然後按一下「自動連線」重試。",
+  "hardwareDeviceDisconnectedError": "FPGA 板卡已中斷連線。請檢查 USB 連線後重新連線。",
   "viewLog": "查看日誌",
   "viewReleases": "檢視釋出頁",
   "noLogAvailable": "暫時沒有日誌。"

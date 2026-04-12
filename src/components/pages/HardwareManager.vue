@@ -27,6 +27,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable'
 import { getFpgaDeviceDescriptor, resolveFpgaDeviceId } from '@/lib/fpga-device-catalog'
+import { describeHardwareError } from '@/lib/hardware-errors'
 import { useI18n } from '@/lib/i18n'
 import { hardwareStore } from '@/stores/hardware'
 import { programmingCatalogStore } from '@/stores/programming-catalog'
@@ -81,8 +82,10 @@ const hardwareStatus = computed<HardwareStatus | null>(() => {
 })
 
 const flowPhase = computed<HardwarePhase>(() => hardwareState.value.phase)
-const flowError = computed(() => hardwareState.value.last_error ?? '')
-const errorMessage = computed(() => flowError.value)
+const errorMessage = computed(() => {
+  const message = hardwareState.value.last_error
+  return message ? describeHardwareError(message, { phase: flowPhase.value }) : ''
+})
 
 const isBusy = computed(() => {
   return (
@@ -248,10 +251,6 @@ function buildTargets(status: HardwareStatus): HardwareTarget[] {
   ]
 }
 
-function getErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
-}
-
 async function autoConnect() {
   if (isBusy.value) return
   programMessage.value = ''
@@ -260,7 +259,7 @@ async function autoConnect() {
     await hardwareStore.probe()
   } catch (err) {
     programMessageTone.value = 'error'
-    programMessage.value = t('probeFailed', { message: getErrorMessage(err) })
+    programMessage.value = t('probeFailed', { message: describeHardwareError(err) })
   }
 }
 
@@ -292,7 +291,7 @@ async function programDevice() {
     isProgramDialogOpen.value = false
   } catch (err) {
     programMessageTone.value = 'error'
-    programMessage.value = t('programmingFailed', { message: getErrorMessage(err) })
+    programMessage.value = t('programmingFailed', { message: describeHardwareError(err) })
   }
 }
 
@@ -377,7 +376,7 @@ async function pickBitstream() {
       </div>
       <ResizablePanelGroup direction="horizontal">
         <!-- Hardware Tree -->
-        <ResizablePanel :default-size="25" :min-size="20" class="border-r bg-muted/10">
+        <ResizablePanel :default-size="25" :min-size="20" class="bg-muted/10">
           <div class="p-2 font-medium text-xs text-muted-foreground uppercase tracking-wider mb-2">
             {{ t('hardwareTargets') }}
           </div>
@@ -428,7 +427,7 @@ async function pickBitstream() {
           </ScrollArea>
         </ResizablePanel>
 
-        <ResizableHandle />
+        <ResizableHandle class="bg-border/45" />
 
         <!-- Device Details & Operations -->
         <ResizablePanel :default-size="75" class="bg-transparent p-0">

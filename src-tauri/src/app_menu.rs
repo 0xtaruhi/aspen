@@ -1,4 +1,7 @@
+#[cfg(target_os = "macos")]
 use objc2_foundation::NSLocale;
+#[cfg(not(target_os = "macos"))]
+use std::env;
 use tauri::{
     menu::{
         AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID,
@@ -179,6 +182,7 @@ fn menu_language_for_locale_identifier(locale_identifier: &str) -> MenuLanguage 
     MenuLanguage::English
 }
 
+#[cfg(target_os = "macos")]
 fn preferred_locale_identifier() -> Option<String> {
     let preferred_languages = NSLocale::preferredLanguages();
     preferred_languages
@@ -189,6 +193,20 @@ fn preferred_locale_identifier() -> Option<String> {
             let current_locale = NSLocale::currentLocale();
             let identifier = current_locale.localeIdentifier().to_string();
             (!identifier.is_empty()).then_some(identifier)
+        })
+}
+
+#[cfg(not(target_os = "macos"))]
+fn preferred_locale_identifier() -> Option<String> {
+    ["LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"]
+        .into_iter()
+        .find_map(|key| {
+            let value = env::var(key).ok()?;
+            value
+                .split(':')
+                .map(str::trim)
+                .find(|value| !value.is_empty() && *value != "C" && *value != "POSIX")
+                .map(str::to_string)
         })
 }
 
