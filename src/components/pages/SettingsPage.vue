@@ -1,20 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
-import { isTauri } from '@tauri-apps/api/core'
-import { openUrl } from '@tauri-apps/plugin-opener'
-import {
-  ArrowDownToLine,
-  Globe,
-  Monitor,
-  MonitorCog,
-  Moon,
-  ShieldCheck,
-  Sun,
-} from 'lucide-vue-next'
+import { ArrowDownToLine, Globe, MonitorCog, ShieldCheck } from 'lucide-vue-next'
 
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -25,242 +14,42 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { useI18n } from '@/lib/i18n'
-import {
-  APP_THEME_PRESET_COLORS,
-  normalizeThemeAccentColor,
-  type AppThemePresetColor,
-} from '@/lib/theme-accent'
-import { appUpdateStore } from '@/stores/app-update'
-import { DEFAULT_EDITOR_FONT_FAMILY, settingsStore, type AppLanguage } from '@/stores/settings'
-import { UPDATE_RELEASES_URL } from '@/lib/app-update'
+import { APP_THEME_PRESET_COLORS } from '@/lib/theme-accent'
+import { CUSTOM_EDITOR_FONT_PRESET, useSettingsPageState } from '@/lib/settings-page'
+import { DEFAULT_EDITOR_FONT_FAMILY } from '@/stores/settings'
 
-const { t } = useI18n()
-const CUSTOM_EDITOR_FONT_PRESET = '__custom__'
-const EDITOR_FONT_PRESETS: Array<{
-  value: string
-  label?: string
-  labelKey?: 'editorFontDefault'
-}> = [
-  {
-    value: DEFAULT_EDITOR_FONT_FAMILY,
-    labelKey: 'editorFontDefault',
-  },
-  {
-    value: "'JetBrains Mono', monospace",
-    label: 'JetBrains Mono',
-  },
-  {
-    value: "'Fira Code', monospace",
-    label: 'Fira Code',
-  },
-  {
-    value: "'IBM Plex Mono', monospace",
-    label: 'IBM Plex Mono',
-  },
-  {
-    value: "'Cascadia Code', monospace",
-    label: 'Cascadia Code',
-  },
-  {
-    value: "'SF Mono', Menlo, Monaco, monospace",
-    label: 'SF Mono',
-  },
-  {
-    value: 'Menlo, Monaco, monospace',
-    label: 'Menlo',
-  },
-]
-
-const editorFontFamilyInput = ref(settingsStore.state.editorFontFamily)
-const fontSizeValue = computed(() => String(settingsStore.state.editorFontSize))
-const themeAccentInput = computed(() => normalizeThemeAccentColor(settingsStore.state.themeAccent))
-const themePresetOptions = Object.keys(APP_THEME_PRESET_COLORS) as AppThemePresetColor[]
-const updateState = appUpdateStore.state
-const themeModeOptions = computed(() => [
-  {
-    value: 'system' as const,
-    label: t('themeModeSystem'),
-    icon: Monitor,
-  },
-  {
-    value: 'light' as const,
-    label: t('themeModeLight'),
-    icon: Sun,
-  },
-  {
-    value: 'dark' as const,
-    label: t('themeModeDark'),
-    icon: Moon,
-  },
-])
-const themeModeIndex = computed(() =>
-  themeModeOptions.value.findIndex((option) => option.value === settingsStore.state.themeMode),
-)
-const themeModeThumbStyle = computed(() => ({
-  transform: `translateX(${Math.max(0, themeModeIndex.value) * 100}%)`,
-}))
-const editorFontPresetOptions = computed(() => {
-  return EDITOR_FONT_PRESETS.map((preset) => ({
-    value: preset.value,
-    label: preset.labelKey ? t(preset.labelKey) : (preset.label ?? preset.value),
-  }))
-})
-const editorFontPresetValue = computed(() => {
-  return (
-    editorFontPresetOptions.value.find(
-      (option) => option.value === settingsStore.state.editorFontFamily,
-    )?.value ?? CUSTOM_EDITOR_FONT_PRESET
-  )
-})
-
-const updateStatusLabel = computed(() => {
-  switch (updateState.status) {
-    case 'unsupported':
-      return updateState.unsupportedReason === 'releaseOnly'
-        ? t('updateTaggedReleaseOnly')
-        : t('updateDesktopOnly')
-    case 'checking':
-      return t('checkingForUpdates')
-    case 'up-to-date':
-      return t('updateStatusUpToDate')
-    case 'available':
-      return updateState.latestVersion
-        ? t('updateStatusAvailable', { version: updateState.latestVersion })
-        : t('updateReady')
-    case 'installing':
-      return t('installingUpdate')
-    case 'error':
-      return t('updateStatusError')
-    case 'idle':
-    default:
-      return t('updateReadyToCheck')
-  }
-})
-
-const formattedLastChecked = computed(() => {
-  if (!updateState.lastCheckedAt) {
-    return t('neverChecked')
-  }
-
-  return new Intl.DateTimeFormat(settingsStore.state.language, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(updateState.lastCheckedAt)
-})
-
-const formattedReleaseDate = computed(() => {
-  if (!updateState.latestDate) {
-    return null
-  }
-
-  const parsed = Date.parse(updateState.latestDate)
-  if (Number.isNaN(parsed)) {
-    return updateState.latestDate
-  }
-
-  return new Intl.DateTimeFormat(settingsStore.state.language, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(parsed)
-})
-
-const updateDownloadProgress = computed(() => {
-  if (
-    updateState.status !== 'installing' ||
-    !updateState.totalBytes ||
-    updateState.totalBytes <= 0
-  ) {
-    return null
-  }
-
-  const percent = Math.max(
-    0,
-    Math.min(100, Math.round((updateState.downloadedBytes / updateState.totalBytes) * 100)),
-  )
-  return t('updateDownloadProgress', { percent })
-})
-
-const canCheckForUpdates = computed(
-  () =>
-    updateState.supported &&
-    updateState.status !== 'checking' &&
-    updateState.status !== 'installing',
-)
-
-const canInstallUpdate = computed(
-  () =>
-    updateState.supported &&
-    Boolean(updateState.latestVersion) &&
-    updateState.status !== 'installing',
-)
-
-function handleLanguageChange(value: unknown) {
-  if (value === 'en-US' || value === 'zh-CN' || value === 'zh-TW') {
-    settingsStore.setLanguage(value as AppLanguage)
-  }
-}
-
-function handleFontSizeChange(value: unknown) {
-  const nextValue = Number(value)
-  if (!Number.isNaN(nextValue)) {
-    settingsStore.setEditorFontSize(nextValue)
-  }
-}
-
-function handleEditorFontPresetChange(value: unknown) {
-  if (typeof value !== 'string' || value === CUSTOM_EDITOR_FONT_PRESET) {
-    return
-  }
-
-  editorFontFamilyInput.value = value
-  settingsStore.setEditorFontFamily(value)
-}
-
-function commitEditorFontFamily() {
-  settingsStore.setEditorFontFamily(editorFontFamilyInput.value)
-  editorFontFamilyInput.value = settingsStore.state.editorFontFamily
-}
-
-function applyThemeAccentPreset(color: AppThemePresetColor) {
-  settingsStore.setThemeAccent(APP_THEME_PRESET_COLORS[color])
-}
-
-function handleThemeAccentInput(value: string) {
-  settingsStore.setThemeAccent(value)
-}
-
-async function handleCheckForUpdates() {
-  await appUpdateStore.checkForUpdates()
-}
-
-async function handleInstallUpdate() {
-  await appUpdateStore.installUpdate()
-}
-
-async function handleOpenReleases() {
-  if (isTauri()) {
-    await openUrl(UPDATE_RELEASES_URL)
-    return
-  }
-
-  if (typeof window !== 'undefined') {
-    window.open(UPDATE_RELEASES_URL, '_blank', 'noopener,noreferrer')
-  }
-}
-
-onMounted(() => {
-  void appUpdateStore.initialize()
-})
-
-watch(
-  () => settingsStore.state.editorFontFamily,
-  (fontFamily) => {
-    if (fontFamily !== editorFontFamilyInput.value) {
-      editorFontFamilyInput.value = fontFamily
-    }
-  },
-)
+const {
+  applyThemeAccentPreset,
+  canCheckForUpdates,
+  canInstallUpdate,
+  commitEditorFontFamily,
+  editorFontFamilyInput,
+  editorFontPresetOptions,
+  editorFontPresetValue,
+  fontSizeValue,
+  formattedLastChecked,
+  formattedReleaseDate,
+  handleCheckForUpdates,
+  handleConfirmDeleteChange,
+  handleEditorFontPresetChange,
+  handleEditorMinimapChange,
+  handleFontSizeChange,
+  handleInstallUpdate,
+  handleLanguageChange,
+  handleOpenReleases,
+  handleThemeAccentInput,
+  handleThemeModeChange,
+  languageOptions,
+  settingsState,
+  t,
+  themeAccentInput,
+  themeModeOptions,
+  themeModeThumbStyle,
+  themePresetOptions,
+  updateDownloadProgress,
+  updateState,
+  updateStatusLabel,
+} = useSettingsPageState()
 </script>
 
 <template>
@@ -296,16 +85,20 @@ watch(
               <div class="grid gap-2">
                 <Label>{{ t('language') }}</Label>
                 <Select
-                  :model-value="settingsStore.state.language"
+                  :model-value="settingsState.language"
                   @update:model-value="handleLanguageChange"
                 >
                   <SelectTrigger class="w-full max-w-sm">
                     <SelectValue :placeholder="t('language')" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="zh-CN">{{ t('chinese') }}</SelectItem>
-                    <SelectItem value="zh-TW">{{ t('traditionalChinese') }}</SelectItem>
-                    <SelectItem value="en-US">{{ t('english') }}</SelectItem>
+                    <SelectItem
+                      v-for="option in languageOptions"
+                      :key="option.value"
+                      :value="option.value"
+                    >
+                      {{ option.label }}
+                    </SelectItem>
                   </SelectContent>
                 </Select>
                 <p class="text-sm text-muted-foreground">{{ t('languageDescription') }}</p>
@@ -326,11 +119,11 @@ watch(
                     type="button"
                     class="relative z-10 flex min-h-10 flex-1 items-center justify-center gap-2 rounded-[0.95rem] px-3 py-2 text-left text-sm transition-colors"
                     :class="
-                      settingsStore.state.themeMode === option.value
+                      settingsState.themeMode === option.value
                         ? 'text-foreground'
                         : 'text-muted-foreground hover:text-foreground'
                     "
-                    @click="settingsStore.setThemeMode(option.value)"
+                    @click="handleThemeModeChange(option.value)"
                   >
                     <component :is="option.icon" class="h-4 w-4 shrink-0" />
                     <span class="truncate text-xs font-medium sm:text-sm">{{ option.label }}</span>
@@ -468,8 +261,8 @@ watch(
                   <p class="text-sm text-muted-foreground">{{ t('editorDescription') }}</p>
                 </div>
                 <Switch
-                  :checked="settingsStore.state.editorMinimap"
-                  @update:checked="settingsStore.setEditorMinimap"
+                  :checked="settingsState.editorMinimap"
+                  @update:checked="handleEditorMinimapChange"
                 />
               </div>
             </CardContent>
@@ -636,8 +429,8 @@ watch(
                   <p class="text-sm text-muted-foreground">{{ t('safetyDescription') }}</p>
                 </div>
                 <Switch
-                  :checked="settingsStore.state.confirmDelete"
-                  @update:checked="settingsStore.setConfirmDelete"
+                  :checked="settingsState.confirmDelete"
+                  @update:checked="handleConfirmDeleteChange"
                 />
               </div>
             </CardContent>
