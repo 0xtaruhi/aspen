@@ -17,7 +17,6 @@ use hardware::{
 };
 use serde::Deserialize;
 use serde::Serialize;
-#[cfg(target_os = "macos")]
 use tauri::Emitter;
 use vlfd_rs::{HotplugEvent, HotplugEventKind, HotplugOptions, HotplugRegistration, Probe};
 
