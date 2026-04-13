@@ -14,6 +14,7 @@ import {
   beginSynthesisRun,
   finishSynthesisRun,
   setSynthesisMessage,
+  synthesisOperationId,
   synthesisFlowState,
 } from './hardware-flow-synthesis-state'
 import { projectStore } from './project'
@@ -25,6 +26,7 @@ async function runSynthesis(request: SynthesisRequestV1): Promise<SynthesisRepor
 
   try {
     const report = await runHardwareSynthesis(request)
+    finishSynthesisRun()
     const snapshot = {
       version: 1 as const,
       signature: requestSignature,
@@ -48,7 +50,9 @@ async function runSynthesis(request: SynthesisRequestV1): Promise<SynthesisRepor
     setSynthesisMessage(getErrorMessage(err))
     throw err
   } finally {
-    finishSynthesisRun()
+    if (synthesisOperationId.value) {
+      finishSynthesisRun()
+    }
   }
 }
 

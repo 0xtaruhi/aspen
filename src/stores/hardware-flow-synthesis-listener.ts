@@ -10,12 +10,13 @@ let unlistenSynthesisLog: (() => void) | null = null
 let synthesisLogListenerPromise: Promise<void> | null = null
 
 function onSynthesisLogChunk(chunk: SynthesisLogChunkV1) {
-  const appended = appendSynthesisLogChunk('', synthesisOperationId.value, chunk)
-  if (!appended) {
+  // Passing an empty current log extracts only the new chunk for this operation.
+  const extractedChunk = appendSynthesisLogChunk('', synthesisOperationId.value, chunk)
+  if (!extractedChunk) {
     return
   }
 
-  synthesisLog.append(appended)
+  synthesisLog.append(extractedChunk)
 }
 
 export async function ensureSynthesisLogListener() {
@@ -34,10 +35,9 @@ export async function ensureSynthesisLogListener() {
     })
     .catch((err) => {
       if (!hardwareRuntimeStore.isTauriUnavailable(err)) {
+        synthesisLogListenerPromise = null
         throw err
       }
-    })
-    .finally(() => {
       synthesisLogListenerPromise = null
     })
 

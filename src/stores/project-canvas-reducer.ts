@@ -45,7 +45,12 @@ export function reduceProjectCanvasDevices(
     }
     case 'bind_canvas_signal_slot': {
       const device = nextDevices.find((item) => item.id === action.id)
-      if (device && device.state.binding.kind === 'slots') {
+      if (
+        device &&
+        device.state.binding.kind === 'slots' &&
+        Number.isInteger(action.slot_index) &&
+        action.slot_index >= 0
+      ) {
         while (device.state.binding.signals.length <= action.slot_index) {
           device.state.binding.signals.push(null)
         }

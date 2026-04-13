@@ -2,17 +2,18 @@ import type { CanvasDeviceSnapshot, HardwareActionV1 } from '@/lib/hardware-clie
 
 import { ref } from 'vue'
 
-import { cloneCanvasDeviceSnapshots } from './project-canvas-clone'
 import { isProjectCanvasAction } from './project-canvas-actions'
 import { reduceProjectCanvasDevices } from './project-canvas-reducer'
 
 const defaultCanvasDevices: CanvasDeviceSnapshot[] = []
 
 const canvasDevices = ref<CanvasDeviceSnapshot[]>([])
+const snapshotRevision = ref(0)
 resetState()
 
 function setCanvasDevices(devices: readonly CanvasDeviceSnapshot[]) {
-  canvasDevices.value = cloneCanvasDeviceSnapshots(devices)
+  canvasDevices.value = [...devices]
+  snapshotRevision.value += 1
 }
 
 function resetState() {
@@ -33,6 +34,7 @@ export { isProjectCanvasAction } from './project-canvas-actions'
 
 export const projectCanvasStore = {
   canvasDevices,
+  snapshotRevision,
   setCanvasDevices,
   resetState,
   applyAction,

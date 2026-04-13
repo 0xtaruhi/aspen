@@ -193,25 +193,33 @@ pub fn start_hotplug_watch(
                     "productId": event.device.product_id,
                 }
             });
-            let _ = handle.emit("hardware:hotplug", payload);
+            if let Err(err) = handle.emit("hardware:hotplug", payload) {
+                eprintln!("failed to emit hotplug event: {err}");
+            }
 
             let app_for_task = handle.clone();
             let runtime_for_task = runtime_handle.clone();
             let is_left = event_kind == "left";
             tauri::async_runtime::spawn(async move {
                 if is_left {
-                    let _ = runtime_for_task
-                        .mark_device_disconnected(&app_for_task, HardwareEventReason::Hotplug);
+                    if let Err(err) = runtime_for_task
+                        .mark_device_disconnected(&app_for_task, HardwareEventReason::Hotplug)
+                    {
+                        eprintln!("failed to mark device disconnected after hotplug: {err}");
+                    }
                     return;
                 }
 
-                let _ = runtime_for_task
+                if let Err(err) = runtime_for_task
                     .dispatch(
                         &app_for_task,
                         HardwareActionV1::Probe,
                         HardwareEventReason::Hotplug,
                     )
-                    .await;
+                    .await
+                {
+                    eprintln!("failed to dispatch hotplug probe: {err}");
+                }
             });
         })
         .map_err(|err| err.to_string())?;

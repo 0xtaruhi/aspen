@@ -26,8 +26,10 @@ export function createHardwareStoreActions(state: ComputedRef<HardwareStateV1>) 
       return state.value
     } catch (err) {
       if (hardwareRuntimeStore.isTauriUnavailable(err)) {
-        projectCanvasStore.applyAction(action)
-        return state.value
+        if (isProjectCanvasAction(action)) {
+          projectCanvasStore.applyAction(action)
+          return state.value
+        }
       }
       throw err
     }

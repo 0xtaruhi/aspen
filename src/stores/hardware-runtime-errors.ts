@@ -9,7 +9,7 @@ export function isTauriUnavailable(err: unknown): boolean {
   return (
     message.includes('__TAURI_INTERNALS__') ||
     message.includes('window.__TAURI_INTERNALS__') ||
-    message.includes('plugin') ||
+    /tauri.*plugin/i.test(message) ||
     message.includes("Cannot read properties of undefined (reading 'invoke')") ||
     message.includes("Cannot read properties of undefined (reading 'transformCallback')")
   )

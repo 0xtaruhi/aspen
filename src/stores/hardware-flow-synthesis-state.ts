@@ -23,6 +23,8 @@ export function applyPersistedSynthesisState(snapshot: ProjectSynthesisCacheSnap
 
 export function beginSynthesisRun(opId: string) {
   synthesisRunning.value = true
+  synthesisReport.value = null
+  synthesisReportSignature.value = null
   synthesisMessage.value = ''
   synthesisLog.clear()
   synthesisOperationId.value = opId

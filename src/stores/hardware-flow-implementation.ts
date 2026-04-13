@@ -15,6 +15,7 @@ import {
   finishImplementationRun,
   flushImplementationLog,
   implementationFlowState,
+  implementationOperationId,
   setImplementationMessage,
 } from './hardware-flow-implementation-state'
 import { projectStore } from './project'
@@ -34,6 +35,7 @@ async function runImplementation(
 
   try {
     const report = await runHardwareImplementation(request)
+    finishImplementationRun()
     const snapshot = {
       version: 1 as const,
       signature: requestSignature,
@@ -58,7 +60,9 @@ async function runImplementation(
     setImplementationMessage(getErrorMessage(err))
     throw err
   } finally {
-    finishImplementationRun()
+    if (implementationOperationId.value) {
+      finishImplementationRun()
+    }
   }
 }
 

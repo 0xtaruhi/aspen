@@ -43,6 +43,9 @@ export interface ProjectStoreState {
   implementationCache: ProjectImplementationCacheSnapshot | null
   projectPath: string | null
   savedSnapshotJson: string
+  cachedSnapshotJson: string
+  snapshotCacheDirty: boolean
+  cachedCanvasRevision: number
   savedFileSignatures: FileSignatureMap
 }
 
@@ -78,6 +81,9 @@ export function createProjectStoreState(): ProjectStoreState {
     implementationCache: null,
     projectPath: null,
     savedSnapshotJson: '',
+    cachedSnapshotJson: '',
+    snapshotCacheDirty: true,
+    cachedCanvasRevision: 0,
     savedFileSignatures: {},
   }
 }

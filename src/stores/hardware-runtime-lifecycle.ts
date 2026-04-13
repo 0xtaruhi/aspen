@@ -37,6 +37,7 @@ let unlistenDataBatch: UnlistenFn | null = null
 let unlistenDataCatalog: UnlistenFn | null = null
 let unlistenDeviceSnapshot: UnlistenFn | null = null
 let unlistenDataStreamStatus: UnlistenFn | null = null
+let startPromise: Promise<void> | null = null
 
 function clearRuntimeListeners() {
   if (unlistenStateChanged) {
@@ -97,30 +98,41 @@ export async function start() {
     return
   }
 
-  try {
-    await syncState()
-    await registerRuntimeListeners()
-
-    try {
-      await refreshDataStreamStatus()
-    } catch (err) {
-      if (!isTauriUnavailable(err)) {
-        throw err
-      }
-    }
-
-    await invoke('start_hotplug_watch')
-    isStarted.value = true
-  } catch (err) {
-    clearRuntimeListeners()
-    resetRuntimeViewState()
-    if (isTauriUnavailable(err)) {
-      isStarted.value = false
-      return
-    }
-    setError(getErrorMessage(err))
-    throw err
+  if (startPromise) {
+    await startPromise
+    return
   }
+
+  startPromise = (async () => {
+    try {
+      await syncState()
+      await registerRuntimeListeners()
+
+      try {
+        await refreshDataStreamStatus()
+      } catch (err) {
+        if (!isTauriUnavailable(err)) {
+          throw err
+        }
+      }
+
+      await invoke('start_hotplug_watch')
+      isStarted.value = true
+    } catch (err) {
+      clearRuntimeListeners()
+      resetRuntimeViewState()
+      if (isTauriUnavailable(err)) {
+        isStarted.value = false
+        return
+      }
+      setError(getErrorMessage(err))
+      throw err
+    } finally {
+      startPromise = null
+    }
+  })()
+
+  await startPromise
 }
 
 export async function stop() {

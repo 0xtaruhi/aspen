@@ -6,11 +6,11 @@ import type { ProjectSessionStoreLike } from './project-session'
 import {
   cloneImplementationSettings,
   type ImplementationSettingsSnapshot,
-} from '../lib/implementation-settings'
+} from '@/lib/implementation-settings'
 import {
   cloneProjectConstraintSnapshot,
   type ProjectConstraintSnapshot,
-} from '../lib/project-constraints'
+} from '@/lib/project-constraints'
 
 import {
   cloneProjectCanvasDevices,

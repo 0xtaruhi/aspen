@@ -96,6 +96,12 @@ export async function setDataStreamRate(rateHz: number) {
 export async function startDataStream() {
   try {
     await startHardwareDataStream()
+    applyDataStreamStatus({
+      ...dataStreamStatus.value,
+      running: true,
+      last_error: null,
+    })
+    return
   } catch (err) {
     if (isTauriUnavailable(err)) {
       applyDataStreamStatus({

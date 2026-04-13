@@ -4,6 +4,7 @@ import {
   deviceDrivesSignal as deviceTypeDrivesSignal,
   deviceReceivesSignal as deviceTypeReceivesSignal,
   getCanvasDeviceBoundSignal,
+  getCanvasDeviceBoundSignals,
   getCanvasDeviceDrivenSignalLevel,
 } from '@/lib/canvas-devices'
 
@@ -15,11 +16,51 @@ function deviceReceivesSignal(type: CanvasDeviceType): boolean {
   return deviceTypeReceivesSignal(type)
 }
 
+function getBoundSignals(device: CanvasDeviceSnapshot): string[] {
+  const boundSignal = getCanvasDeviceBoundSignal(device)
+  if (boundSignal) {
+    return [boundSignal]
+  }
+
+  return getCanvasDeviceBoundSignals(device).filter((signal): signal is string => Boolean(signal))
+}
+
+function deviceBindsSignal(device: CanvasDeviceSnapshot, signal: string): boolean {
+  return getBoundSignals(device).includes(signal)
+}
+
 function signalSourceValue(devices: CanvasDeviceSnapshot[], signal: string): boolean | null {
   const source = devices.find((candidate) => {
-    return deviceDrivesSignal(candidate.type) && getCanvasDeviceBoundSignal(candidate) === signal
+    return deviceDrivesSignal(candidate.type) && deviceBindsSignal(candidate, signal)
   })
   return source ? getCanvasDeviceDrivenSignalLevel(source) : null
+}
+
+function reconcileReceivedSignalState(
+  devices: CanvasDeviceSnapshot[],
+  target: CanvasDeviceSnapshot,
+): boolean | null {
+  const boundSignals = getBoundSignals(target)
+  if (boundSignals.length === 0) {
+    return null
+  }
+
+  let hasSource = false
+  let isOn = false
+
+  for (const signal of boundSignals) {
+    const sourceValue = signalSourceValue(devices, signal)
+    if (sourceValue === null) {
+      continue
+    }
+
+    hasSource = true
+    if (sourceValue) {
+      isOn = true
+    }
+  }
+
+  return hasSource ? isOn : null
 }
 
 function propagateSignalToSubscribers(
@@ -33,8 +74,9 @@ function propagateSignalToSubscribers(
       continue
     }
 
-    if (deviceReceivesSignal(candidate.type) && getCanvasDeviceBoundSignal(candidate) === signal) {
-      candidate.state.is_on = value
+    if (deviceReceivesSignal(candidate.type) && deviceBindsSignal(candidate, signal)) {
+      const reconciledValue = reconcileReceivedSignalState(devices, candidate)
+      candidate.state.is_on = reconciledValue ?? value
     }
   }
 }
@@ -43,23 +85,21 @@ export function propagateDrivenSignalFromCanvasDevice(
   devices: CanvasDeviceSnapshot[],
   sourceDevice: CanvasDeviceSnapshot,
 ) {
-  const signal = getCanvasDeviceBoundSignal(sourceDevice)
-  if (!deviceDrivesSignal(sourceDevice.type) || !signal) {
+  const signals = getBoundSignals(sourceDevice)
+  if (!deviceDrivesSignal(sourceDevice.type) || signals.length === 0) {
     return
   }
 
-  propagateSignalToSubscribers(
-    devices,
-    sourceDevice.id,
-    signal,
-    getCanvasDeviceDrivenSignalLevel(sourceDevice),
-  )
+  const drivenValue = getCanvasDeviceDrivenSignalLevel(sourceDevice)
+  for (const signal of signals) {
+    propagateSignalToSubscribers(devices, sourceDevice.id, signal, drivenValue)
+  }
 }
 
 export function reconcileCanvasBoundSignal(devices: CanvasDeviceSnapshot[], targetId: string) {
   const target = devices.find((candidate) => candidate.id === targetId)
-  const targetSignal = target ? getCanvasDeviceBoundSignal(target) : null
-  if (!target || !targetSignal) {
+  const targetSignals = target ? getBoundSignals(target) : []
+  if (!target || targetSignals.length === 0) {
     return
   }
 
@@ -69,7 +109,7 @@ export function reconcileCanvasBoundSignal(devices: CanvasDeviceSnapshot[], targ
   }
 
   if (deviceReceivesSignal(target.type)) {
-    const sourceValue = signalSourceValue(devices, targetSignal)
+    const sourceValue = reconcileReceivedSignalState(devices, target)
     if (sourceValue !== null) {
       target.state.is_on = sourceValue
     }

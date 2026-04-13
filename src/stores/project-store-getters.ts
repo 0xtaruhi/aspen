@@ -10,6 +10,18 @@ import {
   getProjectTopSignals,
   getSelectedProjectNode,
 } from './project-store-view'
+import { projectCanvasStore } from './project-canvas'
+
+function getCachedSnapshotJson(store: ProjectStoreLike) {
+  const canvasRevision = projectCanvasStore.snapshotRevision.value
+  if (store.snapshotCacheDirty || store.cachedCanvasRevision !== canvasRevision) {
+    store.cachedSnapshotJson = JSON.stringify(store.toSnapshot())
+    store.snapshotCacheDirty = false
+    store.cachedCanvasRevision = canvasRevision
+  }
+
+  return store.cachedSnapshotJson
+}
 
 export function createProjectStoreGetterDescriptors(
   store: ProjectStoreLike,
@@ -48,7 +60,7 @@ export function createProjectStoreGetterDescriptors(
     hasUnsavedChanges: {
       enumerable: true,
       configurable: true,
-      get: () => JSON.stringify(store.toSnapshot()) !== store.savedSnapshotJson,
+      get: () => getCachedSnapshotJson(store) !== store.savedSnapshotJson,
     },
     topCode: {
       enumerable: true,
