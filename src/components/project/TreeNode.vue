@@ -18,7 +18,6 @@ import { useI18n } from '@/lib/i18n'
 import { extractVerilogModuleNames } from '@/lib/verilog-modules'
 import { projectStore, type ProjectNode } from '@/stores/project'
 import { topModuleDialogStore } from '@/stores/top-module-dialog'
-import { requestProjectTextInput } from '@/stores/project-text-input'
 import { settingsStore } from '@/stores/settings'
 import {
   ContextMenu,
@@ -54,7 +53,7 @@ const { t } = useI18n()
 const renameInputRef = ref<InputHandle | null>(null)
 const renameValue = ref('')
 const isRenaming = computed(() => projectStore.renamingNodeId === props.node.id)
-const shouldStartRenameAfterContextMenuClose = ref(false)
+const pendingContextMenuAction = ref<'rename' | 'new-file' | 'new-folder' | null>(null)
 
 const nodeModuleNames = computed(() => {
   if (props.node.type !== 'file' || !isHardwareSourceFile(props.node.name)) {
@@ -103,6 +102,14 @@ function startRename() {
   projectStore.beginRenamingNode(props.node.id)
 }
 
+function beginCreatingFile() {
+  projectStore.beginCreatingFile(props.node.id)
+}
+
+function beginCreatingFolder() {
+  projectStore.beginCreatingFolder(props.node.id, t('newFolder'))
+}
+
 function cancelRename() {
   projectStore.cancelRenamingNode(props.node.id)
 }
@@ -112,36 +119,10 @@ function commitRename() {
     return
   }
 
-  projectStore.commitNodeRename(props.node.id, renameValue.value)
-}
-
-async function handleNewFile() {
-  selectNode()
-  const name = await requestProjectTextInput({
-    title: t('newFile'),
-    confirmLabel: t('newFile'),
-    initialValue: 'new_file.v',
-  })
-  if (!name) {
-    return
+  const result = projectStore.commitNodeRename(props.node.id, renameValue.value)
+  if (result.kind === 'created' && result.nodeType === 'file') {
+    openFile(result.id)
   }
-
-  projectStore.createFile(props.node.id, name)
-  void router.push({ name: 'project-management-editor' })
-}
-
-async function handleNewFolder() {
-  selectNode()
-  const name = await requestProjectTextInput({
-    title: t('newFolder'),
-    confirmLabel: t('newFolder'),
-    initialValue: t('newFolder'),
-  })
-  if (!name) {
-    return
-  }
-
-  projectStore.createFolder(props.node.id, name)
 }
 
 async function handleDelete() {
@@ -165,18 +146,29 @@ function deferContextAction(action: () => void | Promise<void>) {
 }
 
 function requestRename() {
-  shouldStartRenameAfterContextMenuClose.value = true
+  pendingContextMenuAction.value = 'rename'
 }
 
 function handleContextMenuCloseAutoFocus(event: Event) {
-  if (!shouldStartRenameAfterContextMenuClose.value) {
+  if (!pendingContextMenuAction.value) {
     return
   }
 
+  const action = pendingContextMenuAction.value
   event.preventDefault()
-  shouldStartRenameAfterContextMenuClose.value = false
+  pendingContextMenuAction.value = null
   window.requestAnimationFrame(() => {
-    startRename()
+    switch (action) {
+      case 'rename':
+        startRename()
+        break
+      case 'new-file':
+        beginCreatingFile()
+        break
+      case 'new-folder':
+        beginCreatingFolder()
+        break
+    }
   })
 }
 
@@ -185,11 +177,11 @@ function requestDelete() {
 }
 
 function requestNewFile() {
-  deferContextAction(handleNewFile)
+  pendingContextMenuAction.value = 'new-file'
 }
 
 function requestNewFolder() {
-  deferContextAction(handleNewFolder)
+  pendingContextMenuAction.value = 'new-folder'
 }
 
 function requestSetAsTopFile() {

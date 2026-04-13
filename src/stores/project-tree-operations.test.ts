@@ -113,7 +113,11 @@ describe('project tree operations', () => {
     projectStore.beginRenamingNode('top-file')
 
     expect(projectStore.renamingNodeId).toBe('top-file')
-    expect(projectStore.commitNodeRename('top-file', '  renamed-top.v  ')).toBe(true)
+    expect(projectStore.commitNodeRename('top-file', '  renamed-top.v  ')).toEqual({
+      kind: 'renamed',
+      id: 'top-file',
+      nodeType: 'file',
+    })
     expect(projectStore.renamingNodeId).toBe('')
     expect(projectStore.findNode('top-file')?.name).toBe('renamed-top.v')
   })
@@ -125,5 +129,49 @@ describe('project tree operations', () => {
     projectStore.loadFromSnapshot(createTreeSnapshot())
 
     expect(projectStore.renamingNodeId).toBe('')
+  })
+
+  it('creates a new file inline and opens it after commit', () => {
+    const createdId = projectStore.beginCreatingFile('root')
+    expect(createdId).toBeTruthy()
+    expect(projectStore.renamingNodeId).toBe(createdId)
+    expect(projectStore.creatingNodeId).toBe(createdId)
+    expect(projectStore.activeFileId).toBe('top-file')
+
+    const result = projectStore.commitNodeRename(createdId!, 'created-from-tree.v')
+    expect(result).toEqual({
+      kind: 'created',
+      id: createdId,
+      nodeType: 'file',
+    })
+    expect(projectStore.creatingNodeId).toBe('')
+    expect(projectStore.findNode(createdId!)?.name).toBe('created-from-tree.v')
+    expect(projectStore.activeFileId).toBe(createdId)
+  })
+
+  it('discards a new inline-created node when rename is canceled', () => {
+    const createdId = projectStore.beginCreatingFile('root')
+    expect(createdId).toBeTruthy()
+
+    projectStore.cancelRenamingNode(createdId!)
+
+    expect(projectStore.findNode(createdId!)).toBeNull()
+    expect(projectStore.creatingNodeId).toBe('')
+    expect(projectStore.selectedNodeId).toBe('top-file')
+    expect(projectStore.activeFileId).toBe('top-file')
+  })
+
+  it('discards an inline-created folder when committed with an empty name', () => {
+    const createdId = projectStore.beginCreatingFolder('root', 'New Folder')
+    expect(createdId).toBeTruthy()
+
+    const result = projectStore.commitNodeRename(createdId!, '   ')
+    expect(result).toEqual({
+      kind: 'discarded',
+      id: createdId,
+      nodeType: 'folder',
+    })
+    expect(projectStore.findNode(createdId!)).toBeNull()
+    expect(projectStore.creatingNodeId).toBe('')
   })
 })

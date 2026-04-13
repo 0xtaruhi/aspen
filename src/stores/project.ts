@@ -51,6 +51,8 @@ type ProjectNodeLocation = {
   index: number
 }
 
+let generatedProjectNodeIdCounter = 0
+
 function findNodeLocationInTree(
   id: string,
   nodes: ProjectNode[],
@@ -98,6 +100,28 @@ function clampInsertionIndex(index: number, length: number): number {
   return Math.max(0, Math.min(length, Math.trunc(index)))
 }
 
+function removeNodeFromTree(id: string, nodes: ProjectNode[]): boolean {
+  const idx = nodes.findIndex((node) => node.id === id)
+  if (idx !== -1) {
+    nodes.splice(idx, 1)
+    return true
+  }
+
+  for (const node of nodes) {
+    if (node.children && removeNodeFromTree(id, node.children)) {
+      return true
+    }
+  }
+
+  return false
+}
+
+function nextProjectNodeId(): string {
+  const id = `${Date.now().toString(36)}-${generatedProjectNodeIdCounter.toString(36)}`
+  generatedProjectNodeIdCounter += 1
+  return id
+}
+
 export const projectStore = reactive({
   sessionId: 0,
   files: [] as ProjectNode[],
@@ -105,6 +129,9 @@ export const projectStore = reactive({
   activeFileId: '',
   selectedNodeId: '',
   renamingNodeId: '',
+  creatingNodeId: '',
+  selectionBeforeCreatingNodeId: '',
+  activeFileBeforeCreatingNodeId: '',
   topFileId: '',
   topModuleName: '',
   targetDeviceId: defaultFpgaDeviceId,
@@ -216,6 +243,9 @@ export const projectStore = reactive({
     this.activeFileId = nextActiveFileId
     this.selectedNodeId = nextActiveFileId
     this.renamingNodeId = ''
+    this.creatingNodeId = ''
+    this.selectionBeforeCreatingNodeId = ''
+    this.activeFileBeforeCreatingNodeId = ''
     this.topFileId = nextTopFileId
     this.topModuleName = parsed.topFileId === nextTopFileId ? parsed.topModuleName : ''
     this.targetDeviceId = parsed.targetDeviceId
@@ -245,7 +275,54 @@ export const projectStore = reactive({
     this.selectedNodeId = id
   },
 
+  clearCreatingNodeState() {
+    this.creatingNodeId = ''
+    this.selectionBeforeCreatingNodeId = ''
+    this.activeFileBeforeCreatingNodeId = ''
+  },
+
+  discardCreatingNode(id?: string) {
+    const targetId = id ?? this.creatingNodeId
+    if (!targetId || this.creatingNodeId !== targetId) {
+      return false
+    }
+
+    const restoreSelectedNodeId = this.selectionBeforeCreatingNodeId
+    const restoreActiveFileId = this.activeFileBeforeCreatingNodeId
+
+    if (!removeNodeFromTree(targetId, this.files)) {
+      this.clearCreatingNodeState()
+      if (this.renamingNodeId === targetId) {
+        this.renamingNodeId = ''
+      }
+      return false
+    }
+
+    if (this.activeFileId === targetId) {
+      this.activeFileId = ''
+    }
+    if (this.selectedNodeId === targetId) {
+      this.selectedNodeId = ''
+    }
+    if (this.renamingNodeId === targetId) {
+      this.renamingNodeId = ''
+    }
+
+    this.clearCreatingNodeState()
+
+    this.activeFileId = this.findNode(restoreActiveFileId) ? restoreActiveFileId : ''
+    this.selectedNodeId = this.findNode(restoreSelectedNodeId)
+      ? restoreSelectedNodeId
+      : this.activeFileId
+
+    return true
+  },
+
   beginRenamingNode(id: string) {
+    if (this.creatingNodeId) {
+      this.discardCreatingNode(this.creatingNodeId)
+    }
+
     if (!this.findNode(id)) {
       return
     }
@@ -255,9 +332,72 @@ export const projectStore = reactive({
   },
 
   cancelRenamingNode(id?: string) {
+    const targetId = id ?? this.renamingNodeId
+    if (!targetId) {
+      return
+    }
+
+    if (this.creatingNodeId === targetId) {
+      this.discardCreatingNode(targetId)
+      return
+    }
+
     if (!id || this.renamingNodeId === id) {
       this.renamingNodeId = ''
     }
+  },
+
+  beginCreatingFile(parentId: string, initialName = 'new_file.v') {
+    return this.beginCreatingNode(parentId, 'file', initialName)
+  },
+
+  beginCreatingFolder(parentId: string, initialName = 'New Folder') {
+    return this.beginCreatingNode(parentId, 'folder', initialName)
+  },
+
+  beginCreatingNode(parentId: string, type: 'file' | 'folder', initialName: string) {
+    const parent = this.findNode(parentId)
+    if (!parent || parent.type !== 'folder') {
+      return null
+    }
+
+    if (this.creatingNodeId) {
+      this.discardCreatingNode(this.creatingNodeId)
+    } else if (this.renamingNodeId) {
+      this.cancelRenamingNode(this.renamingNodeId)
+    }
+
+    if (!parent.children) {
+      parent.children = []
+    }
+
+    const id = nextProjectNodeId()
+    const node: ProjectNode =
+      type === 'file'
+        ? {
+            id,
+            name: initialName,
+            type: 'file',
+            content: '',
+          }
+        : {
+            id,
+            name: initialName,
+            type: 'folder',
+            children: [],
+            isOpen: true,
+          }
+
+    parent.children.push(node)
+    parent.isOpen = true
+
+    this.selectionBeforeCreatingNodeId = this.selectedNodeId
+    this.activeFileBeforeCreatingNodeId = this.activeFileId
+    this.creatingNodeId = id
+    this.selectedNodeId = id
+    this.renamingNodeId = id
+
+    return id
   },
 
   setTopFile(id: string) {
@@ -365,7 +505,7 @@ export const projectStore = reactive({
     const parent = this.findNode(parentId)
     if (parent && parent.type === 'folder') {
       if (!parent.children) parent.children = []
-      const id = Date.now().toString()
+      const id = nextProjectNodeId()
       parent.children.push({
         id,
         name,
@@ -382,7 +522,7 @@ export const projectStore = reactive({
     const parent = this.findNode(parentId)
     if (parent && parent.type === 'folder') {
       if (!parent.children) parent.children = []
-      const id = Date.now().toString()
+      const id = nextProjectNodeId()
       parent.children.push({
         id,
         name,
@@ -434,19 +574,7 @@ export const projectStore = reactive({
   },
 
   deleteNode(id: string) {
-    // Helper to remove node from tree
-    const remove = (nodes: ProjectNode[]): boolean => {
-      const idx = nodes.findIndex((n) => n.id === id)
-      if (idx !== -1) {
-        nodes.splice(idx, 1)
-        return true
-      }
-      for (const node of nodes) {
-        if (node.children && remove(node.children)) return true
-      }
-      return false
-    }
-    remove(this.files)
+    removeNodeFromTree(id, this.files)
     if (this.activeFileId === id) {
       this.activeFileId = ''
     }
@@ -455,6 +583,9 @@ export const projectStore = reactive({
     }
     if (this.renamingNodeId === id) {
       this.renamingNodeId = ''
+    }
+    if (this.creatingNodeId === id) {
+      this.clearCreatingNodeState()
     }
     if (this.topFileId === id) {
       this.topFileId = resolveTopFileId(this.files)
@@ -470,18 +601,41 @@ export const projectStore = reactive({
   commitNodeRename(id: string, newName: string) {
     const trimmedName = newName.trim()
     const node = this.findNode(id)
+    const isCreatingNode = this.creatingNodeId === id
     if (!node) {
       this.cancelRenamingNode(id)
-      return false
+      return { kind: 'discarded' as const, id, nodeType: null }
     }
 
     this.renamingNodeId = ''
     if (!trimmedName || trimmedName === node.name) {
-      return false
+      if (isCreatingNode && !trimmedName) {
+        this.discardCreatingNode(id)
+        return { kind: 'discarded' as const, id, nodeType: node.type }
+      }
+
+      if (isCreatingNode) {
+        this.clearCreatingNodeState()
+        if (node.type === 'file') {
+          this.activeFileId = id
+        }
+        return { kind: 'created' as const, id, nodeType: node.type }
+      }
+
+      return { kind: 'noop' as const, id, nodeType: node.type }
     }
 
     node.name = trimmedName
-    return true
+
+    if (isCreatingNode) {
+      this.clearCreatingNodeState()
+      if (node.type === 'file') {
+        this.activeFileId = id
+      }
+      return { kind: 'created' as const, id, nodeType: node.type }
+    }
+
+    return { kind: 'renamed' as const, id, nodeType: node.type }
   },
 
   moveNode(id: string, targetParentId: string | null, targetIndex: number) {
@@ -536,6 +690,9 @@ export const projectStore = reactive({
     this.activeFileId = nextProject.activeFileId
     this.selectedNodeId = nextProject.selectedNodeId
     this.renamingNodeId = ''
+    this.creatingNodeId = ''
+    this.selectionBeforeCreatingNodeId = ''
+    this.activeFileBeforeCreatingNodeId = ''
     this.topFileId = nextProject.topFileId
     this.topModuleName = nextProject.topModuleName
 
@@ -559,6 +716,9 @@ export const projectStore = reactive({
     this.activeFileId = ''
     this.selectedNodeId = ''
     this.renamingNodeId = ''
+    this.creatingNodeId = ''
+    this.selectionBeforeCreatingNodeId = ''
+    this.activeFileBeforeCreatingNodeId = ''
     this.topFileId = ''
     this.topModuleName = ''
     this.targetDeviceId = defaultFpgaDeviceId

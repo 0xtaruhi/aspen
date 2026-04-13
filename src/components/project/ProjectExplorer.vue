@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useRouter } from 'vue-router'
 
 import {
   ContextMenu,
@@ -11,13 +10,11 @@ import {
 import { useI18n } from '@/lib/i18n'
 import { importProjectFiles } from '@/lib/project-io'
 import { projectStore } from '@/stores/project'
-import { requestProjectTextInput } from '@/stores/project-text-input'
 import { settingsStore } from '@/stores/settings'
 import { confirmAction } from '@/lib/confirm-action'
 import type { ProjectTreeDropTarget, ProjectTreeDropMode } from './tree-dnd'
 import TreeNode from './TreeNode.vue'
 
-const router = useRouter()
 const { t } = useI18n()
 const rootNode = computed(() => projectStore.rootNode)
 const visibleNodes = computed(() => rootNode.value?.children ?? projectStore.files)
@@ -33,42 +30,24 @@ const pendingDragState = ref<{
   currentX: number
   currentY: number
 } | null>(null)
+const pendingContextMenuAction = ref<'new-file' | 'new-folder' | null>(null)
 
-async function handleNewFile() {
+function handleNewFile() {
   const parent = rootNode.value
   if (!parent) {
     return
   }
 
-  const name = await requestProjectTextInput({
-    title: t('newFile'),
-    confirmLabel: t('newFile'),
-    initialValue: 'new_file.v',
-  })
-  if (!name) {
-    return
-  }
-
-  projectStore.createFile(parent.id, name)
-  void router.push({ name: 'project-management-editor' })
+  projectStore.beginCreatingFile(parent.id)
 }
 
-async function handleNewFolder() {
+function handleNewFolder() {
   const parent = rootNode.value
   if (!parent) {
     return
   }
 
-  const name = await requestProjectTextInput({
-    title: t('newFolder'),
-    confirmLabel: t('newFolder'),
-    initialValue: t('newFolder'),
-  })
-  if (!name) {
-    return
-  }
-
-  projectStore.createFolder(parent.id, name)
+  projectStore.beginCreatingFolder(parent.id, t('newFolder'))
 }
 
 function handleImportFiles() {
@@ -77,6 +56,33 @@ function handleImportFiles() {
 
 function focusExplorer() {
   explorerRef.value?.focus()
+}
+
+function requestNewFile() {
+  pendingContextMenuAction.value = 'new-file'
+}
+
+function requestNewFolder() {
+  pendingContextMenuAction.value = 'new-folder'
+}
+
+function handleContextMenuCloseAutoFocus(event: Event) {
+  if (!pendingContextMenuAction.value) {
+    return
+  }
+
+  const action = pendingContextMenuAction.value
+  event.preventDefault()
+  pendingContextMenuAction.value = null
+
+  window.requestAnimationFrame(() => {
+    if (action === 'new-file') {
+      handleNewFile()
+      return
+    }
+
+    handleNewFolder()
+  })
 }
 
 function clearDragState() {
@@ -297,9 +303,13 @@ function consumeSuppressedClick(nodeId: string) {
           </div>
         </div>
       </ContextMenuTrigger>
-      <ContextMenuContent v-if="rootNode" class="w-48">
-        <ContextMenuItem @select="handleNewFile">{{ t('newFile') }}</ContextMenuItem>
-        <ContextMenuItem @select="handleNewFolder">{{ t('newFolder') }}</ContextMenuItem>
+      <ContextMenuContent
+        v-if="rootNode"
+        class="w-48"
+        @close-auto-focus="handleContextMenuCloseAutoFocus"
+      >
+        <ContextMenuItem @select="requestNewFile">{{ t('newFile') }}</ContextMenuItem>
+        <ContextMenuItem @select="requestNewFolder">{{ t('newFolder') }}</ContextMenuItem>
         <ContextMenuItem @select="handleImportFiles">{{ t('importFiles') }}</ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>

@@ -8,7 +8,6 @@ import { useRoute, useRouter } from 'vue-router'
 import NavMain from '@/components/NavMain.vue'
 import ProjectMenu from '@/components/ProjectMenu.vue'
 import ProjectExplorer from '@/components/project/ProjectExplorer.vue'
-import ProjectTextInputDialog from '@/components/project/ProjectTextInputDialog.vue'
 import TopModuleSelect from '@/components/TopModuleSelect.vue'
 import { importProjectFiles } from '@/lib/project-io'
 import { Button } from '@/components/ui/button'
@@ -26,7 +25,6 @@ import { useI18n } from '@/lib/i18n'
 import { type AppRouteName, moduleForRouteName, modulePathMap } from '@/router'
 import { hardwareStore } from '@/stores/hardware'
 import { projectStore } from '@/stores/project'
-import { requestProjectTextInput } from '@/stores/project-text-input'
 
 const props = withDefaults(defineProps<SidebarProps>(), {
   collapsible: 'icon',
@@ -131,41 +129,22 @@ const data = computed(() => ({
   ],
 }))
 
-async function handleNewFile() {
+function handleNewFile() {
   const parent = rootNode.value
   if (!parent) {
     return
   }
 
-  const name = await requestProjectTextInput({
-    title: t('newFile'),
-    confirmLabel: t('newFile'),
-    initialValue: 'new_file.v',
-  })
-  if (!name) {
-    return
-  }
-
-  projectStore.createFile(parent.id, name)
-  void router.push({ name: 'project-management-editor' })
+  projectStore.beginCreatingFile(parent.id)
 }
 
-async function handleNewFolder() {
+function handleNewFolder() {
   const parent = rootNode.value
   if (!parent) {
     return
   }
 
-  const name = await requestProjectTextInput({
-    title: t('newFolder'),
-    confirmLabel: t('newFolder'),
-    initialValue: t('newFolder'),
-  })
-  if (!name) {
-    return
-  }
-
-  projectStore.createFolder(parent.id, name)
+  projectStore.beginCreatingFolder(parent.id, t('newFolder'))
 }
 
 function handleImportFiles() {
@@ -175,7 +154,6 @@ function handleImportFiles() {
 
 <template>
   <Sidebar v-bind="props">
-    <ProjectTextInputDialog />
     <SidebarHeader>
       <ProjectMenu />
     </SidebarHeader>
