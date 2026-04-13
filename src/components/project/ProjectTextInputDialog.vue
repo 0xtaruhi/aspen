@@ -19,8 +19,13 @@ import {
   submitProjectTextInput,
 } from '@/stores/project-text-input'
 
+type InputHandle = {
+  focus: () => void
+  select: () => void
+}
+
 const { t } = useI18n()
-const inputRef = ref<HTMLInputElement | null>(null)
+const inputRef = ref<InputHandle | null>(null)
 
 const isSubmitDisabled = computed(() => {
   return projectTextInputStore.value.trim().length === 0
@@ -44,8 +49,10 @@ watch(
     }
 
     await nextTick()
-    inputRef.value?.focus()
-    inputRef.value?.select()
+    window.requestAnimationFrame(() => {
+      inputRef.value?.focus()
+      inputRef.value?.select()
+    })
   },
 )
 </script>

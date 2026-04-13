@@ -44,12 +44,67 @@ export type {
   ProjectSynthesisCacheSnapshot,
 } from './project-model'
 
+type ProjectNodeLocation = {
+  node: ProjectNode
+  parent: ProjectNode | null
+  container: ProjectNode[]
+  index: number
+}
+
+function findNodeLocationInTree(
+  id: string,
+  nodes: ProjectNode[],
+  parent: ProjectNode | null = null,
+): ProjectNodeLocation | null {
+  for (const [index, node] of nodes.entries()) {
+    if (node.id === id) {
+      return {
+        node,
+        parent,
+        container: nodes,
+        index,
+      }
+    }
+    if (node.children) {
+      const found = findNodeLocationInTree(id, node.children, node)
+      if (found) {
+        return found
+      }
+    }
+  }
+
+  return null
+}
+
+function nodeContainsDescendantId(node: ProjectNode, descendantId: string): boolean {
+  if (!node.children) {
+    return false
+  }
+
+  for (const child of node.children) {
+    if (child.id === descendantId || nodeContainsDescendantId(child, descendantId)) {
+      return true
+    }
+  }
+
+  return false
+}
+
+function clampInsertionIndex(index: number, length: number): number {
+  if (!Number.isFinite(index)) {
+    return length
+  }
+
+  return Math.max(0, Math.min(length, Math.trunc(index)))
+}
+
 export const projectStore = reactive({
   sessionId: 0,
   files: [] as ProjectNode[],
 
   activeFileId: '',
   selectedNodeId: '',
+  renamingNodeId: '',
   topFileId: '',
   topModuleName: '',
   targetDeviceId: defaultFpgaDeviceId,
@@ -73,6 +128,10 @@ export const projectStore = reactive({
       }
     }
     return null
+  },
+
+  findNodeLocation(id: string, nodes?: ProjectNode[], parent: ProjectNode | null = null) {
+    return findNodeLocationInTree(id, nodes || this.files, parent)
   },
 
   get activeFile() {
@@ -156,6 +215,7 @@ export const projectStore = reactive({
     this.files = nextFiles
     this.activeFileId = nextActiveFileId
     this.selectedNodeId = nextActiveFileId
+    this.renamingNodeId = ''
     this.topFileId = nextTopFileId
     this.topModuleName = parsed.topFileId === nextTopFileId ? parsed.topModuleName : ''
     this.targetDeviceId = parsed.targetDeviceId
@@ -183,6 +243,21 @@ export const projectStore = reactive({
 
   setSelectedNode(id: string) {
     this.selectedNodeId = id
+  },
+
+  beginRenamingNode(id: string) {
+    if (!this.findNode(id)) {
+      return
+    }
+
+    this.selectedNodeId = id
+    this.renamingNodeId = id
+  },
+
+  cancelRenamingNode(id?: string) {
+    if (!id || this.renamingNodeId === id) {
+      this.renamingNodeId = ''
+    }
   },
 
   setTopFile(id: string) {
@@ -378,6 +453,9 @@ export const projectStore = reactive({
     if (this.selectedNodeId === id) {
       this.selectedNodeId = ''
     }
+    if (this.renamingNodeId === id) {
+      this.renamingNodeId = ''
+    }
     if (this.topFileId === id) {
       this.topFileId = resolveTopFileId(this.files)
       this.topModuleName = ''
@@ -389,11 +467,67 @@ export const projectStore = reactive({
     }
   },
 
-  renameNode(id: string, newName: string) {
+  commitNodeRename(id: string, newName: string) {
+    const trimmedName = newName.trim()
     const node = this.findNode(id)
-    if (node) {
-      node.name = newName
+    if (!node) {
+      this.cancelRenamingNode(id)
+      return false
     }
+
+    this.renamingNodeId = ''
+    if (!trimmedName || trimmedName === node.name) {
+      return false
+    }
+
+    node.name = trimmedName
+    return true
+  },
+
+  moveNode(id: string, targetParentId: string | null, targetIndex: number) {
+    const source = this.findNodeLocation(id)
+    if (!source) {
+      return false
+    }
+
+    const targetParent = targetParentId ? this.findNode(targetParentId) : null
+    if (targetParent && targetParent.type !== 'folder') {
+      return false
+    }
+
+    if (targetParent && source.node.type === 'folder') {
+      if (
+        targetParent.id === source.node.id ||
+        nodeContainsDescendantId(source.node, targetParent.id)
+      ) {
+        return false
+      }
+    }
+
+    const targetContainer = targetParent ? (targetParent.children ??= []) : this.files
+    let insertionIndex = clampInsertionIndex(targetIndex, targetContainer.length)
+
+    if (source.container === targetContainer) {
+      if (source.index === insertionIndex || source.index + 1 === insertionIndex) {
+        return true
+      }
+      if (source.index < insertionIndex) {
+        insertionIndex -= 1
+      }
+    }
+
+    const [movedNode] = source.container.splice(source.index, 1)
+    if (!movedNode) {
+      return false
+    }
+
+    targetContainer.splice(insertionIndex, 0, movedNode)
+
+    if (targetParent) {
+      targetParent.isOpen = true
+    }
+
+    return true
   },
 
   createNewProject(name: string, template: ProjectTemplate) {
@@ -401,6 +535,7 @@ export const projectStore = reactive({
     this.files = nextProject.files
     this.activeFileId = nextProject.activeFileId
     this.selectedNodeId = nextProject.selectedNodeId
+    this.renamingNodeId = ''
     this.topFileId = nextProject.topFileId
     this.topModuleName = nextProject.topModuleName
 
@@ -423,6 +558,7 @@ export const projectStore = reactive({
     this.files = []
     this.activeFileId = ''
     this.selectedNodeId = ''
+    this.renamingNodeId = ''
     this.topFileId = ''
     this.topModuleName = ''
     this.targetDeviceId = defaultFpgaDeviceId

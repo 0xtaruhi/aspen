@@ -14,6 +14,7 @@ import { projectStore } from '@/stores/project'
 import { requestProjectTextInput } from '@/stores/project-text-input'
 import { settingsStore } from '@/stores/settings'
 import { confirmAction } from '@/lib/confirm-action'
+import type { ProjectTreeDropTarget, ProjectTreeDropMode } from './tree-dnd'
 import TreeNode from './TreeNode.vue'
 
 const router = useRouter()
@@ -21,6 +22,17 @@ const { t } = useI18n()
 const rootNode = computed(() => projectStore.rootNode)
 const visibleNodes = computed(() => rootNode.value?.children ?? projectStore.files)
 const explorerRef = ref<HTMLDivElement | null>(null)
+const draggedNodeId = ref<string | null>(null)
+const dropTarget = ref<ProjectTreeDropTarget | null>(null)
+const dragStarted = ref(false)
+const suppressedClickNodeId = ref<string | null>(null)
+const pendingDragState = ref<{
+  nodeId: string
+  startX: number
+  startY: number
+  currentX: number
+  currentY: number
+} | null>(null)
 
 async function handleNewFile() {
   const parent = rootNode.value
@@ -67,22 +79,23 @@ function focusExplorer() {
   explorerRef.value?.focus()
 }
 
-async function handleRenameSelectedNode() {
+function clearDragState() {
+  dragStarted.value = false
+  draggedNodeId.value = null
+  dropTarget.value = null
+  pendingDragState.value = null
+  window.removeEventListener('pointermove', handleWindowPointerMove)
+  window.removeEventListener('pointerup', handleWindowPointerUp)
+  window.removeEventListener('pointercancel', handleWindowPointerUp)
+}
+
+function handleRenameSelectedNode() {
   const node = projectStore.selectedNode
   if (!node) {
     return
   }
 
-  const newName = await requestProjectTextInput({
-    title: t('rename'),
-    confirmLabel: t('rename'),
-    initialValue: node.name,
-  })
-  if (!newName) {
-    return
-  }
-
-  projectStore.renameNode(node.id, newName)
+  projectStore.beginRenamingNode(node.id)
 }
 
 async function handleDeleteSelectedNode() {
@@ -117,6 +130,134 @@ function handleKeydown(event: KeyboardEvent) {
     void handleDeleteSelectedNode()
   }
 }
+
+function handleNodePointerDown(nodeId: string, event: PointerEvent) {
+  if (event.button !== 0) {
+    return
+  }
+
+  pendingDragState.value = {
+    nodeId,
+    startX: event.clientX,
+    startY: event.clientY,
+    currentX: event.clientX,
+    currentY: event.clientY,
+  }
+  draggedNodeId.value = nodeId
+  dropTarget.value = null
+  dragStarted.value = false
+
+  window.addEventListener('pointermove', handleWindowPointerMove)
+  window.addEventListener('pointerup', handleWindowPointerUp)
+  window.addEventListener('pointercancel', handleWindowPointerUp)
+}
+
+function handleNodePointerMove(nodeId: string, mode: Exclude<ProjectTreeDropMode, 'root'>) {
+  if (!draggedNodeId.value || draggedNodeId.value === nodeId) {
+    return
+  }
+
+  dropTarget.value = {
+    nodeId,
+    mode,
+  }
+}
+
+function handleRootPointerMove(event: PointerEvent) {
+  if (!draggedNodeId.value || !dragStarted.value) {
+    return
+  }
+
+  const target = event.target as HTMLElement | null
+  if (target?.closest('[data-project-tree-row="true"]')) {
+    return
+  }
+
+  dropTarget.value = {
+    nodeId: null,
+    mode: 'root',
+  }
+}
+
+function commitDrop() {
+  if (!dragStarted.value || !draggedNodeId.value || !dropTarget.value) {
+    return
+  }
+
+  if (dropTarget.value.mode === 'root') {
+    projectStore.moveNode(
+      draggedNodeId.value,
+      rootNode.value?.id ?? null,
+      visibleNodes.value.length,
+    )
+    return
+  }
+
+  const targetLocation = projectStore.findNodeLocation(dropTarget.value.nodeId ?? '')
+  if (!targetLocation) {
+    return
+  }
+
+  if (dropTarget.value.mode === 'inside') {
+    if (targetLocation.node.type !== 'folder') {
+      return
+    }
+
+    projectStore.moveNode(
+      draggedNodeId.value,
+      targetLocation.node.id,
+      targetLocation.node.children?.length ?? 0,
+    )
+    return
+  }
+
+  projectStore.moveNode(
+    draggedNodeId.value,
+    targetLocation.parent?.id ?? null,
+    dropTarget.value.mode === 'before' ? targetLocation.index : targetLocation.index + 1,
+  )
+}
+
+function handleWindowPointerMove(event: PointerEvent) {
+  const state = pendingDragState.value
+  if (!state) {
+    return
+  }
+
+  state.currentX = event.clientX
+  state.currentY = event.clientY
+
+  if (dragStarted.value) {
+    return
+  }
+
+  const distance = Math.hypot(event.clientX - state.startX, event.clientY - state.startY)
+  if (distance < 4) {
+    return
+  }
+
+  dragStarted.value = true
+}
+
+function clearSuppressedClick() {
+  suppressedClickNodeId.value = null
+}
+
+function handleWindowPointerUp() {
+  if (dragStarted.value && draggedNodeId.value) {
+    suppressedClickNodeId.value = draggedNodeId.value
+    window.setTimeout(clearSuppressedClick, 0)
+    commitDrop()
+  }
+
+  clearDragState()
+}
+
+function consumeSuppressedClick(nodeId: string) {
+  if (suppressedClickNodeId.value === nodeId) {
+    suppressedClickNodeId.value = null
+  }
+}
 </script>
 
 <template>
@@ -126,9 +267,14 @@ function handleKeydown(event: KeyboardEvent) {
         <div
           ref="explorerRef"
           class="flex-1 overflow-auto p-2 text-sm select-none outline-none"
+          :class="{
+            'rounded-md bg-accent/30 ring-1 ring-primary/30':
+              dropTarget?.mode === 'root' && dropTarget.nodeId === null,
+          }"
           tabindex="0"
           @keydown="handleKeydown"
           @pointerdown="focusExplorer"
+          @pointermove="handleRootPointerMove"
         >
           <div v-if="!projectStore.hasProject" class="flex h-full items-center justify-center">
             <p class="max-w-48 text-center text-xs text-muted-foreground">
@@ -137,7 +283,16 @@ function handleKeydown(event: KeyboardEvent) {
           </div>
           <div v-else class="space-y-0.5">
             <template v-for="node in visibleNodes" :key="node.id">
-              <TreeNode :node="node" />
+              <TreeNode
+                :node="node"
+                :dragged-node-id="draggedNodeId"
+                :drag-started="dragStarted"
+                :drop-target="dropTarget"
+                :suppressed-click-node-id="suppressedClickNodeId"
+                @pointer-down-node="handleNodePointerDown"
+                @pointer-move-node="handleNodePointerMove"
+                @consume-suppressed-click="consumeSuppressedClick"
+              />
             </template>
           </div>
         </div>
