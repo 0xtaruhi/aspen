@@ -269,6 +269,33 @@ describe('project save-state regression', () => {
       signal: 'io_gameover',
     }
 
+    const switchDevice = createCanvasDeviceSnapshot('switch', 'switch-1', 80, 160, 2)
+    switchDevice.label = 'Run Switch'
+    switchDevice.state.is_on = true
+    switchDevice.state.binding = {
+      kind: 'single',
+      signal: 'run_enable',
+    }
+
+    const button = createCanvasDeviceSnapshot('button', 'button-1', 80, 240, 3)
+    button.label = 'Reset Button'
+    button.state.is_on = true
+    button.state.binding = {
+      kind: 'single',
+      signal: 'reset_n',
+    }
+
+    const dip = createCanvasDeviceSnapshot('dip_switch_bank', 'dip-1', 120, 320, 4)
+    dip.label = 'Config DIP'
+    dip.state.binding = {
+      kind: 'slots',
+      signals: ['cfg0', 'cfg1', 'cfg2', 'cfg3', 'cfg4', 'cfg5', 'cfg6', 'cfg7'],
+    }
+    dip.state.data = {
+      kind: 'bitset',
+      bits: [true, false, true, false, false, true, false, true],
+    }
+
     const matrix = createCanvasDeviceSnapshot('led_matrix', 'matrix-1', 240, 160, 1)
     matrix.label = 'Matrix A'
     matrix.state.color = '#eab308'
@@ -314,40 +341,116 @@ describe('project save-state regression', () => {
       ],
     }
 
-    projectCanvasStore.setCanvasDevices([led, matrix, vga])
+    const uart = createCanvasDeviceSnapshot('uart_terminal', 'uart-1', 420, 260, 5)
+    uart.label = 'UART Console'
+    uart.state.data = {
+      kind: 'queued_bytes',
+      bytes: [0x41, 0x42, 0x43],
+    }
+
+    projectCanvasStore.setCanvasDevices([led, switchDevice, button, dip, matrix, vga, uart])
 
     const snapshot = projectStore.toSnapshot()
-    expect(snapshot.canvasDevices).toHaveLength(3)
+    expect(snapshot.canvasDevices).toHaveLength(7)
     expect(snapshot.canvasDevices[0]?.label).toBe('Status LED')
     expect(snapshot.canvasDevices[0]?.state.is_on).toBe(false)
-    expect(snapshot.canvasDevices[1]?.state.config).toEqual({
+    expect(snapshot.canvasDevices[1]?.state.is_on).toBe(true)
+    expect(snapshot.canvasDevices[2]?.state.is_on).toBe(false)
+    expect(snapshot.canvasDevices[3]?.state.data).toEqual({
+      kind: 'bitset',
+      bits: [true, false, true, false, false, true, false, true],
+    })
+    expect(snapshot.canvasDevices[4]?.state.config).toEqual({
       kind: 'led_matrix',
       rows: 8,
       columns: 8,
     })
-    expect(snapshot.canvasDevices[2]?.state.config).toEqual({
+    expect(snapshot.canvasDevices[5]?.state.config).toEqual({
       kind: 'vga_display',
       rows: 240,
       columns: 320,
       color_mode: 'rgb565',
     })
+    expect(snapshot.canvasDevices[6]?.state.data).toEqual({
+      kind: 'none',
+    })
 
     projectCanvasStore.setCanvasDevices([])
     projectStore.loadFromSnapshot(snapshot)
 
-    expect(projectCanvasStore.canvasDevices.value).toHaveLength(3)
+    expect(projectCanvasStore.canvasDevices.value).toHaveLength(7)
     expect(projectCanvasStore.canvasDevices.value[0]?.label).toBe('Status LED')
     expect(projectCanvasStore.canvasDevices.value[0]?.state.binding).toEqual({
       kind: 'single',
       signal: 'io_gameover',
     })
     expect(projectCanvasStore.canvasDevices.value[0]?.state.is_on).toBe(false)
-    expect(projectCanvasStore.canvasDevices.value[1]?.state.color).toBe('#eab308')
-    expect(projectCanvasStore.canvasDevices.value[2]?.state.config).toEqual({
+    expect(projectCanvasStore.canvasDevices.value[1]?.state.is_on).toBe(true)
+    expect(projectCanvasStore.canvasDevices.value[2]?.state.is_on).toBe(false)
+    expect(projectCanvasStore.canvasDevices.value[3]?.state.data).toEqual({
+      kind: 'bitset',
+      bits: [true, false, true, false, false, true, false, true],
+    })
+    expect(projectCanvasStore.canvasDevices.value[4]?.state.color).toBe('#eab308')
+    expect(projectCanvasStore.canvasDevices.value[5]?.state.config).toEqual({
       kind: 'vga_display',
       rows: 240,
       columns: 320,
       color_mode: 'rgb565',
     })
+    expect(projectCanvasStore.canvasDevices.value[6]?.state.data).toEqual({
+      kind: 'none',
+    })
+  })
+
+  it('only marks persistent virtual device state as unsaved', () => {
+    projectStore.createNewProject('VirtualDeviceDirtyStateProject', 'empty')
+
+    const switchDevice = createCanvasDeviceSnapshot('switch', 'switch-dirty', 40, 40, 1)
+    const button = createCanvasDeviceSnapshot('button', 'button-dirty', 140, 40, 2)
+    const dip = createCanvasDeviceSnapshot('dip_switch_bank', 'dip-dirty', 240, 40, 3)
+
+    projectCanvasStore.setCanvasDevices([switchDevice, button, dip])
+    projectStore.markSaved(null)
+
+    projectCanvasStore.applyAction({
+      type: 'set_canvas_switch_state',
+      id: 'button-dirty',
+      is_on: true,
+    })
+    expect(projectStore.hasUnsavedChanges).toBe(false)
+
+    projectCanvasStore.applyAction({
+      type: 'set_canvas_switch_state',
+      id: 'switch-dirty',
+      is_on: true,
+    })
+    expect(projectStore.hasUnsavedChanges).toBe(true)
+
+    projectStore.markSaved(null)
+
+    const persistedDip = projectCanvasStore.canvasDevices.value.find(
+      (device) => device.id === 'dip-dirty',
+    )
+    expect(persistedDip).toBeTruthy()
+    if (!persistedDip) {
+      return
+    }
+
+    projectCanvasStore.applyAction({
+      type: 'upsert_canvas_device',
+      device: {
+        ...persistedDip,
+        state: {
+          ...persistedDip.state,
+          data: {
+            kind: 'bitset',
+            bits: [true, false, true, false, false, false, false, false],
+          },
+        },
+      },
+    })
+
+    expect(projectStore.hasUnsavedChanges).toBe(true)
   })
 })

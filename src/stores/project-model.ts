@@ -8,7 +8,7 @@ import {
   type ImplementationReportV1,
   type SynthesisReportV1,
 } from '../lib/hardware-client'
-import { deviceReceivesSignal } from '../lib/canvas-devices'
+import { sanitizeCanvasDeviceSnapshotForProject } from '../lib/canvas-devices'
 
 import { normalizeFpgaDeviceId, type FpgaDeviceId } from '../lib/fpga-device-catalog'
 import {
@@ -259,13 +259,7 @@ function isCanvasDeviceSnapshot(value: unknown): value is CanvasDeviceSnapshot {
 export function cloneProjectCanvasDevices(
   devices: readonly CanvasDeviceSnapshot[] = [],
 ): CanvasDeviceSnapshot[] {
-  const cloned = JSON.parse(JSON.stringify(devices)) as CanvasDeviceSnapshot[]
-  for (const device of cloned) {
-    if (deviceReceivesSignal(device.type)) {
-      device.state.is_on = false
-    }
-  }
-  return cloned
+  return devices.map((device) => sanitizeCanvasDeviceSnapshotForProject(device))
 }
 
 export function normalizeProjectCanvasDevices(value: unknown): CanvasDeviceSnapshot[] {

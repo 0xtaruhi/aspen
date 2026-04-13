@@ -1,11 +1,7 @@
 import { reactive } from 'vue'
 
 import { defaultFpgaDeviceId, type FpgaDeviceId } from '../lib/fpga-device-catalog'
-import {
-  defaultFpgaBoardId,
-  getDefaultFpgaBoardIdForDevice,
-  type FpgaBoardId,
-} from '../lib/fpga-board-catalog'
+import { defaultFpgaBoardId, type FpgaBoardId } from '../lib/fpga-board-catalog'
 import {
   cloneProjectConstraintSnapshot,
   emptyProjectConstraintSnapshot,
@@ -17,17 +13,12 @@ import {
   type ImplementationPlaceMode,
 } from '../lib/implementation-settings'
 import {
-  buildFileSignatureMap,
   cloneProjectCanvasDevices,
   cloneProjectImplementationCacheSnapshot,
   cloneProjectNodes,
   cloneProjectSynthesisCacheSnapshot,
-  createFileSignature,
-  findFirstFileId,
   isHardwareSourceFile,
-  normalizeProjectSnapshot,
   parseTopSignals,
-  resolveTopFileId,
   type FileSignatureMap,
   type ProjectImplementationCacheSnapshot,
   type ProjectNode,
@@ -35,7 +26,46 @@ import {
   type ProjectSynthesisCacheSnapshot,
 } from './project-model'
 import { projectCanvasStore } from './project-canvas'
-import { createProjectTemplateState, type ProjectTemplate } from './project-templates'
+import {
+  clearPinConstraint as clearProjectPinConstraint,
+  clearPinConstraints as clearProjectPinConstraints,
+  replacePinConstraints as replaceProjectPinConstraints,
+  setImplementationPlaceMode as setProjectImplementationPlaceMode,
+  setPinConstraint as setProjectPinConstraint,
+  setTargetBoard as setProjectTargetBoard,
+  setTargetDevice as setProjectTargetDevice,
+  setTopFile as setProjectTopFile,
+  setTopModuleName as setProjectTopModuleName,
+} from './project-config'
+import {
+  createFile,
+  createFolder,
+  deleteNode,
+  importFiles,
+  moveNode,
+} from './project-file-operations'
+import {
+  beginCreatingNode,
+  beginRenamingNode,
+  cancelRenamingNode,
+  clearCreatingNodeState,
+  commitNodeRename,
+  discardCreatingNode,
+} from './project-inline-edit'
+import {
+  applyProjectSession,
+  buildEmptyProjectSession,
+  buildLoadedProjectSession,
+  buildTemplateProjectSession,
+} from './project-session'
+import {
+  isFileDirty as isProjectFileDirty,
+  markSaved as markProjectSaved,
+  setImplementationCache as setProjectImplementationCache,
+  setSynthesisCache as setProjectSynthesisCache,
+} from './project-save-state'
+import { findNodeInTree, findNodeLocationInTree } from './project-tree'
+import { type ProjectTemplate } from './project-templates'
 
 export type {
   ProjectImplementationCacheSnapshot,
@@ -50,6 +80,10 @@ export const projectStore = reactive({
 
   activeFileId: '',
   selectedNodeId: '',
+  renamingNodeId: '',
+  creatingNodeId: '',
+  selectionBeforeCreatingNodeId: '',
+  activeFileBeforeCreatingNodeId: '',
   topFileId: '',
   topModuleName: '',
   targetDeviceId: defaultFpgaDeviceId,
@@ -64,15 +98,11 @@ export const projectStore = reactive({
 
   // Helper to find a node by ID recursively
   findNode(id: string, nodes?: ProjectNode[]): ProjectNode | null {
-    const searchNodes = nodes || this.files
-    for (const node of searchNodes) {
-      if (node.id === id) return node
-      if (node.children) {
-        const found = this.findNode(id, node.children)
-        if (found) return found
-      }
-    }
-    return null
+    return findNodeInTree(id, nodes || this.files)
+  },
+
+  findNodeLocation(id: string, nodes?: ProjectNode[], parent: ProjectNode | null = null) {
+    return findNodeLocationInTree(id, nodes || this.files, parent)
   },
 
   get activeFile() {
@@ -137,34 +167,9 @@ export const projectStore = reactive({
   },
 
   loadFromSnapshot(snapshot: unknown, options: { projectPath?: string | null } = {}) {
-    const parsed = normalizeProjectSnapshot(snapshot)
-    const nextFiles = cloneProjectNodes(parsed.files)
-    const nextActiveFileId = this.findNode(parsed.activeFileId, nextFiles)
-      ? parsed.activeFileId
-      : findFirstFileId(nextFiles)
-    const nextTopFileId = this.findNode(parsed.topFileId, nextFiles)
-      ? parsed.topFileId
-      : resolveTopFileId(nextFiles)
-    const nextPinConstraints = cloneProjectConstraintSnapshot(parsed.pinConstraints)
-    const resolvedConstraintTarget = nextPinConstraints.topFileId
-      ? this.findNode(nextPinConstraints.topFileId, nextFiles)
-      : null
-    if ((!resolvedConstraintTarget || resolvedConstraintTarget.type !== 'file') && nextTopFileId) {
-      nextPinConstraints.topFileId = nextTopFileId
-    }
-
-    this.files = nextFiles
-    this.activeFileId = nextActiveFileId
-    this.selectedNodeId = nextActiveFileId
-    this.topFileId = nextTopFileId
-    this.topModuleName = parsed.topFileId === nextTopFileId ? parsed.topModuleName : ''
-    this.targetDeviceId = parsed.targetDeviceId
-    this.targetBoardId = parsed.targetBoardId
-    this.pinConstraints = nextPinConstraints
-    this.implementationSettings = cloneImplementationSettings(parsed.implementationSettings)
-    this.synthesisCache = cloneProjectSynthesisCacheSnapshot(parsed.synthesisCache)
-    this.implementationCache = cloneProjectImplementationCacheSnapshot(parsed.implementationCache)
-    projectCanvasStore.setCanvasDevices(parsed.canvasDevices)
+    const session = buildLoadedProjectSession(snapshot)
+    applyProjectSession(this, session)
+    projectCanvasStore.setCanvasDevices(session.canvasDevices)
     this.sessionId += 1
     this.markSaved(options.projectPath ?? null)
   },
@@ -185,253 +190,123 @@ export const projectStore = reactive({
     this.selectedNodeId = id
   },
 
+  clearCreatingNodeState() {
+    clearCreatingNodeState(this)
+  },
+
+  discardCreatingNode(id?: string) {
+    return discardCreatingNode(this, id)
+  },
+
+  beginRenamingNode(id: string) {
+    beginRenamingNode(this, id)
+  },
+
+  cancelRenamingNode(id?: string) {
+    cancelRenamingNode(this, id)
+  },
+
+  beginCreatingFile(parentId: string, initialName = 'new_file.v') {
+    return this.beginCreatingNode(parentId, 'file', initialName)
+  },
+
+  beginCreatingFolder(parentId: string, initialName = 'New Folder') {
+    return this.beginCreatingNode(parentId, 'folder', initialName)
+  },
+
+  beginCreatingNode(parentId: string, type: 'file' | 'folder', initialName: string) {
+    return beginCreatingNode(this, parentId, type, initialName)
+  },
+
   setTopFile(id: string) {
-    const node = this.findNode(id)
-    if (node?.type === 'file' && isHardwareSourceFile(node.name)) {
-      const topFileChanged = this.topFileId !== id
-      this.topFileId = id
-      if (topFileChanged) {
-        this.topModuleName = ''
-      }
-      if (this.pinConstraints.topFileId !== id) {
-        this.pinConstraints = {
-          version: 1,
-          topFileId: id,
-          assignments: [],
-        }
-      }
-    }
+    setProjectTopFile(this, id)
   },
 
   setTargetDevice(deviceId: FpgaDeviceId) {
-    this.targetDeviceId = deviceId
-    this.targetBoardId = getDefaultFpgaBoardIdForDevice(deviceId)
+    setProjectTargetDevice(this, deviceId)
   },
 
   setTargetBoard(boardId: FpgaBoardId) {
-    this.targetBoardId = boardId
+    setProjectTargetBoard(this, boardId)
   },
 
   setImplementationPlaceMode(mode: ImplementationPlaceMode) {
-    this.implementationSettings = {
-      ...this.implementationSettings,
-      placeMode: mode,
-    }
+    setProjectImplementationPlaceMode(this, mode)
   },
 
   setTopModuleName(name: string) {
-    this.topModuleName = name.trim()
+    setProjectTopModuleName(this, name)
   },
 
   replacePinConstraints(topFileId: string, assignments: ProjectPinConstraint[]) {
-    this.pinConstraints = {
-      version: 1,
-      topFileId,
-      assignments: assignments.map((entry) => ({
-        ...entry,
-      })),
-    }
+    replaceProjectPinConstraints(this, topFileId, assignments)
   },
 
   setPinConstraint(topFileId: string, assignment: ProjectPinConstraint | null) {
-    if (!assignment) {
-      return
-    }
-
-    const nextAssignments =
-      this.pinConstraints.topFileId === topFileId
-        ? this.pinConstraints.assignments.filter((entry) => entry.portName !== assignment.portName)
-        : []
-
-    nextAssignments.push({
-      ...assignment,
-    })
-
-    this.replacePinConstraints(topFileId, nextAssignments)
+    setProjectPinConstraint(this, topFileId, assignment)
   },
 
   clearPinConstraint(topFileId: string, portName: string) {
-    const nextAssignments =
-      this.pinConstraints.topFileId === topFileId
-        ? this.pinConstraints.assignments.filter((entry) => entry.portName !== portName)
-        : []
-    this.replacePinConstraints(topFileId, nextAssignments)
+    clearProjectPinConstraint(this, topFileId, portName)
   },
 
   clearPinConstraints(topFileId?: string) {
-    this.replacePinConstraints(topFileId ?? this.topFileId, [])
+    clearProjectPinConstraints(this, topFileId)
   },
 
   setSynthesisCache(snapshot: ProjectSynthesisCacheSnapshot | null) {
-    this.synthesisCache = cloneProjectSynthesisCacheSnapshot(snapshot)
+    setProjectSynthesisCache(this, snapshot)
   },
 
   setImplementationCache(snapshot: ProjectImplementationCacheSnapshot | null) {
-    this.implementationCache = cloneProjectImplementationCacheSnapshot(snapshot)
+    setProjectImplementationCache(this, snapshot)
   },
 
   markSaved(projectPath?: string | null) {
-    this.projectPath = projectPath === undefined ? this.projectPath : projectPath
-    this.savedSnapshotJson = JSON.stringify(this.toSnapshot())
-    this.savedFileSignatures = buildFileSignatureMap(this.files)
+    markProjectSaved(this, projectPath)
   },
 
   isFileDirty(id: string) {
-    const node = this.findNode(id)
-    if (!node || node.type !== 'file') {
-      return false
-    }
-
-    return this.savedFileSignatures[id] !== createFileSignature(node)
+    return isProjectFileDirty(this, id)
   },
 
   // File Operations
   createFile(parentId: string, name: string) {
-    const parent = this.findNode(parentId)
-    if (parent && parent.type === 'folder') {
-      if (!parent.children) parent.children = []
-      const id = Date.now().toString()
-      parent.children.push({
-        id,
-        name,
-        type: 'file',
-        content: '',
-      })
-      this.activeFileId = id
-      this.selectedNodeId = id
-      parent.isOpen = true
-    }
+    createFile(this, parentId, name)
   },
 
   createFolder(parentId: string, name: string) {
-    const parent = this.findNode(parentId)
-    if (parent && parent.type === 'folder') {
-      if (!parent.children) parent.children = []
-      const id = Date.now().toString()
-      parent.children.push({
-        id,
-        name,
-        type: 'folder',
-        children: [],
-        isOpen: true,
-      })
-      this.selectedNodeId = id
-      parent.isOpen = true
-    }
+    createFolder(this, parentId, name)
   },
 
   importFiles(parentId: string, files: Array<{ name: string; content: string }>) {
-    const parent = this.findNode(parentId)
-    if (!parent || parent.type !== 'folder' || files.length === 0) {
-      return
-    }
-
-    if (!parent.children) {
-      parent.children = []
-    }
-
-    const createdIds: string[] = []
-    for (const [index, file] of files.entries()) {
-      const id = `${Date.now()}-${index}`
-      parent.children.push({
-        id,
-        name: file.name,
-        type: 'file',
-        content: file.content,
-      })
-      createdIds.push(id)
-    }
-
-    parent.isOpen = true
-
-    if (!this.activeFileId && createdIds[0]) {
-      this.activeFileId = createdIds[0]
-    }
-
-    if (createdIds[0]) {
-      this.selectedNodeId = createdIds[0]
-    }
-
-    if (!this.topFileId) {
-      this.topFileId = resolveTopFileId(this.files)
-      this.pinConstraints.topFileId = this.topFileId
-    }
+    importFiles(this, parentId, files)
   },
 
   deleteNode(id: string) {
-    // Helper to remove node from tree
-    const remove = (nodes: ProjectNode[]): boolean => {
-      const idx = nodes.findIndex((n) => n.id === id)
-      if (idx !== -1) {
-        nodes.splice(idx, 1)
-        return true
-      }
-      for (const node of nodes) {
-        if (node.children && remove(node.children)) return true
-      }
-      return false
-    }
-    remove(this.files)
-    if (this.activeFileId === id) {
-      this.activeFileId = ''
-    }
-    if (this.selectedNodeId === id) {
-      this.selectedNodeId = ''
-    }
-    if (this.topFileId === id) {
-      this.topFileId = resolveTopFileId(this.files)
-      this.topModuleName = ''
-      this.pinConstraints = {
-        version: 1,
-        topFileId: this.topFileId,
-        assignments: [],
-      }
-    }
+    deleteNode(this, id)
   },
 
-  renameNode(id: string, newName: string) {
-    const node = this.findNode(id)
-    if (node) {
-      node.name = newName
-    }
+  commitNodeRename(id: string, newName: string) {
+    return commitNodeRename(this, id, newName)
+  },
+
+  moveNode(id: string, targetParentId: string | null, targetIndex: number) {
+    return moveNode(this, id, targetParentId, targetIndex)
   },
 
   createNewProject(name: string, template: ProjectTemplate) {
-    const nextProject = createProjectTemplateState(name, template)
-    this.files = nextProject.files
-    this.activeFileId = nextProject.activeFileId
-    this.selectedNodeId = nextProject.selectedNodeId
-    this.topFileId = nextProject.topFileId
-    this.topModuleName = nextProject.topModuleName
-
-    this.targetDeviceId = defaultFpgaDeviceId
-    this.targetBoardId = defaultFpgaBoardId
-    this.pinConstraints = {
-      version: 1,
-      topFileId: this.topFileId,
-      assignments: [],
-    }
-    this.implementationSettings = cloneImplementationSettings(defaultImplementationSettings)
-    this.synthesisCache = null
-    this.implementationCache = null
-    projectCanvasStore.resetState()
+    const session = buildTemplateProjectSession(name, template)
+    applyProjectSession(this, session)
+    projectCanvasStore.setCanvasDevices(session.canvasDevices)
     this.sessionId += 1
     this.markSaved(null)
   },
 
   clearProject() {
-    this.files = []
-    this.activeFileId = ''
-    this.selectedNodeId = ''
-    this.topFileId = ''
-    this.topModuleName = ''
-    this.targetDeviceId = defaultFpgaDeviceId
-    this.targetBoardId = defaultFpgaBoardId
-    this.pinConstraints = emptyProjectConstraintSnapshot()
-    this.implementationSettings = cloneImplementationSettings(defaultImplementationSettings)
-    this.synthesisCache = null
-    this.implementationCache = null
-    projectCanvasStore.setCanvasDevices([])
+    const session = buildEmptyProjectSession()
+    applyProjectSession(this, session)
+    projectCanvasStore.setCanvasDevices(session.canvasDevices)
     this.sessionId += 1
     this.markSaved(null)
   },
