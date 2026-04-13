@@ -418,15 +418,25 @@ pub fn run() {
             stop_hotplug_watch
         ]);
 
-    let builder = builder
+    let builder = attach_native_menu(builder);
+
+    builder
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
+
+#[cfg(target_os = "macos")]
+fn attach_native_menu(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {
+    builder
         .menu(app_menu::build_app_menu)
         .on_menu_event(|app, event| {
             if let Some(action) = app_menu::menu_action_for_id(event.id().as_ref()) {
                 let _ = app.emit("aspen://menu-action", action);
             }
-        });
+        })
+}
 
+#[cfg(not(target_os = "macos"))]
+fn attach_native_menu(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {
     builder
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
 }
