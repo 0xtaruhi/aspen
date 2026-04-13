@@ -149,7 +149,7 @@ async function runSynthesis() {
   try {
     await hardwareStore.runSynthesis({
       op_id: opId,
-      project_name: projectStore.toSnapshot().name,
+      project_name: projectStore.toSnapshot().content.name,
       project_dir: projectDirectory(),
       top_module: topModule.value,
       files: synthesisProjectFiles.value,

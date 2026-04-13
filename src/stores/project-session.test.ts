@@ -13,37 +13,41 @@ import {
 describe('project session helpers', () => {
   it('normalizes loaded snapshots and retargets stale pin constraints', () => {
     const session = buildLoadedProjectSession({
-      version: 1,
-      name: 'LoadedProject',
-      files: [
-        {
-          id: 'root',
-          name: 'LoadedProject',
-          type: 'folder',
-          isOpen: true,
-          children: [
+      version: 2,
+      content: {
+        name: 'LoadedProject',
+        files: [
+          {
+            id: 'root',
+            name: 'LoadedProject',
+            type: 'folder',
+            isOpen: true,
+            children: [
+              {
+                id: 'top-file',
+                name: 'top.v',
+                type: 'file',
+                content: 'module top(input clk, output led); assign led = clk; endmodule',
+              },
+            ],
+          },
+        ],
+        topFileId: 'top-file',
+        topModuleName: 'top',
+        pinConstraints: {
+          version: 1,
+          topFileId: 'stale-top-file',
+          assignments: [
             {
-              id: 'top-file',
-              name: 'top.v',
-              type: 'file',
-              content: 'module top(input clk, output led); assign led = clk; endmodule',
+              portName: 'clk',
+              pinId: 'P77',
+              boardFunction: 'CLK',
             },
           ],
         },
-      ],
-      activeFileId: 'missing-file',
-      topFileId: 'top-file',
-      topModuleName: 'top',
-      pinConstraints: {
-        version: 1,
-        topFileId: 'stale-top-file',
-        assignments: [
-          {
-            portName: 'clk',
-            pinId: 'P77',
-            boardFunction: 'CLK',
-          },
-        ],
+      },
+      workspaceView: {
+        activeFileId: 'missing-file',
       },
     })
 

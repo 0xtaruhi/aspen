@@ -45,49 +45,73 @@ describe('project save-state regression', () => {
     expect(projectStore.projectPath).toBe('/tmp/save-state-project.aspen.json')
   })
 
+  it('does not mark the project dirty when switching the active file', () => {
+    projectStore.createNewProject('FileSwitchDirtyProject', 'empty')
+    projectStore.createFile('root', 'top.v')
+    projectStore.createFile('root', 'helper.v')
+    projectStore.markSaved(null)
+
+    expect(projectStore.hasUnsavedChanges).toBe(false)
+
+    projectStore.setActiveFile('2')
+    expect(projectStore.hasUnsavedChanges).toBe(false)
+
+    projectStore.setActiveFile('1')
+    expect(projectStore.hasUnsavedChanges).toBe(false)
+  })
+
   it('persists the project target device in snapshots', () => {
     projectStore.createNewProject('DeviceProject', 'blinky')
     projectStore.setTopModuleName('custom_top')
 
-    expect(projectStore.toSnapshot().targetDeviceId).toBe(defaultFpgaDeviceId)
-    expect(projectStore.toSnapshot().targetBoardId).toBe(defaultFpgaBoardId)
-    expect(projectStore.toSnapshot().topModuleName).toBe('custom_top')
-    expect(projectStore.toSnapshot().implementationSettings).toEqual(defaultImplementationSettings)
+    expect(projectStore.toSnapshot().content.targetDeviceId).toBe(defaultFpgaDeviceId)
+    expect(projectStore.toSnapshot().content.targetBoardId).toBe(defaultFpgaBoardId)
+    expect(projectStore.toSnapshot().content.topModuleName).toBe('custom_top')
+    expect(projectStore.toSnapshot().content.implementationSettings).toEqual(
+      defaultImplementationSettings,
+    )
 
     projectStore.loadFromSnapshot({
-      version: 1,
-      name: 'LoadedDeviceProject',
-      files: projectStore.toSnapshot().files,
-      activeFileId: '1',
-      topFileId: '1',
-      topModuleName: 'loaded_top',
-      targetDeviceId: 'FDP3P7',
-      targetBoardId: 'FDP3P7_REFERENCE',
-      implementationSettings: {
-        version: 1,
-        placeMode: 'bounding_box',
-        routeMode: 'direct_search',
-      },
-      pinConstraints: {
-        version: 1,
+      version: 2,
+      content: {
+        name: 'LoadedDeviceProject',
+        files: projectStore.toSnapshot().content.files,
         topFileId: '1',
-        assignments: [
-          {
-            portName: 'clk',
-            pinId: 'P77',
-            boardFunction: 'CLK',
-          },
-        ],
+        topModuleName: 'loaded_top',
+        targetDeviceId: 'FDP3P7',
+        targetBoardId: 'FDP3P7_REFERENCE',
+        implementationSettings: {
+          version: 1,
+          placeMode: 'bounding_box',
+          routeMode: 'direct_search',
+        },
+        pinConstraints: {
+          version: 1,
+          topFileId: '1',
+          assignments: [
+            {
+              portName: 'clk',
+              pinId: 'P77',
+              boardFunction: 'CLK',
+            },
+          ],
+        },
+        synthesisCache: null,
+        implementationCache: null,
+        canvasDevices: [],
+      },
+      workspaceView: {
+        activeFileId: '1',
       },
     })
 
     expect(projectStore.targetDeviceId).toBe('FDP3P7')
     expect(projectStore.targetBoardId).toBe('FDP3P7_REFERENCE')
     expect(projectStore.topModuleName).toBe('loaded_top')
-    expect(projectStore.toSnapshot().targetDeviceId).toBe('FDP3P7')
-    expect(projectStore.toSnapshot().targetBoardId).toBe('FDP3P7_REFERENCE')
-    expect(projectStore.toSnapshot().topModuleName).toBe('loaded_top')
-    expect(projectStore.toSnapshot().implementationSettings).toEqual({
+    expect(projectStore.toSnapshot().content.targetDeviceId).toBe('FDP3P7')
+    expect(projectStore.toSnapshot().content.targetBoardId).toBe('FDP3P7_REFERENCE')
+    expect(projectStore.toSnapshot().content.topModuleName).toBe('loaded_top')
+    expect(projectStore.toSnapshot().content.implementationSettings).toEqual({
       version: 1,
       placeMode: 'bounding_box',
     })
@@ -109,11 +133,27 @@ describe('project save-state regression', () => {
     projectStore.createNewProject('LegacyProjectSeed', 'blinky')
 
     projectStore.loadFromSnapshot({
-      version: 1,
-      name: 'LegacyProject',
-      files: projectStore.toSnapshot().files,
-      activeFileId: '1',
-      topFileId: '1',
+      version: 2,
+      content: {
+        name: 'LegacyProject',
+        files: projectStore.toSnapshot().content.files,
+        topFileId: '1',
+        topModuleName: '',
+        targetDeviceId: defaultFpgaDeviceId,
+        targetBoardId: defaultFpgaBoardId,
+        pinConstraints: {
+          version: 1,
+          topFileId: '1',
+          assignments: [],
+        },
+        implementationSettings: defaultImplementationSettings,
+        synthesisCache: null,
+        implementationCache: null,
+        canvasDevices: [],
+      },
+      workspaceView: {
+        activeFileId: '1',
+      },
     })
 
     expect(projectStore.targetDeviceId).toBe(defaultFpgaDeviceId)
@@ -125,20 +165,23 @@ describe('project save-state regression', () => {
     projectStore.createNewProject('ConstraintRecoveryProject', 'blinky')
 
     const snapshot = projectStore.toSnapshot()
-    const currentTopFileId = snapshot.topFileId
+    const currentTopFileId = snapshot.content.topFileId
 
     projectStore.loadFromSnapshot({
       ...snapshot,
-      pinConstraints: {
-        version: 1,
-        topFileId: 'missing-top-file',
-        assignments: [
-          {
-            portName: 'clk',
-            pinId: 'P77',
-            boardFunction: 'CLK',
-          },
-        ],
+      content: {
+        ...snapshot.content,
+        pinConstraints: {
+          version: 1,
+          topFileId: 'missing-top-file',
+          assignments: [
+            {
+              portName: 'clk',
+              pinId: 'P77',
+              boardFunction: 'CLK',
+            },
+          ],
+        },
       },
     })
 
@@ -202,8 +245,8 @@ describe('project save-state regression', () => {
     })
 
     const snapshot = projectStore.toSnapshot()
-    expect(snapshot.synthesisCache?.signature).toBe('sig-123')
-    expect(snapshot.synthesisCache?.report.top_module).toBe('blinky')
+    expect(snapshot.content.synthesisCache?.signature).toBe('sig-123')
+    expect(snapshot.content.synthesisCache?.report.top_module).toBe('blinky')
 
     projectStore.loadFromSnapshot(snapshot)
 
@@ -245,8 +288,8 @@ describe('project save-state regression', () => {
     })
 
     const snapshot = projectStore.toSnapshot()
-    expect(snapshot.implementationCache?.signature).toBe('impl-sig-123')
-    expect(snapshot.implementationCache?.report.top_module).toBe('blinky')
+    expect(snapshot.content.implementationCache?.signature).toBe('impl-sig-123')
+    expect(snapshot.content.implementationCache?.report.top_module).toBe('blinky')
 
     projectStore.loadFromSnapshot(snapshot)
 
@@ -351,27 +394,27 @@ describe('project save-state regression', () => {
     projectCanvasStore.setCanvasDevices([led, switchDevice, button, dip, matrix, vga, uart])
 
     const snapshot = projectStore.toSnapshot()
-    expect(snapshot.canvasDevices).toHaveLength(7)
-    expect(snapshot.canvasDevices[0]?.label).toBe('Status LED')
-    expect(snapshot.canvasDevices[0]?.state.is_on).toBe(false)
-    expect(snapshot.canvasDevices[1]?.state.is_on).toBe(true)
-    expect(snapshot.canvasDevices[2]?.state.is_on).toBe(false)
-    expect(snapshot.canvasDevices[3]?.state.data).toEqual({
+    expect(snapshot.content.canvasDevices).toHaveLength(7)
+    expect(snapshot.content.canvasDevices[0]?.label).toBe('Status LED')
+    expect(snapshot.content.canvasDevices[0]?.state.is_on).toBe(false)
+    expect(snapshot.content.canvasDevices[1]?.state.is_on).toBe(true)
+    expect(snapshot.content.canvasDevices[2]?.state.is_on).toBe(false)
+    expect(snapshot.content.canvasDevices[3]?.state.data).toEqual({
       kind: 'bitset',
       bits: [true, false, true, false, false, true, false, true],
     })
-    expect(snapshot.canvasDevices[4]?.state.config).toEqual({
+    expect(snapshot.content.canvasDevices[4]?.state.config).toEqual({
       kind: 'led_matrix',
       rows: 8,
       columns: 8,
     })
-    expect(snapshot.canvasDevices[5]?.state.config).toEqual({
+    expect(snapshot.content.canvasDevices[5]?.state.config).toEqual({
       kind: 'vga_display',
       rows: 240,
       columns: 320,
       color_mode: 'rgb565',
     })
-    expect(snapshot.canvasDevices[6]?.state.data).toEqual({
+    expect(snapshot.content.canvasDevices[6]?.state.data).toEqual({
       kind: 'none',
     })
 

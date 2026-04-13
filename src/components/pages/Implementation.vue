@@ -34,7 +34,7 @@ const isBusy = hardwareStore.implementationRunning
 const implementationLiveLog = hardwareStore.implementationLiveLog
 const implementationMessage = hardwareStore.implementationMessage
 const implementationReport = implementationCatalogStore.currentImplementationReport
-const projectName = computed(() => projectStore.toSnapshot().name)
+const projectName = computed(() => projectStore.toSnapshot().content.name)
 
 const hasCurrentSynthesis = synthesisCatalogStore.hasCurrentSuccessfulSynthesisReport
 const hasDesignSource = computed(() => Boolean(designContextStore.selectedSource.value))

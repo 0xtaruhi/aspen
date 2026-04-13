@@ -29,41 +29,45 @@ function createLedDevice(id: string, label: string): CanvasDeviceSnapshot {
 
 function createProjectSnapshot(canvasDevices: CanvasDeviceSnapshot[]): ProjectSnapshot {
   return {
-    version: 1,
-    name: 'CanvasRegressionProject',
-    files: [
-      {
-        id: 'root',
-        name: 'CanvasRegressionProject',
-        type: 'folder',
-        isOpen: true,
-        children: [
-          {
-            id: 'top',
-            name: 'Top.v',
-            type: 'file',
-            content: "module Top(output wire led); assign led = 1'b0; endmodule",
-          },
-        ],
-      },
-    ],
-    activeFileId: 'top',
-    topFileId: 'top',
-    topModuleName: 'Top',
-    targetDeviceId: 'FDP3P7',
-    targetBoardId: 'FDP3P7_REFERENCE',
-    pinConstraints: {
-      version: 1,
+    version: 2,
+    content: {
+      name: 'CanvasRegressionProject',
+      files: [
+        {
+          id: 'root',
+          name: 'CanvasRegressionProject',
+          type: 'folder',
+          isOpen: true,
+          children: [
+            {
+              id: 'top',
+              name: 'Top.v',
+              type: 'file',
+              content: "module Top(output wire led); assign led = 1'b0; endmodule",
+            },
+          ],
+        },
+      ],
       topFileId: 'top',
-      assignments: [],
+      topModuleName: 'Top',
+      targetDeviceId: 'FDP3P7',
+      targetBoardId: 'FDP3P7_REFERENCE',
+      pinConstraints: {
+        version: 1,
+        topFileId: 'top',
+        assignments: [],
+      },
+      implementationSettings: {
+        version: 1,
+        placeMode: 'bounding_box',
+      },
+      synthesisCache: null,
+      implementationCache: null,
+      canvasDevices,
     },
-    implementationSettings: {
-      version: 1,
-      placeMode: 'bounding_box',
+    workspaceView: {
+      activeFileId: 'top',
     },
-    synthesisCache: null,
-    implementationCache: null,
-    canvasDevices,
   }
 }
 

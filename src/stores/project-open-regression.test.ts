@@ -107,40 +107,44 @@ endmodule`
   }
 
   return {
-    version: 1,
-    name: 'Dino',
-    files,
-    activeFileId: 'top-file',
-    topFileId: 'top-file',
-    topModuleName,
-    targetDeviceId: projectStore.targetDeviceId,
-    targetBoardId: projectStore.targetBoardId,
-    pinConstraints: {
-      version: 1,
+    version: 2,
+    content: {
+      name: 'Dino',
+      files,
       topFileId: 'top-file',
-      assignments: constraintAssignments,
+      topModuleName,
+      targetDeviceId: projectStore.targetDeviceId,
+      targetBoardId: projectStore.targetBoardId,
+      pinConstraints: {
+        version: 1,
+        topFileId: 'top-file',
+        assignments: constraintAssignments,
+      },
+      implementationSettings: {
+        version: 1,
+        placeMode: projectStore.implementationSettings.placeMode,
+      },
+      synthesisCache: {
+        version: 1,
+        signature: buildSynthesisInputSignature(topModuleName, sourceFiles),
+        report: synthesisReport,
+      },
+      implementationCache: {
+        version: 1,
+        signature: buildImplementationInputSignature(
+          topModuleName,
+          projectStore.targetDeviceId,
+          constraintXml,
+          projectStore.implementationSettings.placeMode,
+          sourceFiles,
+        ),
+        report: implementationReport,
+      },
+      canvasDevices: [],
     },
-    implementationSettings: {
-      version: 1,
-      placeMode: projectStore.implementationSettings.placeMode,
+    workspaceView: {
+      activeFileId: 'top-file',
     },
-    synthesisCache: {
-      version: 1,
-      signature: buildSynthesisInputSignature(topModuleName, sourceFiles),
-      report: synthesisReport,
-    },
-    implementationCache: {
-      version: 1,
-      signature: buildImplementationInputSignature(
-        topModuleName,
-        projectStore.targetDeviceId,
-        constraintXml,
-        projectStore.implementationSettings.placeMode,
-        sourceFiles,
-      ),
-      report: implementationReport,
-    },
-    canvasDevices: [],
   }
 }
 

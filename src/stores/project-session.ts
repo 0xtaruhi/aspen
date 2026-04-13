@@ -24,6 +24,8 @@ import {
   findFirstFileId,
   normalizeProjectSnapshot,
   resolveTopFileId,
+  serializeProjectContentSnapshot,
+  splitProjectSnapshot,
   type FileSignatureMap,
   type ProjectImplementationCacheSnapshot,
   type ProjectNode,
@@ -70,8 +72,8 @@ export interface ProjectSessionStoreLike {
   synthesisCache: ProjectSynthesisCacheSnapshot | null
   implementationCache: ProjectImplementationCacheSnapshot | null
   projectPath: string | null
-  savedSnapshotJson: string
-  cachedSnapshotJson: string
+  savedContentSnapshotJson: string
+  cachedContentSnapshotJson: string
   snapshotCacheDirty: boolean
   cachedCanvasRevision: number
   savedFileSignatures: FileSignatureMap
@@ -94,15 +96,16 @@ function createTransientProjectUiState() {
 }
 
 export function buildLoadedProjectSession(snapshot: unknown): ProjectSessionPayload {
-  const parsed = normalizeProjectSnapshot(snapshot)
-  const nextFiles = cloneProjectNodes(parsed.files)
-  const nextActiveFileId = findNodeInTree(parsed.activeFileId, nextFiles)
-    ? parsed.activeFileId
+  const parsedSnapshot = normalizeProjectSnapshot(snapshot)
+  const { contentSnapshot, workspaceViewSnapshot } = splitProjectSnapshot(parsedSnapshot)
+  const nextFiles = cloneProjectNodes(contentSnapshot.files)
+  const nextActiveFileId = findNodeInTree(workspaceViewSnapshot.activeFileId, nextFiles)
+    ? workspaceViewSnapshot.activeFileId
     : findFirstFileId(nextFiles)
-  const nextTopFileId = findNodeInTree(parsed.topFileId, nextFiles)
-    ? parsed.topFileId
+  const nextTopFileId = findNodeInTree(contentSnapshot.topFileId, nextFiles)
+    ? contentSnapshot.topFileId
     : resolveTopFileId(nextFiles)
-  const nextPinConstraints = cloneProjectConstraintSnapshot(parsed.pinConstraints)
+  const nextPinConstraints = cloneProjectConstraintSnapshot(contentSnapshot.pinConstraints)
   const resolvedConstraintTarget = nextPinConstraints.topFileId
     ? findNodeInTree(nextPinConstraints.topFileId, nextFiles)
     : null
@@ -116,14 +119,16 @@ export function buildLoadedProjectSession(snapshot: unknown): ProjectSessionPayl
     selectedNodeId: nextActiveFileId,
     ...createTransientProjectUiState(),
     topFileId: nextTopFileId,
-    topModuleName: parsed.topFileId === nextTopFileId ? parsed.topModuleName : '',
-    targetDeviceId: parsed.targetDeviceId,
-    targetBoardId: parsed.targetBoardId,
+    topModuleName: contentSnapshot.topFileId === nextTopFileId ? contentSnapshot.topModuleName : '',
+    targetDeviceId: contentSnapshot.targetDeviceId,
+    targetBoardId: contentSnapshot.targetBoardId,
     pinConstraints: nextPinConstraints,
-    implementationSettings: cloneImplementationSettings(parsed.implementationSettings),
-    synthesisCache: cloneProjectSynthesisCacheSnapshot(parsed.synthesisCache),
-    implementationCache: cloneProjectImplementationCacheSnapshot(parsed.implementationCache),
-    canvasDevices: cloneProjectCanvasDevices(parsed.canvasDevices),
+    implementationSettings: cloneImplementationSettings(contentSnapshot.implementationSettings),
+    synthesisCache: cloneProjectSynthesisCacheSnapshot(contentSnapshot.synthesisCache),
+    implementationCache: cloneProjectImplementationCacheSnapshot(
+      contentSnapshot.implementationCache,
+    ),
+    canvasDevices: cloneProjectCanvasDevices(contentSnapshot.canvasDevices),
   }
 }
 
@@ -198,9 +203,11 @@ export function markProjectSessionSaved(
   projectPath: string | null,
 ) {
   store.projectPath = projectPath
-  const snapshotJson = JSON.stringify(store.toSnapshot())
-  store.savedSnapshotJson = snapshotJson
-  store.cachedSnapshotJson = snapshotJson
+  const contentSnapshotJson = serializeProjectContentSnapshot(
+    splitProjectSnapshot(store.toSnapshot()).contentSnapshot,
+  )
+  store.savedContentSnapshotJson = contentSnapshotJson
+  store.cachedContentSnapshotJson = contentSnapshotJson
   store.snapshotCacheDirty = false
   store.cachedCanvasRevision = projectCanvasStore.snapshotRevision.value
   store.savedFileSignatures = buildFileSignatureMap(store.files)

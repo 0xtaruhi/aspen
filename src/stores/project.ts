@@ -18,10 +18,12 @@ import { type ProjectNodeLocation } from './project-tree'
 import { type ProjectTemplate } from './project-templates'
 
 export type {
+  ProjectContentSnapshot,
   ProjectImplementationCacheSnapshot,
   ProjectNode,
   ProjectSnapshot,
   ProjectSynthesisCacheSnapshot,
+  ProjectWorkspaceViewSnapshot,
 } from './project-model'
 
 export type ProjectStoreLike = ProjectStoreState &
