@@ -97,6 +97,13 @@ fn expect_audio_pwm(snapshot: &HardwareCanvasDeviceTelemetryEntry) -> (u32, u32,
     }
 }
 
+fn expect_text_log(snapshot: &HardwareCanvasDeviceTelemetryEntry) -> &str {
+    match &snapshot.payload {
+        HardwareCanvasDeviceTelemetryPayload::TextLog { log } => log,
+        payload => panic!("expected text log payload, got {payload:?}"),
+    }
+}
+
 fn fill_write_frame(
     state: &HardwareStateV1,
     encoders: &[Box<dyn InputDeviceEncoder>],
@@ -957,4 +964,65 @@ fn audio_pwm_decoder_reports_period_edges_and_duty_ratio() {
     assert_eq!(sample_count, 12);
     assert!((period_samples - 4.0).abs() < 0.01);
     assert!((snapshot.high_ratio - 0.5).abs() < 0.01);
+}
+
+#[test]
+fn uart_terminal_decoder_waits_for_stop_bit_before_rearming() {
+    fn append_uart_byte(
+        read_buffer: &mut Vec<u16>,
+        signal_index: usize,
+        cycles_per_bit: usize,
+        byte: u8,
+    ) {
+        let high = 1_u16 << signal_index;
+
+        read_buffer.extend(std::iter::repeat_n(0_u16, cycles_per_bit));
+        for bit_index in 0..8 {
+            let level = if (byte >> bit_index) & 1 == 1 {
+                high
+            } else {
+                0
+            };
+            read_buffer.extend(std::iter::repeat_n(level, cycles_per_bit));
+        }
+        read_buffer.extend(std::iter::repeat_n(high, cycles_per_bit));
+    }
+
+    let cycles_per_bit = 16;
+    let state = HardwareStateV1 {
+        canvas_devices: vec![CanvasDeviceSnapshot {
+            id: "uart0".to_string(),
+            r#type: CanvasDeviceType::UartTerminal,
+            x: 0.0,
+            y: 0.0,
+            label: "UART".to_string(),
+            state: CanvasDeviceStateSnapshot {
+                is_on: false,
+                color: None,
+                binding: slot_bindings(&[Some("tx")]),
+                config: CanvasDeviceConfigSnapshot::UartTerminal {
+                    cycles_per_bit: cycles_per_bit as u16,
+                    mode: crate::hardware::types::CanvasUartMode::Tx,
+                },
+                data: no_data(),
+            },
+        }],
+        ..HardwareStateV1::default()
+    };
+
+    let signal_order = vec!["tx".to_string()];
+    let mut decoders = HardwareRuntime::compile_output_decoders(&state, &signal_order);
+    assert_eq!(decoders.len(), 1);
+
+    let mut read_buffer = vec![packed_cycle(&[0]); cycles_per_bit * 2];
+    append_uart_byte(&mut read_buffer, 0, cycles_per_bit, b'P');
+    append_uart_byte(&mut read_buffer, 0, cycles_per_bit, b' ');
+    append_uart_byte(&mut read_buffer, 0, cycles_per_bit, b'0');
+    read_buffer.extend(std::iter::repeat_n(packed_cycle(&[0]), cycles_per_bit * 2));
+
+    HardwareRuntime::ingest_output_batch(&read_buffer, 1, &mut decoders);
+    let snapshot = HardwareRuntime::flush_output_decoders(&mut decoders, 1);
+
+    assert_eq!(snapshot.devices.len(), 1);
+    assert_eq!(expect_text_log(&snapshot.devices[0]), "P 0");
 }
