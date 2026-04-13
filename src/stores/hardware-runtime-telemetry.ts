@@ -139,6 +139,9 @@ export function onDataBatchBinary(batch: HardwareDataBatchBinaryV1) {
   if (view.byteLength < expectedHeaderBytesLegacy) {
     return
   }
+  if (batch.version >= 2 && view.byteLength < expectedHeaderBytesCurrent) {
+    return
+  }
 
   let offset = 0
   const sequence = toSafeNumberFromU64(view.getBigUint64(offset, true))

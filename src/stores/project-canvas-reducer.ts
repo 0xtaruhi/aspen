@@ -1,4 +1,5 @@
 import type { CanvasDeviceSnapshot } from '@/lib/hardware-client'
+import { getCanvasDeviceBoundSignal, getCanvasDeviceBoundSignals } from '@/lib/canvas-devices'
 
 import { cloneCanvasDeviceSnapshot, cloneCanvasDeviceSnapshots } from './project-canvas-clone'
 import type { ProjectCanvasAction } from './project-canvas-actions'
@@ -6,6 +7,15 @@ import {
   propagateDrivenSignalFromCanvasDevice,
   reconcileCanvasBoundSignal,
 } from './project-canvas-signals'
+
+function boundSignalsForReconciliation(device: CanvasDeviceSnapshot): string[] {
+  const boundSignal = getCanvasDeviceBoundSignal(device)
+  if (boundSignal) {
+    return [boundSignal]
+  }
+
+  return getCanvasDeviceBoundSignals(device).filter((signal): signal is string => Boolean(signal))
+}
 
 export function reduceProjectCanvasDevices(
   devices: readonly CanvasDeviceSnapshot[],
@@ -38,8 +48,9 @@ export function reduceProjectCanvasDevices(
     case 'bind_canvas_signal': {
       const device = nextDevices.find((item) => item.id === action.id)
       if (device && device.state.binding.kind === 'single') {
+        const previousSignals = boundSignalsForReconciliation(device)
         device.state.binding.signal = action.signal_name ?? null
-        reconcileCanvasBoundSignal(nextDevices, action.id)
+        reconcileCanvasBoundSignal(nextDevices, action.id, previousSignals)
       }
       return nextDevices
     }
@@ -51,10 +62,12 @@ export function reduceProjectCanvasDevices(
         Number.isInteger(action.slot_index) &&
         action.slot_index >= 0
       ) {
+        const previousSignals = boundSignalsForReconciliation(device)
         while (device.state.binding.signals.length <= action.slot_index) {
           device.state.binding.signals.push(null)
         }
         device.state.binding.signals[action.slot_index] = action.signal_name ?? null
+        reconcileCanvasBoundSignal(nextDevices, action.id, previousSignals)
       }
       return nextDevices
     }

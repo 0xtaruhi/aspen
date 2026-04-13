@@ -29,6 +29,19 @@ function deviceBindsSignal(device: CanvasDeviceSnapshot, signal: string): boolea
   return getBoundSignals(device).includes(signal)
 }
 
+function reconcileReceivingDevice(
+  devices: CanvasDeviceSnapshot[],
+  target: CanvasDeviceSnapshot,
+): boolean | null {
+  if (!deviceReceivesSignal(target.type)) {
+    return null
+  }
+
+  const sourceValue = reconcileReceivedSignalState(devices, target)
+  target.state.is_on = sourceValue ?? false
+  return sourceValue
+}
+
 function signalSourceValue(devices: CanvasDeviceSnapshot[], signal: string): boolean | null {
   const source = devices.find((candidate) => {
     return deviceDrivesSignal(candidate.type) && deviceBindsSignal(candidate, signal)
@@ -96,22 +109,34 @@ export function propagateDrivenSignalFromCanvasDevice(
   }
 }
 
-export function reconcileCanvasBoundSignal(devices: CanvasDeviceSnapshot[], targetId: string) {
+export function reconcileCanvasBoundSignal(
+  devices: CanvasDeviceSnapshot[],
+  targetId: string,
+  previousSignals: readonly string[] = [],
+) {
   const target = devices.find((candidate) => candidate.id === targetId)
-  const targetSignals = target ? getBoundSignals(target) : []
-  if (!target || targetSignals.length === 0) {
+  if (!target) {
     return
   }
 
-  if (deviceDrivesSignal(target.type)) {
-    propagateDrivenSignalFromCanvasDevice(devices, target)
+  const targetSignals = getBoundSignals(target)
+  const affectedSignals = Array.from(new Set([...previousSignals, ...targetSignals]))
+
+  reconcileReceivingDevice(devices, target)
+
+  if (!deviceDrivesSignal(target.type) || affectedSignals.length === 0) {
     return
   }
 
-  if (deviceReceivesSignal(target.type)) {
-    const sourceValue = reconcileReceivedSignalState(devices, target)
-    if (sourceValue !== null) {
-      target.state.is_on = sourceValue
+  for (const candidate of devices) {
+    if (
+      candidate.id === target.id ||
+      !deviceReceivesSignal(candidate.type) ||
+      !affectedSignals.some((signal) => deviceBindsSignal(candidate, signal))
+    ) {
+      continue
     }
+
+    reconcileReceivingDevice(devices, candidate)
   }
 }
