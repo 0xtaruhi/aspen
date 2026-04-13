@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { SynthesisCellTypeCountV1 } from '@/lib/hardware-client'
+import type { SynthesisCellTypeCountV1, SynthesisStatsV1 } from '@/lib/hardware-client'
 
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -23,13 +23,17 @@ const targetDevice = computed(() => getFpgaDeviceDescriptor(projectStore.targetD
 const showNewProjectDialog = ref(false)
 const hasDesignSource = computed(() => Boolean(designContextStore.selectedSource.value))
 
-function summarizeResources(counts: readonly SynthesisCellTypeCountV1[]) {
+type ResourceSummaryStats = Pick<SynthesisStatsV1, 'memory_count'> & {
+  cell_type_counts: readonly SynthesisCellTypeCountV1[]
+}
+
+function summarizeResources(stats: ResourceSummaryStats | null) {
   let lut = 0
   let ff = 0
-  let bram = 0
+  const bram = stats?.memory_count ?? 0
   let dsp = 0
 
-  for (const entry of counts) {
+  for (const entry of stats?.cell_type_counts ?? []) {
     const cellType = entry.cell_type.toUpperCase()
 
     if (/^LUT\d+$/.test(cellType)) {
@@ -39,11 +43,6 @@ function summarizeResources(counts: readonly SynthesisCellTypeCountV1[]) {
 
     if (/DFF|EDFF|LATCH/.test(cellType)) {
       ff += entry.count
-      continue
-    }
-
-    if (/BRAM|BLOCKRAM|RAM/.test(cellType)) {
-      bram += entry.count
       continue
     }
 
@@ -57,7 +56,7 @@ function summarizeResources(counts: readonly SynthesisCellTypeCountV1[]) {
 
 const synthesizedResources = computed(() => {
   return summarizeResources(
-    synthesisCatalogStore.currentSuccessfulSynthesisReport.value?.stats.cell_type_counts ?? [],
+    synthesisCatalogStore.currentSuccessfulSynthesisReport.value?.stats ?? null,
   )
 })
 

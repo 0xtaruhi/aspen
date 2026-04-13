@@ -489,6 +489,8 @@ endmodule
         "{}",
         report.log
     );
+    assert_eq!(report.stats.memory_count, 1, "{}", report.log);
+    assert_eq!(report.stats.memory_bits, 4096, "{}", report.log);
 
     let _ = fs::remove_dir_all(&workdir);
 }
@@ -552,6 +554,8 @@ endmodule
         "{}",
         report.log
     );
+    assert_eq!(report.stats.memory_count, 1, "{}", report.log);
+    assert_eq!(report.stats.memory_bits, 4096, "{}", report.log);
 
     let _ = fs::remove_dir_all(&workdir);
 }
@@ -588,6 +592,7 @@ fn parse_synthesized_netlist_filters_internal_yosys_cells_and_extracts_ports() {
                 "cells": {
                     "logic0": { "type": "LUT4" },
                     "seq0": { "type": "DFFRHQ" },
+                    "ram0": { "type": "RAMB4_S2" },
                     "meta0": { "type": "$scopeinfo" }
                 }
             }
@@ -598,9 +603,11 @@ fn parse_synthesized_netlist_filters_internal_yosys_cells_and_extracts_ports() {
     let parsed = parse_synthesized_netlist(&netlist_path, "top").unwrap();
     let _ = fs::remove_dir_all(&workdir);
 
-    assert_eq!(parsed.stats.cell_count, 2);
+    assert_eq!(parsed.stats.cell_count, 3);
     assert_eq!(parsed.stats.sequential_cell_count, 1);
-    assert_eq!(parsed.stats.cell_type_counts.len(), 2);
+    assert_eq!(parsed.stats.memory_count, 1);
+    assert_eq!(parsed.stats.memory_bits, 4096);
+    assert_eq!(parsed.stats.cell_type_counts.len(), 3);
     assert!(parsed
         .stats
         .cell_type_counts
@@ -610,4 +617,137 @@ fn parse_synthesized_netlist_filters_internal_yosys_cells_and_extracts_ports() {
     assert_eq!(parsed.top_ports[0].name, "clk");
     assert_eq!(parsed.top_ports[1].name, "led");
     assert_eq!(parsed.top_ports[1].width, "[3:0]");
+}
+
+#[test]
+fn parse_synthesized_netlist_counts_generic_memories_when_no_mapped_ram_is_present() {
+    let request = SynthesisRequestV1 {
+        op_id: "op".to_string(),
+        project_name: None,
+        project_dir: None,
+        top_module: "top".to_string(),
+        files: Vec::new(),
+    };
+    let generated_at_ms = now_millis().unwrap();
+    let (workdir, _) = resolve_workdir(&request, generated_at_ms).unwrap();
+    let netlist_path = workdir.join("netlist.json");
+    let netlist = json!({
+        "modules": {
+            "top": {
+                "ports": {},
+                "netnames": {},
+                "memories": {
+                    "mem0": {
+                        "width": 8,
+                        "size": 32
+                    }
+                },
+                "cells": {}
+            }
+        }
+    });
+
+    fs::write(&netlist_path, serde_json::to_vec(&netlist).unwrap()).unwrap();
+    let parsed = parse_synthesized_netlist(&netlist_path, "top").unwrap();
+    let _ = fs::remove_dir_all(&workdir);
+
+    assert_eq!(parsed.stats.memory_count, 1);
+    assert_eq!(parsed.stats.memory_bits, 32 * 8);
+}
+
+#[test]
+fn parse_synthesized_netlist_prefers_mapped_ram_usage_over_generic_memory_stubs() {
+    let request = SynthesisRequestV1 {
+        op_id: "op".to_string(),
+        project_name: None,
+        project_dir: None,
+        top_module: "top".to_string(),
+        files: Vec::new(),
+    };
+    let generated_at_ms = now_millis().unwrap();
+    let (workdir, _) = resolve_workdir(&request, generated_at_ms).unwrap();
+    let netlist_path = workdir.join("netlist.json");
+    let netlist = json!({
+        "modules": {
+            "top": {
+                "ports": {},
+                "netnames": {},
+                "memories": {
+                    "mem0": {
+                        "width": 8,
+                        "size": 32
+                    }
+                },
+                "cells": {
+                    "ram0": { "type": "RAMB4_S1_S16" }
+                }
+            }
+        }
+    });
+
+    fs::write(&netlist_path, serde_json::to_vec(&netlist).unwrap()).unwrap();
+    let parsed = parse_synthesized_netlist(&netlist_path, "top").unwrap();
+    let _ = fs::remove_dir_all(&workdir);
+
+    assert_eq!(parsed.stats.memory_count, 1);
+    assert_eq!(parsed.stats.memory_bits, 4096);
+}
+
+#[test]
+fn parse_synthesized_netlist_counts_every_ram_cell_declared_in_the_tech_library() {
+    let request = SynthesisRequestV1 {
+        op_id: "op".to_string(),
+        project_name: None,
+        project_dir: None,
+        top_module: "top".to_string(),
+        files: Vec::new(),
+    };
+    let generated_at_ms = now_millis().unwrap();
+    let (workdir, _) = resolve_workdir(&request, generated_at_ms).unwrap();
+    let netlist_path = workdir.join("netlist.json");
+    let dc_cell_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("resource")
+        .join("fde")
+        .join("hw_lib")
+        .join("dc_cell.xml");
+    let dc_cell_xml = fs::read_to_string(&dc_cell_path).unwrap();
+    let ram_cell_types = dc_cell_xml
+        .lines()
+        .filter_map(|line| {
+            let marker = "type=\"RAM\"";
+            if !line.contains(marker) {
+                return None;
+            }
+            let name_start = line.find("name=\"")? + "name=\"".len();
+            let name_end = line[name_start..].find('"')? + name_start;
+            Some(line[name_start..name_end].to_string())
+        })
+        .collect::<Vec<_>>();
+
+    let cells = ram_cell_types
+        .iter()
+        .enumerate()
+        .map(|(index, cell_type)| (format!("ram{index}"), json!({ "type": cell_type })))
+        .collect::<serde_json::Map<String, serde_json::Value>>();
+    let netlist = json!({
+        "modules": {
+            "top": {
+                "ports": {},
+                "netnames": {},
+                "memories": {},
+                "cells": cells
+            }
+        }
+    });
+
+    fs::write(&netlist_path, serde_json::to_vec(&netlist).unwrap()).unwrap();
+    let parsed = parse_synthesized_netlist(&netlist_path, "top").unwrap();
+    let _ = fs::remove_dir_all(&workdir);
+
+    assert!(
+        !ram_cell_types.is_empty(),
+        "expected RAM cells in dc_cell.xml"
+    );
+    assert_eq!(parsed.stats.memory_count, ram_cell_types.len() as u64);
+    assert_eq!(parsed.stats.memory_bits, ram_cell_types.len() as u64 * 4096);
 }

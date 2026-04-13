@@ -4,6 +4,8 @@ use serde_json::Value;
 
 use crate::hardware::types::{SynthesisCellTypeCountV1, SynthesisStatsV1, SynthesisTopPortV1};
 
+const RAMB4_CAPACITY_BITS: u64 = 4096;
+
 pub(super) struct ParsedSynthesisNetlist {
     pub stats: SynthesisStatsV1,
     pub top_ports: Vec<SynthesisTopPortV1>,
@@ -61,15 +63,17 @@ pub(super) fn parse_synthesized_netlist(
         }
     }
 
-    let mut memory_count = 0_u64;
-    let mut memory_bits = 0_u64;
+    let mut generic_memory_count = 0_u64;
+    let mut generic_memory_bits = 0_u64;
     for memory in memories.values() {
         let width = memory.get("width").and_then(Value::as_u64).unwrap_or(0);
         let size = memory.get("size").and_then(Value::as_u64).unwrap_or(0);
-        memory_count = memory_count.saturating_add(1);
-        memory_bits = memory_bits.saturating_add(width.saturating_mul(size));
+        generic_memory_count = generic_memory_count.saturating_add(1);
+        generic_memory_bits = generic_memory_bits.saturating_add(width.saturating_mul(size));
     }
 
+    let mut mapped_memory_count = 0_u64;
+    let mut mapped_memory_bits = 0_u64;
     let mut sequential_cell_count = 0_u64;
     let mut cell_type_counts = BTreeMap::<String, u64>::new();
     for cell in cells.values() {
@@ -80,6 +84,10 @@ pub(super) fn parse_synthesized_netlist(
             .to_string();
         if !is_public_cell_type(&cell_type) {
             continue;
+        }
+        if let Some(capacity_bits) = ramb4_capacity_bits(&cell_type) {
+            mapped_memory_count = mapped_memory_count.saturating_add(1);
+            mapped_memory_bits = mapped_memory_bits.saturating_add(capacity_bits);
         }
         *cell_type_counts.entry(cell_type.clone()).or_default() += 1;
         if is_sequential_cell_type(&cell_type) {
@@ -97,6 +105,12 @@ pub(super) fn parse_synthesized_netlist(
             .cmp(&left.count)
             .then_with(|| left.cell_type.cmp(&right.cell_type))
     });
+
+    let (memory_count, memory_bits) = if mapped_memory_count > 0 {
+        (mapped_memory_count, mapped_memory_bits)
+    } else {
+        (generic_memory_count, generic_memory_bits)
+    };
 
     Ok(ParsedSynthesisNetlist {
         stats: SynthesisStatsV1 {
@@ -175,4 +189,26 @@ fn is_sequential_cell_type(cell_type: &str) -> bool {
 
 fn is_public_cell_type(cell_type: &str) -> bool {
     !cell_type.starts_with('$')
+}
+
+fn ramb4_capacity_bits(cell_type: &str) -> Option<u64> {
+    let suffix = cell_type.strip_prefix("RAMB4_")?;
+    let parts = suffix.split("_S").collect::<Vec<_>>();
+    if !(1..=2).contains(&parts.len()) {
+        return None;
+    }
+
+    let mut previous_width = 0_u32;
+    for part in parts {
+        let width = part.strip_prefix('S').unwrap_or(part).parse::<u32>().ok()?;
+        if !matches!(width, 1 | 2 | 4 | 8 | 16) {
+            return None;
+        }
+        if previous_width != 0 && width < previous_width {
+            return None;
+        }
+        previous_width = width;
+    }
+
+    Some(RAMB4_CAPACITY_BITS)
 }
