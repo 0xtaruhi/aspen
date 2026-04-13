@@ -30,6 +30,7 @@ import {
   type ProjectSnapshot,
   type ProjectSynthesisCacheSnapshot,
 } from './project-model'
+import { projectCanvasStore } from './project-canvas'
 import { findNodeInTree } from './project-tree'
 import { createProjectTemplateState, type ProjectTemplate } from './project-templates'
 
@@ -70,8 +71,17 @@ export interface ProjectSessionStoreLike {
   implementationCache: ProjectImplementationCacheSnapshot | null
   projectPath: string | null
   savedSnapshotJson: string
+  cachedSnapshotJson: string
+  snapshotCacheDirty: boolean
+  cachedCanvasRevision: number
   savedFileSignatures: FileSignatureMap
   toSnapshot(): ProjectSnapshot
+}
+
+export function invalidateProjectSnapshotCache(
+  store: Pick<ProjectSessionStoreLike, 'snapshotCacheDirty'>,
+) {
+  store.snapshotCacheDirty = true
 }
 
 function createTransientProjectUiState() {
@@ -188,6 +198,10 @@ export function markProjectSessionSaved(
   projectPath: string | null,
 ) {
   store.projectPath = projectPath
-  store.savedSnapshotJson = JSON.stringify(store.toSnapshot())
+  const snapshotJson = JSON.stringify(store.toSnapshot())
+  store.savedSnapshotJson = snapshotJson
+  store.cachedSnapshotJson = snapshotJson
+  store.snapshotCacheDirty = false
+  store.cachedCanvasRevision = projectCanvasStore.snapshotRevision.value
   store.savedFileSignatures = buildFileSignatureMap(store.files)
 }
