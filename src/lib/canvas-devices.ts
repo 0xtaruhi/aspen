@@ -16,6 +16,11 @@ type CanvasDeviceCapabilities = {
   receivesSignal: boolean
 }
 
+type CanvasDeviceProjectPersistence = {
+  persistIsOn?: boolean
+  persistData?: boolean
+}
+
 export type CanvasDeviceBindingSlot = {
   key: string
   label: string
@@ -95,6 +100,7 @@ type CanvasDeviceDefinition = {
   getShellSize: (device: CanvasDeviceSnapshot) => CanvasDeviceShellSize
   emitsToggle: boolean
   capabilities: CanvasDeviceCapabilities
+  projectPersistence?: CanvasDeviceProjectPersistence
   getBindingSlots?: (device: CanvasDeviceSnapshot) => readonly CanvasDeviceBindingSlot[]
 }
 
@@ -749,6 +755,7 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
     getShellSize: () => ({ width: 100, height: 160 }),
     emitsToggle: true,
     capabilities: { drivesSignal: true, receivesSignal: false },
+    projectPersistence: { persistIsOn: true },
   },
   button: {
     titleKey: 'button',
@@ -784,6 +791,7 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
     },
     emitsToggle: false,
     capabilities: { drivesSignal: true, receivesSignal: false },
+    projectPersistence: { persistData: true },
     getBindingSlots: (device) => {
       const config = getCanvasDipSwitchBankConfig(device) ?? defaultDipSwitchBankConfig()
       return createBusSlots('SW', config.width)
@@ -1034,4 +1042,21 @@ export function getCanvasDeviceBindingSlots(
   device: CanvasDeviceSnapshot,
 ): readonly CanvasDeviceBindingSlot[] {
   return getCanvasDeviceDefinition(device.type).getBindingSlots?.(device) ?? []
+}
+
+export function sanitizeCanvasDeviceSnapshotForProject(
+  device: CanvasDeviceSnapshot,
+): CanvasDeviceSnapshot {
+  const cloned = JSON.parse(JSON.stringify(device)) as CanvasDeviceSnapshot
+  const persistence = getCanvasDeviceDefinition(cloned.type).projectPersistence
+
+  if (!persistence?.persistIsOn) {
+    cloned.state.is_on = false
+  }
+
+  if (!persistence?.persistData) {
+    cloned.state.data = { kind: 'none' }
+  }
+
+  return cloned
 }
