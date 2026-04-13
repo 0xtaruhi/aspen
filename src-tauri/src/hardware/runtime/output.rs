@@ -1180,6 +1180,10 @@ impl OutputDeviceDecoder for UartTerminalOutputDecoder {
     fn ingest_cycle(&mut self, cycle: &[u16]) {
         let value = read_signal_value(cycle, self.signal_index);
         if !self.state.receiving {
+            if self.state.countdown > 0 {
+                self.state.countdown -= 1;
+                return;
+            }
             if !value {
                 self.state.receiving = true;
                 self.state.countdown = self.cycles_per_bit + self.cycles_per_bit / 2;
@@ -1212,7 +1216,7 @@ impl OutputDeviceDecoder for UartTerminalOutputDecoder {
                 self.text_log.drain(..drain_len);
             }
             self.state.receiving = false;
-            self.state.countdown = 0;
+            self.state.countdown = self.cycles_per_bit.saturating_sub(1);
             self.state.bit_index = 0;
             self.state.byte = 0;
             return;
