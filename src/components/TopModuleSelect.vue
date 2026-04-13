@@ -30,41 +30,13 @@ const props = defineProps<{
 const { t } = useI18n()
 
 const selectedSource = designContextStore.selectedSource
-const sourceName = designContextStore.sourceName
 const hardwareSources = designContextStore.hardwareSources
 const moduleSources = designContextStore.moduleSources
 const moduleNames = designContextStore.moduleNames
 const moduleNamesStale = designContextStore.moduleNamesStale
-const selectedTopModule = computed(() => designContextStore.primaryModule.value)
 const hasProject = computed(() => projectStore.hasProject)
-const hasTopFile = computed(() => selectedSource.value !== null)
-const hasHardwareTopFile = computed(() => selectedSource.value?.isHardwareSource === true)
 const dialogTopFileId = ref('')
 const dialogTopModuleName = ref('')
-
-const helperText = computed(() => {
-  if (!hasTopFile.value) {
-    return t('topModuleNoTopFile')
-  }
-
-  if (!hasHardwareTopFile.value) {
-    return t('topModuleUnsupportedSource')
-  }
-
-  if (moduleNamesStale.value) {
-    return t('topModuleStaleHint')
-  }
-
-  if (moduleNames.value.length === 0) {
-    return t('topModuleNoModules')
-  }
-
-  if (moduleNames.value.length === 1) {
-    return t('topModuleSingleDetected')
-  }
-
-  return t('topModuleChooseHint')
-})
 
 const topFileOptions = computed(() => {
   return hardwareSources.value.map((source) => ({
@@ -103,20 +75,6 @@ function getModuleNamesForSource(sourceId: string) {
 
   return moduleSources.value.find((source) => source.id === sourceId)?.moduleNames ?? []
 }
-
-const triggerLabel = computed(() => {
-  if (!hasHardwareTopFile.value || moduleNames.value.length === 0) {
-    return t('configureTopModule')
-  }
-
-  return selectedTopModule.value
-})
-
-const triggerTitle = computed(() => {
-  const summary = `${t('topModuleLabel')}: ${triggerLabel.value}`
-  const topFileSummary = `${t('topModuleTopFileLabel')}: ${hasTopFile.value ? sourceName.value : t('topFileNotSelected')}`
-  return [summary, topFileSummary, helperText.value].filter(Boolean).join(' · ')
-})
 
 function syncDialogState() {
   const preferredSourceId = topModuleDialogStore.preferredSourceId.trim()
@@ -197,8 +155,8 @@ watch(
     class="h-7 w-7 shrink-0"
     :class="moduleNamesStale ? 'text-amber-700 dark:text-amber-300' : ''"
     :disabled="!canOpenTopModuleDialog"
-    :title="triggerTitle"
-    :aria-label="triggerTitle"
+    :title="t('configureTopModule')"
+    :aria-label="t('configureTopModule')"
     @click="openTopModuleDialog"
   >
     <CircuitBoard class="h-4 w-4" />
