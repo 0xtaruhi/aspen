@@ -214,7 +214,8 @@
     background: linear-gradient(
       90deg,
       transparent,
-      var(--window-chrome-bottom-line) 14% 86%,
+      var(--window-chrome-bottom-line) 14%,
+      var(--window-chrome-bottom-line) 86%,
       transparent
     );
     pointer-events: none;
@@ -238,6 +239,10 @@
       transparent
     );
     pointer-events: none;
+  }
+
+  .app-sidebar-glass[data-side='right']::after {
+    inset: 0 auto 0 0;
   }
 
   .app-dialog-panel,
