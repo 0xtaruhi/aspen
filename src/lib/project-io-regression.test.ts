@@ -1,5 +1,92 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+function createProjectIoServiceMocks(overrides: Record<string, unknown> = {}) {
+  return {
+    applyImportedFilesToProject: vi.fn(),
+    finalizeCreateProjectDirectory: vi.fn(),
+    openProjectFromPath: vi.fn(),
+    openRecentProjectFromPath: vi.fn(),
+    prepareCreateProjectDirectory: vi.fn(),
+    saveProjectBundleToPath: vi.fn(),
+    validateCreateProjectAtDirectoryInput: vi.fn(),
+    ...overrides,
+  }
+}
+
+function createProjectStoreMock(overrides: Record<string, unknown> = {}) {
+  return {
+    files: [],
+    hasProject: false,
+    hasUnsavedChanges: false,
+    projectPath: null,
+    toSnapshot: vi.fn(() => ({
+      content: {
+        name: 'DemoProject',
+      },
+    })),
+    markSaved: vi.fn(),
+    ...overrides,
+  }
+}
+
+function setupProjectIoMocks(
+  options: {
+    invoke?: ReturnType<typeof vi.fn>
+    openDialog?: ReturnType<typeof vi.fn>
+    saveDialog?: ReturnType<typeof vi.fn>
+    service?: Record<string, unknown>
+    projectStore?: Record<string, unknown>
+  } = {},
+) {
+  const showProjectIoMessage = vi.fn()
+  const invoke = options.invoke ?? vi.fn()
+  const openDialog = options.openDialog ?? vi.fn()
+  const saveDialog = options.saveDialog ?? vi.fn()
+  const service = createProjectIoServiceMocks(options.service)
+  const projectStore = createProjectStoreMock(options.projectStore)
+
+  vi.doMock('@tauri-apps/api/core', () => ({
+    invoke,
+  }))
+  vi.doMock('@tauri-apps/plugin-dialog', () => ({
+    open: openDialog,
+    save: saveDialog,
+  }))
+  vi.doMock('@/lib/i18n', () => ({
+    translate: vi.fn((key: string) => key),
+  }))
+  vi.doMock('@/lib/project-layout', () => ({
+    ASPEN_PROJECT_FILENAME: 'aspen.project.json',
+    getProjectMetadataPath: vi.fn((path: string) => path),
+  }))
+  vi.doMock('@/lib/project-io-common', () => ({
+    getProjectIoErrorMessage: vi.fn((err: unknown) =>
+      err instanceof Error ? err.message : String(err),
+    ),
+    isProjectIoTauriUnavailable: vi.fn(() => false),
+    showProjectIoMessage,
+  }))
+  vi.doMock('@/lib/project-io-service', () => service)
+  vi.doMock('@/stores/hardware', () => ({
+    hardwareStore: {},
+  }))
+  vi.doMock('@/stores/project', () => ({
+    projectStore,
+  }))
+  vi.doMock('@/stores/project-unsaved-changes', () => ({
+    requestProjectUnsavedChanges: vi.fn(),
+  }))
+
+  return {
+    invoke,
+    openDialog,
+    projectStore,
+    saveDialog,
+    service,
+    showProjectIoMessage,
+  }
+}
+
 describe('project io regressions', () => {
   beforeEach(() => {
     vi.resetModules()
@@ -13,7 +100,6 @@ describe('project io regressions', () => {
   })
 
   it('shows duplicate-skip warnings after direct file imports succeed', async () => {
-    const showProjectIoMessage = vi.fn()
     const applyImportedFilesToProject = vi.fn(() => ({
       kind: 'success' as const,
       value: {
@@ -28,58 +114,20 @@ describe('project io regressions', () => {
         },
       },
     }))
-
-    vi.doMock('@tauri-apps/api/core', () => ({
+    const { showProjectIoMessage } = setupProjectIoMocks({
       invoke: vi.fn().mockResolvedValue('module duplicate; endmodule'),
-    }))
-    vi.doMock('@tauri-apps/plugin-dialog', () => ({
-      open: vi.fn().mockResolvedValue(['/tmp/dup.v']),
-      save: vi.fn(),
-    }))
-    vi.doMock('@/lib/i18n', () => ({
-      translate: vi.fn((key: string) => key),
-    }))
-    vi.doMock('@/lib/project-layout', () => ({
-      ASPEN_PROJECT_FILENAME: 'aspen.project.json',
-      getProjectMetadataPath: vi.fn((path: string) => path),
-    }))
-    vi.doMock('@/lib/project-io-common', () => ({
-      getProjectIoErrorMessage: vi.fn((err: unknown) => String(err)),
-      isProjectIoTauriUnavailable: vi.fn(() => false),
-      showProjectIoMessage,
-    }))
-    vi.doMock('@/lib/project-io-service', () => ({
-      applyImportedFilesToProject,
-      finalizeCreateProjectDirectory: vi.fn(),
-      openProjectFromPath: vi.fn(),
-      openRecentProjectFromPath: vi.fn(),
-      prepareCreateProjectDirectory: vi.fn(),
-      saveProjectBundleToPath: vi.fn(),
-      validateCreateProjectAtDirectoryInput: vi.fn(),
-    }))
-    vi.doMock('@/stores/hardware', () => ({
-      hardwareStore: {},
-    }))
-    vi.doMock('@/stores/project', () => ({
+      openDialog: vi.fn().mockResolvedValue(['/tmp/dup.v']),
+      service: {
+        applyImportedFilesToProject,
+      },
       projectStore: {
-        files: [],
         hasProject: true,
-        hasUnsavedChanges: false,
-        projectPath: null,
         rootNode: {
           id: 'root',
           type: 'folder',
         },
-        toSnapshot: vi.fn(() => ({
-          content: {
-            name: 'DemoProject',
-          },
-        })),
       },
-    }))
-    vi.doMock('@/stores/project-unsaved-changes', () => ({
-      requestProjectUnsavedChanges: vi.fn(),
-    }))
+    })
 
     const { importProjectFiles } = await import('./project-io')
 
@@ -94,7 +142,6 @@ describe('project io regressions', () => {
   })
 
   it('shows create-project warnings returned by the service layer', async () => {
-    const showProjectIoMessage = vi.fn()
     const finalizeCreateProjectDirectory = vi.fn().mockResolvedValue({
       kind: 'success',
       value: {
@@ -108,61 +155,20 @@ describe('project io regressions', () => {
         },
       },
     })
-
-    vi.doMock('@tauri-apps/api/core', () => ({
-      invoke: vi.fn(),
-    }))
-    vi.doMock('@tauri-apps/plugin-dialog', () => ({
-      open: vi.fn(),
-      save: vi.fn(),
-    }))
-    vi.doMock('@/lib/i18n', () => ({
-      translate: vi.fn((key: string) => key),
-    }))
-    vi.doMock('@/lib/project-layout', () => ({
-      ASPEN_PROJECT_FILENAME: 'aspen.project.json',
-      getProjectMetadataPath: vi.fn((path: string) => path),
-    }))
-    vi.doMock('@/lib/project-io-common', () => ({
-      getProjectIoErrorMessage: vi.fn((err: unknown) => String(err)),
-      isProjectIoTauriUnavailable: vi.fn(() => false),
-      showProjectIoMessage,
-    }))
-    vi.doMock('@/lib/project-io-service', () => ({
-      applyImportedFilesToProject: vi.fn(),
-      finalizeCreateProjectDirectory,
-      openProjectFromPath: vi.fn(),
-      openRecentProjectFromPath: vi.fn(),
-      prepareCreateProjectDirectory: vi.fn().mockResolvedValue({
-        kind: 'success',
-        value: {
-          parentDirectoryPath: '/tmp',
-          projectDirectoryPath: '/tmp/Demo',
-          projectName: 'Demo',
-        },
-      }),
-      saveProjectBundleToPath: vi.fn(),
-      validateCreateProjectAtDirectoryInput: vi.fn(() => null),
-    }))
-    vi.doMock('@/stores/hardware', () => ({
-      hardwareStore: {},
-    }))
-    vi.doMock('@/stores/project', () => ({
-      projectStore: {
-        files: [],
-        hasProject: false,
-        hasUnsavedChanges: false,
-        projectPath: null,
-        toSnapshot: vi.fn(() => ({
-          content: {
-            name: 'DemoProject',
+    const { showProjectIoMessage } = setupProjectIoMocks({
+      service: {
+        finalizeCreateProjectDirectory,
+        prepareCreateProjectDirectory: vi.fn().mockResolvedValue({
+          kind: 'success',
+          value: {
+            parentDirectoryPath: '/tmp',
+            projectDirectoryPath: '/tmp/Demo',
+            projectName: 'Demo',
           },
-        })),
+        }),
+        validateCreateProjectAtDirectoryInput: vi.fn(() => null),
       },
-    }))
-    vi.doMock('@/stores/project-unsaved-changes', () => ({
-      requestProjectUnsavedChanges: vi.fn(),
-    }))
+    })
 
     const { createProjectAtDirectory } = await import('./project-io')
 
@@ -183,7 +189,6 @@ describe('project io regressions', () => {
   })
 
   it('surfaces save failures only once when saving the current project path fails', async () => {
-    const showProjectIoMessage = vi.fn()
     const saveProjectBundleToPath = vi.fn().mockResolvedValue({
       kind: 'failure',
       reason: 'error',
@@ -195,57 +200,15 @@ describe('project io regressions', () => {
       },
       error: new Error('write failed'),
     })
-
-    vi.doMock('@tauri-apps/api/core', () => ({
-      invoke: vi.fn(),
-    }))
-    vi.doMock('@tauri-apps/plugin-dialog', () => ({
-      open: vi.fn(),
-      save: vi.fn(),
-    }))
-    vi.doMock('@/lib/i18n', () => ({
-      translate: vi.fn((key: string) => key),
-    }))
-    vi.doMock('@/lib/project-layout', () => ({
-      ASPEN_PROJECT_FILENAME: 'aspen.project.json',
-      getProjectMetadataPath: vi.fn((path: string) => path),
-    }))
-    vi.doMock('@/lib/project-io-common', () => ({
-      getProjectIoErrorMessage: vi.fn((err: unknown) =>
-        err instanceof Error ? err.message : String(err),
-      ),
-      isProjectIoTauriUnavailable: vi.fn(() => false),
-      showProjectIoMessage,
-    }))
-    vi.doMock('@/lib/project-io-service', () => ({
-      applyImportedFilesToProject: vi.fn(),
-      finalizeCreateProjectDirectory: vi.fn(),
-      openProjectFromPath: vi.fn(),
-      openRecentProjectFromPath: vi.fn(),
-      prepareCreateProjectDirectory: vi.fn(),
-      saveProjectBundleToPath,
-      validateCreateProjectAtDirectoryInput: vi.fn(),
-    }))
-    vi.doMock('@/stores/hardware', () => ({
-      hardwareStore: {},
-    }))
-    vi.doMock('@/stores/project', () => ({
-      projectStore: {
-        files: [],
-        hasProject: true,
-        hasUnsavedChanges: false,
-        projectPath: '/tmp/demo/aspen.project.json',
-        toSnapshot: vi.fn(() => ({
-          content: {
-            name: 'DemoProject',
-          },
-        })),
-        markSaved: vi.fn(),
+    const { showProjectIoMessage } = setupProjectIoMocks({
+      service: {
+        saveProjectBundleToPath,
       },
-    }))
-    vi.doMock('@/stores/project-unsaved-changes', () => ({
-      requestProjectUnsavedChanges: vi.fn(),
-    }))
+      projectStore: {
+        hasProject: true,
+        projectPath: '/tmp/demo/aspen.project.json',
+      },
+    })
 
     const { saveProject } = await import('./project-io')
 
@@ -260,7 +223,6 @@ describe('project io regressions', () => {
   })
 
   it('shows save warnings returned after a successful current-path save', async () => {
-    const showProjectIoMessage = vi.fn()
     const saveProjectBundleToPath = vi.fn().mockResolvedValue({
       kind: 'success',
       value: {
@@ -273,57 +235,15 @@ describe('project io regressions', () => {
         },
       },
     })
-
-    vi.doMock('@tauri-apps/api/core', () => ({
-      invoke: vi.fn(),
-    }))
-    vi.doMock('@tauri-apps/plugin-dialog', () => ({
-      open: vi.fn(),
-      save: vi.fn(),
-    }))
-    vi.doMock('@/lib/i18n', () => ({
-      translate: vi.fn((key: string) => key),
-    }))
-    vi.doMock('@/lib/project-layout', () => ({
-      ASPEN_PROJECT_FILENAME: 'aspen.project.json',
-      getProjectMetadataPath: vi.fn((path: string) => path),
-    }))
-    vi.doMock('@/lib/project-io-common', () => ({
-      getProjectIoErrorMessage: vi.fn((err: unknown) =>
-        err instanceof Error ? err.message : String(err),
-      ),
-      isProjectIoTauriUnavailable: vi.fn(() => false),
-      showProjectIoMessage,
-    }))
-    vi.doMock('@/lib/project-io-service', () => ({
-      applyImportedFilesToProject: vi.fn(),
-      finalizeCreateProjectDirectory: vi.fn(),
-      openProjectFromPath: vi.fn(),
-      openRecentProjectFromPath: vi.fn(),
-      prepareCreateProjectDirectory: vi.fn(),
-      saveProjectBundleToPath,
-      validateCreateProjectAtDirectoryInput: vi.fn(),
-    }))
-    vi.doMock('@/stores/hardware', () => ({
-      hardwareStore: {},
-    }))
-    vi.doMock('@/stores/project', () => ({
-      projectStore: {
-        files: [],
-        hasProject: true,
-        hasUnsavedChanges: false,
-        projectPath: '/tmp/demo/aspen.project.json',
-        toSnapshot: vi.fn(() => ({
-          content: {
-            name: 'DemoProject',
-          },
-        })),
-        markSaved: vi.fn(),
+    const { showProjectIoMessage } = setupProjectIoMocks({
+      service: {
+        saveProjectBundleToPath,
       },
-    }))
-    vi.doMock('@/stores/project-unsaved-changes', () => ({
-      requestProjectUnsavedChanges: vi.fn(),
-    }))
+      projectStore: {
+        hasProject: true,
+        projectPath: '/tmp/demo/aspen.project.json',
+      },
+    })
 
     const { saveProjectToCurrentPath } = await import('./project-io')
 
