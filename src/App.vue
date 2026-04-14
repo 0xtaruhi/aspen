@@ -119,10 +119,6 @@ const {
   background: transparent;
 }
 
-.app-shell-header {
-  background: transparent;
-}
-
 .app-shell-workspace {
   background: var(--window-workspace-surface);
 }
