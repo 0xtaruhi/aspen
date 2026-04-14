@@ -1,11 +1,11 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { effectScope, nextTick, ref } from 'vue'
-
 import type {
   CanvasDeviceSnapshot,
   HardwareDataStreamStatusV1,
   HardwareStateV1,
 } from '@/lib/hardware-client'
+
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { effectScope, nextTick, ref } from 'vue'
 
 function createDataStreamStatus(): HardwareDataStreamStatusV1 {
   return {

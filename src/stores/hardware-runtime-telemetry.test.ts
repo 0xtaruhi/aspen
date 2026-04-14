@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-
 import type { HardwareDataBatchBinaryV1 } from '@/lib/hardware-client'
+
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { dataStreamStatus, signalTelemetry } from './hardware-runtime-state'
 import {
