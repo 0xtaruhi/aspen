@@ -23,6 +23,10 @@ import {
   getProjectSynthesisManifestPath,
   joinPath,
 } from '@/lib/project-layout'
+import {
+  isMissingProjectPersistencePath,
+  isProjectPersistenceTauriUnavailable,
+} from '@/lib/project-persistence-errors'
 import { projectStore } from '@/stores/project'
 import { recentProjectsStore } from '@/stores/recent-projects'
 import { hardwareStore } from '@/stores/hardware'
@@ -53,27 +57,8 @@ export type ProjectDirectoryInspection = {
   visible_entry_count: number
 }
 
-function getErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
-}
-
-function isTauriUnavailable(err: unknown) {
-  const message = getErrorMessage(err)
-  return (
-    message.includes('__TAURI_INTERNALS__') ||
-    message.includes('window.__TAURI_INTERNALS__') ||
-    message.includes('plugin')
-  )
-}
-
 function shouldIgnorePersistenceError(err: unknown) {
-  const message = getErrorMessage(err).toLowerCase()
-  return (
-    isTauriUnavailable(err) ||
-    message.includes('no such file') ||
-    message.includes('not found') ||
-    message.includes('cannot find the path')
-  )
+  return isProjectPersistenceTauriUnavailable(err) || isMissingProjectPersistencePath(err)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

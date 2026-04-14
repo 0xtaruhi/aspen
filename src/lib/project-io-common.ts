@@ -1,6 +1,11 @@
 import type { MessageKey } from '@/lib/i18n'
 
 import { translate } from '@/lib/i18n'
+import {
+  getProjectPersistenceErrorMessage,
+  isMissingProjectPersistencePath,
+  isProjectPersistenceTauriUnavailable,
+} from '@/lib/project-persistence-errors'
 
 type ProjectIoMessageParams = Record<string, string | number>
 
@@ -23,25 +28,15 @@ export type ProjectIoServiceResult<T> =
     }
 
 export function getProjectIoErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
+  return getProjectPersistenceErrorMessage(err)
 }
 
 export function isProjectIoTauriUnavailable(err: unknown): boolean {
-  const message = getProjectIoErrorMessage(err)
-  return (
-    message.includes('__TAURI_INTERNALS__') ||
-    message.includes('window.__TAURI_INTERNALS__') ||
-    message.includes('plugin')
-  )
+  return isProjectPersistenceTauriUnavailable(err)
 }
 
 export function shouldForgetRecentProject(err: unknown) {
-  const message = getProjectIoErrorMessage(err).toLowerCase()
-  return (
-    message.includes('no such file') ||
-    message.includes('not found') ||
-    message.includes('cannot find the path')
-  )
+  return isMissingProjectPersistencePath(err)
 }
 
 export function resolveProjectIoMessage(message: ProjectIoMessageDescriptor) {
