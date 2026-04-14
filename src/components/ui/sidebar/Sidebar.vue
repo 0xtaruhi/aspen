@@ -27,7 +27,7 @@ const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
     :data-side="side"
     :class="
       cn(
-        'app-sidebar-glass bg-transparent text-sidebar-foreground flex h-full w-(--sidebar-width) flex-col',
+        'flex h-full w-(--sidebar-width) flex-col app-sidebar-glass bg-transparent text-sidebar-foreground',
         props.class,
       )
     "
@@ -43,7 +43,7 @@ const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
       data-mobile="true"
       :data-side="side"
       :side="side"
-      class="app-sidebar-glass text-sidebar-foreground w-(--sidebar-width) !border-0 p-0 [&>button]:hidden"
+      class="w-(--sidebar-width) p-0 app-sidebar-glass text-sidebar-foreground !border-0 [&>button]:hidden"
       :style="{
         '--sidebar-width': SIDEBAR_WIDTH_MOBILE,
       }"
@@ -99,7 +99,7 @@ const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
       <div
         data-sidebar="sidebar"
         :data-side="side"
-        class="app-sidebar-glass group-data-[variant=floating]:border-sidebar-border flex h-full w-full flex-col group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border"
+        class="flex h-full w-full flex-col app-sidebar-glass group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border"
       >
         <slot />
       </div>
