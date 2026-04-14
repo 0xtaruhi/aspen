@@ -120,6 +120,13 @@ function commitRename() {
   }
 
   const result = projectStore.commitNodeRename(props.node.id, renameValue.value)
+  if (result.kind === 'conflict') {
+    void nextTick(() => {
+      window.requestAnimationFrame(focusRenameInput)
+    })
+    return
+  }
+
   if (result.kind === 'created' && result.nodeType === 'file') {
     openFile(result.id)
   }

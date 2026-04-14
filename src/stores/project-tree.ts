@@ -120,3 +120,44 @@ export function createProjectFolderNode(name: string, options: { id?: string } =
 export function ensureFolderChildren(node: ProjectNode): ProjectNode[] {
   return (node.children ??= [])
 }
+
+export function normalizeProjectNodeName(name: string) {
+  return name.trim()
+}
+
+export function hasSiblingNodeWithName(
+  nodes: ProjectNode[],
+  name: string,
+  options: { excludeId?: string } = {},
+) {
+  const normalizedName = normalizeProjectNodeName(name)
+  if (!normalizedName) {
+    return false
+  }
+
+  return nodes.some(
+    (node) =>
+      node.id !== options.excludeId && normalizeProjectNodeName(node.name) === normalizedName,
+  )
+}
+
+export function createUniqueSiblingNodeName(nodes: ProjectNode[], preferredName: string) {
+  const normalizedName = normalizeProjectNodeName(preferredName)
+  if (!normalizedName || !hasSiblingNodeWithName(nodes, normalizedName)) {
+    return normalizedName
+  }
+
+  const extensionIndex = normalizedName.lastIndexOf('.')
+  const hasExtension = extensionIndex > 0
+  const baseName = hasExtension ? normalizedName.slice(0, extensionIndex) : normalizedName
+  const extension = hasExtension ? normalizedName.slice(extensionIndex) : ''
+
+  let suffix = 1
+  while (true) {
+    const candidateName = `${baseName} (${suffix})${extension}`
+    if (!hasSiblingNodeWithName(nodes, candidateName)) {
+      return candidateName
+    }
+    suffix += 1
+  }
+}

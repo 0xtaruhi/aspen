@@ -70,9 +70,12 @@ export type ProjectStoreLike = ProjectStoreState &
     setImplementationCache(snapshot: ProjectImplementationCacheSnapshot | null): void
     markSaved(projectPath?: string | null): void
     isFileDirty(id: string): boolean
-    createFile(parentId: string, name: string): void
-    createFolder(parentId: string, name: string): void
-    importFiles(parentId: string, files: Array<{ name: string; content: string }>): void
+    createFile(parentId: string, name: string): boolean
+    createFolder(parentId: string, name: string): boolean
+    importFiles(
+      parentId: string,
+      files: Array<{ name: string; content: string }>,
+    ): import('./project-file-operations').ImportFilesResult
     deleteNode(id: string): void
     commitNodeRename(
       id: string,
@@ -80,6 +83,7 @@ export type ProjectStoreLike = ProjectStoreState &
     ):
       | { kind: 'discarded'; id: string; nodeType: ProjectNode['type'] | null }
       | { kind: 'created'; id: string; nodeType: ProjectNode['type'] }
+      | { kind: 'conflict'; id: string; nodeType: ProjectNode['type'] }
       | { kind: 'noop'; id: string; nodeType: ProjectNode['type'] }
       | { kind: 'renamed'; id: string; nodeType: ProjectNode['type'] }
     moveNode(id: string, targetParentId: string | null, targetIndex: number): boolean
