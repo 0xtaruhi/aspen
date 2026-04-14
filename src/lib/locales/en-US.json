@@ -78,6 +78,7 @@
   "aspenProject": "Aspen Project",
   "openProjectFailed": "Failed to open project: {message}",
   "saveProjectFailed": "Failed to save project: {message}",
+  "saveProjectCompletedWithWarnings": "Project saved, but some post-save state could not be refreshed: {message}",
   "autoSaveProjectFailed": "Synthesis completed, but auto-save failed: {message}",
   "autoSaveImplementationProjectFailed": "Implementation completed, but auto-save failed: {message}",
   "projectStatus": "Project Status",

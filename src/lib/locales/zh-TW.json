@@ -78,6 +78,7 @@
   "aspenProject": "Aspen 專案",
   "openProjectFailed": "開啟專案失敗：{message}",
   "saveProjectFailed": "儲存專案失敗：{message}",
+  "saveProjectCompletedWithWarnings": "專案已儲存，但部分儲存後狀態未能重新整理：{message}",
   "autoSaveProjectFailed": "綜合已完成，但自動儲存失敗：{message}",
   "autoSaveImplementationProjectFailed": "實作已完成，但自動儲存失敗：{message}",
   "projectStatus": "專案狀態",

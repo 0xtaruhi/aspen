@@ -375,6 +375,10 @@ export async function saveProjectAs() {
       return false
     }
 
+    if (result.message) {
+      showProjectIoMessage(result.message)
+    }
+
     return true
   } catch (err) {
     if (isProjectIoTauriUnavailable(err)) {
@@ -488,6 +492,10 @@ export async function saveProjectToCurrentPath() {
       // Re-throw saveProjectBundleToPath failures so parent save flows like
       // saveProject can decide whether to surface or recover from them.
       throw result.error ?? new Error(translate(result.message.key, result.message.params))
+    }
+
+    if (result.message) {
+      showProjectIoMessage(result.message)
     }
 
     return true

@@ -200,6 +200,74 @@ describe('project io service', () => {
     })
   })
 
+  it('returns a success warning when post-save synchronization fails after the bundle is written', async () => {
+    const writeProjectBundle = vi.fn().mockResolvedValue(undefined)
+    const syncInMemoryImplementationCacheAfterSave = vi.fn().mockImplementation(() => {
+      throw new Error('cache sync failed')
+    })
+    const syncInMemorySynthesisCacheAfterSave = vi.fn()
+    const rememberProject = vi.fn()
+    const markSaved = vi.fn()
+
+    vi.doMock('./project-persistence', () => ({
+      inspectProjectDirectory: vi.fn(),
+      loadProjectFromPath: vi.fn(),
+      readImportedSourceFiles: vi.fn(),
+      syncInMemoryImplementationCacheAfterSave,
+      syncInMemorySynthesisCacheAfterSave,
+      writeProjectBundle,
+    }))
+    vi.doMock('@/stores/recent-projects', () => ({
+      recentProjectsStore: {
+        rememberProject,
+        removeProject: vi.fn(),
+      },
+    }))
+    vi.doMock('@/stores/project', () => ({
+      projectStore: {
+        createNewProject: vi.fn(),
+        findNode: vi.fn(),
+        importFiles: vi.fn(),
+        markSaved,
+        rootNode: null,
+        toSnapshot: vi.fn(() => ({
+          content: {
+            name: 'SavedProject',
+          },
+        })),
+      },
+    }))
+
+    const { saveProjectBundleToPath } = await import('./project-io-service')
+
+    const result = await saveProjectBundleToPath('/tmp/saved-project/aspen.project.json', {
+      preserveArtifacts: true,
+    })
+
+    expect(writeProjectBundle).toHaveBeenCalledWith('/tmp/saved-project/aspen.project.json', {
+      preserveArtifacts: true,
+    })
+    expect(syncInMemorySynthesisCacheAfterSave).toHaveBeenCalledWith(true)
+    expect(syncInMemoryImplementationCacheAfterSave).toHaveBeenCalledWith(true)
+    expect(markSaved).toHaveBeenCalledWith('/tmp/saved-project/aspen.project.json')
+    expect(rememberProject).toHaveBeenCalledWith(
+      '/tmp/saved-project/aspen.project.json',
+      'SavedProject',
+    )
+    expect(result).toEqual({
+      kind: 'success',
+      value: {
+        path: '/tmp/saved-project/aspen.project.json',
+      },
+      message: {
+        key: 'saveProjectCompletedWithWarnings',
+        params: {
+          message: 'cache sync failed',
+        },
+      },
+    })
+  })
+
   it('restores the previous project state when create-project setup fails after replacing the store', async () => {
     const readImportedSourceFiles = vi.fn().mockRejectedValue(new Error('import failed'))
 

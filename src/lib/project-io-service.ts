@@ -92,6 +92,15 @@ function createImportWarningMessage(
   }
 }
 
+function createPostSaveWarningMessage(error: unknown): ProjectIoMessageDescriptor {
+  return {
+    key: 'saveProjectCompletedWithWarnings',
+    params: {
+      message: getProjectIoErrorMessage(error),
+    },
+  }
+}
+
 function createImportResultSummary(result: ImportFilesResult) {
   return {
     createdCount: result.createdIds.length,
@@ -338,15 +347,6 @@ export async function saveProjectBundleToPath(
     await writeProjectBundle(path, {
       preserveArtifacts: options.preserveArtifacts,
     })
-    syncInMemorySynthesisCacheAfterSave(options.preserveArtifacts)
-    syncInMemoryImplementationCacheAfterSave(options.preserveArtifacts)
-    projectStore.markSaved(path)
-    recentProjectsStore.rememberProject(path, projectStore.toSnapshot().content.name)
-
-    return {
-      kind: 'success',
-      value: { path },
-    }
   } catch (err) {
     return {
       kind: 'failure',
@@ -359,6 +359,28 @@ export async function saveProjectBundleToPath(
       },
       error: err,
     }
+  }
+
+  let warningMessage: ProjectIoMessageDescriptor | undefined
+  const runPostSaveSideEffect = (effect: () => void) => {
+    try {
+      effect()
+    } catch (err) {
+      warningMessage ??= createPostSaveWarningMessage(err)
+    }
+  }
+
+  runPostSaveSideEffect(() => syncInMemorySynthesisCacheAfterSave(options.preserveArtifacts))
+  runPostSaveSideEffect(() => syncInMemoryImplementationCacheAfterSave(options.preserveArtifacts))
+  runPostSaveSideEffect(() => projectStore.markSaved(path))
+  runPostSaveSideEffect(() =>
+    recentProjectsStore.rememberProject(path, projectStore.toSnapshot().content.name),
+  )
+
+  return {
+    kind: 'success',
+    value: { path },
+    message: warningMessage,
   }
 }
 

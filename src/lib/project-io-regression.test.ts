@@ -258,4 +258,81 @@ describe('project io regressions', () => {
       },
     })
   })
+
+  it('shows save warnings returned after a successful current-path save', async () => {
+    const showProjectIoMessage = vi.fn()
+    const saveProjectBundleToPath = vi.fn().mockResolvedValue({
+      kind: 'success',
+      value: {
+        path: '/tmp/demo/aspen.project.json',
+      },
+      message: {
+        key: 'saveProjectCompletedWithWarnings',
+        params: {
+          message: 'cache sync failed',
+        },
+      },
+    })
+
+    vi.doMock('@tauri-apps/api/core', () => ({
+      invoke: vi.fn(),
+    }))
+    vi.doMock('@tauri-apps/plugin-dialog', () => ({
+      open: vi.fn(),
+      save: vi.fn(),
+    }))
+    vi.doMock('@/lib/i18n', () => ({
+      translate: vi.fn((key: string) => key),
+    }))
+    vi.doMock('@/lib/project-layout', () => ({
+      ASPEN_PROJECT_FILENAME: 'aspen.project.json',
+      getProjectMetadataPath: vi.fn((path: string) => path),
+    }))
+    vi.doMock('@/lib/project-io-common', () => ({
+      getProjectIoErrorMessage: vi.fn((err: unknown) =>
+        err instanceof Error ? err.message : String(err),
+      ),
+      isProjectIoTauriUnavailable: vi.fn(() => false),
+      showProjectIoMessage,
+    }))
+    vi.doMock('@/lib/project-io-service', () => ({
+      applyImportedFilesToProject: vi.fn(),
+      finalizeCreateProjectDirectory: vi.fn(),
+      openProjectFromPath: vi.fn(),
+      openRecentProjectFromPath: vi.fn(),
+      prepareCreateProjectDirectory: vi.fn(),
+      saveProjectBundleToPath,
+      validateCreateProjectAtDirectoryInput: vi.fn(),
+    }))
+    vi.doMock('@/stores/hardware', () => ({
+      hardwareStore: {},
+    }))
+    vi.doMock('@/stores/project', () => ({
+      projectStore: {
+        files: [],
+        hasProject: true,
+        hasUnsavedChanges: false,
+        projectPath: '/tmp/demo/aspen.project.json',
+        toSnapshot: vi.fn(() => ({
+          content: {
+            name: 'DemoProject',
+          },
+        })),
+        markSaved: vi.fn(),
+      },
+    }))
+    vi.doMock('@/stores/project-unsaved-changes', () => ({
+      requestProjectUnsavedChanges: vi.fn(),
+    }))
+
+    const { saveProjectToCurrentPath } = await import('./project-io')
+
+    expect(await saveProjectToCurrentPath()).toBe(true)
+    expect(showProjectIoMessage).toHaveBeenCalledWith({
+      key: 'saveProjectCompletedWithWarnings',
+      params: {
+        message: 'cache sync failed',
+      },
+    })
+  })
 })
