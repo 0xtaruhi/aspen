@@ -433,8 +433,17 @@ export function useVirtualDevicePlatformState() {
   )
 
   watch(
-    [workbenchSignalNameSet, canvasBindingSignature],
-    () => {
+    [
+      hasAnySynthesisSignals,
+      hasStaleSynthesisSignals,
+      workbenchSignalNameSet,
+      canvasBindingSignature,
+    ],
+    ([hasSignalSourceReport, hasStaleSignalSourceReport]) => {
+      if (!hasSignalSourceReport || hasStaleSignalSourceReport) {
+        return
+      }
+
       void sanitizeUnsupportedBindings().catch(() => undefined)
     },
     { immediate: true },
