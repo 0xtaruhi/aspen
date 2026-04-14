@@ -306,7 +306,9 @@ export async function finalizeCreateProjectDirectory(
           message: {
             key: 'createProjectFailed',
             params: {
-              message: importResult.message.params?.message ?? 'Failed to import project files.',
+              message: String(
+                importResult.message.params?.message ?? 'Failed to import project files.',
+              ),
             },
           },
           error: importResult.error,
@@ -326,7 +328,7 @@ export async function finalizeCreateProjectDirectory(
         message: {
           key: 'createProjectFailed',
           params: {
-            message: saveResult.message.params?.message ?? 'Failed to save project.',
+            message: String(saveResult.message.params?.message ?? 'Failed to save project.'),
           },
         },
         error: saveResult.error,

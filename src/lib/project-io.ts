@@ -161,6 +161,10 @@ async function importFilesInBrowserFallback() {
         return
       }
 
+      if (result.message) {
+        showProjectIoMessage(result.message)
+      }
+
       resolve(true)
     }
 
@@ -305,6 +309,10 @@ export async function importProjectFiles() {
       return false
     }
 
+    if (result.message) {
+      showProjectIoMessage(result.message)
+    }
+
     if (projectStore.projectPath) {
       try {
         await saveProjectToCurrentPath({ silent: true })
@@ -426,6 +434,10 @@ export async function createProjectAtDirectory(options: CreateProjectAtDirectory
     return false
   }
 
+  if (result.message) {
+    showProjectIoMessage(result.message)
+  }
+
   return true
 }
 
@@ -477,6 +489,8 @@ export async function saveProjectToCurrentPath(options: { silent?: boolean } = {
         showProjectIoMessage(result.message)
       }
 
+      // Re-throw saveProjectBundleToPath failures so parent save flows like
+      // saveProject can decide whether to surface or recover from them.
       throw result.error ?? new Error(translate(result.message.key, result.message.params))
     }
 
@@ -486,6 +500,8 @@ export async function saveProjectToCurrentPath(options: { silent?: boolean } = {
       return false
     }
 
+    // Non-Tauri failures are intentionally propagated after local handling so
+    // callers such as saveProject can apply their own error policy.
     throw err
   }
 }
