@@ -74,16 +74,16 @@ export interface ProjectSessionStoreLike {
   projectPath: string | null
   savedContentSnapshotJson: string
   cachedContentSnapshotJson: string
-  snapshotCacheDirty: boolean
+  contentSnapshotCacheDirty: boolean
   cachedCanvasRevision: number
   savedFileSignatures: FileSignatureMap
   toSnapshot(): ProjectSnapshot
 }
 
-export function invalidateProjectSnapshotCache(
-  store: Pick<ProjectSessionStoreLike, 'snapshotCacheDirty'>,
+export function invalidateProjectContentSnapshotCache(
+  store: Pick<ProjectSessionStoreLike, 'contentSnapshotCacheDirty'>,
 ) {
-  store.snapshotCacheDirty = true
+  store.contentSnapshotCacheDirty = true
 }
 
 function createTransientProjectUiState() {
@@ -208,7 +208,7 @@ export function markProjectSessionSaved(
   )
   store.savedContentSnapshotJson = contentSnapshotJson
   store.cachedContentSnapshotJson = contentSnapshotJson
-  store.snapshotCacheDirty = false
+  store.contentSnapshotCacheDirty = false
   store.cachedCanvasRevision = projectCanvasStore.snapshotRevision.value
   store.savedFileSignatures = buildFileSignatureMap(store.files)
 }

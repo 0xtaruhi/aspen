@@ -11,7 +11,7 @@ import {
   setTopFile as setProjectTopFile,
   setTopModuleName as setProjectTopModuleName,
 } from './project-config'
-import { invalidateProjectSnapshotCache } from './project-session'
+import { invalidateProjectContentSnapshotCache } from './project-session'
 
 export function createProjectStoreConfigActions(
   store: ProjectStoreLike,
@@ -30,47 +30,47 @@ export function createProjectStoreConfigActions(
   return {
     setTopFile(id) {
       setProjectTopFile(store, id)
-      invalidateProjectSnapshotCache(store)
+      invalidateProjectContentSnapshotCache(store)
     },
 
     setTargetDevice(deviceId) {
       setProjectTargetDevice(store, deviceId)
-      invalidateProjectSnapshotCache(store)
+      invalidateProjectContentSnapshotCache(store)
     },
 
     setTargetBoard(boardId) {
       setProjectTargetBoard(store, boardId)
-      invalidateProjectSnapshotCache(store)
+      invalidateProjectContentSnapshotCache(store)
     },
 
     setImplementationPlaceMode(mode) {
       setProjectImplementationPlaceMode(store, mode)
-      invalidateProjectSnapshotCache(store)
+      invalidateProjectContentSnapshotCache(store)
     },
 
     setTopModuleName(name) {
       setProjectTopModuleName(store, name)
-      invalidateProjectSnapshotCache(store)
+      invalidateProjectContentSnapshotCache(store)
     },
 
     replacePinConstraints(topFileId, assignments) {
       replaceProjectPinConstraints(store, topFileId, assignments)
-      invalidateProjectSnapshotCache(store)
+      invalidateProjectContentSnapshotCache(store)
     },
 
     setPinConstraint(topFileId, assignment) {
       setProjectPinConstraint(store, topFileId, assignment)
-      invalidateProjectSnapshotCache(store)
+      invalidateProjectContentSnapshotCache(store)
     },
 
     clearPinConstraint(topFileId, portName) {
       clearProjectPinConstraint(store, topFileId, portName)
-      invalidateProjectSnapshotCache(store)
+      invalidateProjectContentSnapshotCache(store)
     },
 
     clearPinConstraints(topFileId) {
       clearProjectPinConstraints(store, topFileId)
-      invalidateProjectSnapshotCache(store)
+      invalidateProjectContentSnapshotCache(store)
     },
   }
 }

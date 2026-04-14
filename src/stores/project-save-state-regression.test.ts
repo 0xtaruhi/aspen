@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { defaultFpgaBoardId } from '../lib/fpga-board-catalog'
 import { createCanvasDeviceSnapshot } from '../lib/canvas-devices'
@@ -50,14 +50,18 @@ describe('project save-state regression', () => {
     projectStore.createFile('root', 'top.v')
     projectStore.createFile('root', 'helper.v')
     projectStore.markSaved(null)
+    const toSnapshotSpy = vi.spyOn(projectStore, 'toSnapshot')
 
     expect(projectStore.hasUnsavedChanges).toBe(false)
+    toSnapshotSpy.mockClear()
 
     projectStore.setActiveFile('2')
     expect(projectStore.hasUnsavedChanges).toBe(false)
+    expect(toSnapshotSpy).not.toHaveBeenCalled()
 
     projectStore.setActiveFile('1')
     expect(projectStore.hasUnsavedChanges).toBe(false)
+    expect(toSnapshotSpy).not.toHaveBeenCalled()
   })
 
   it('persists the project target device in snapshots', () => {

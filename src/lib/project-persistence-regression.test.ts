@@ -130,4 +130,88 @@ describe('project persistence regression', () => {
       'CanvasRegressionProject',
     )
   })
+
+  it('normalizes missing persisted canvas devices before syncing them to the runtime', async () => {
+    const replaceCanvasDevices = vi.fn(async (_devices: readonly CanvasDeviceSnapshot[]) => true)
+    const rememberProject = vi.fn()
+    const rawSnapshot = {
+      version: 2,
+      content: {
+        name: 'CanvasRegressionProject',
+        files: [
+          {
+            id: 'root',
+            name: 'CanvasRegressionProject',
+            type: 'folder',
+            isOpen: true,
+            children: [
+              {
+                id: 'top',
+                name: 'Top.v',
+                type: 'file',
+                content: "module Top(output wire led); assign led = 1'b0; endmodule",
+              },
+            ],
+          },
+        ],
+        topFileId: 'top',
+        topModuleName: 'Top',
+        targetDeviceId: 'FDP3P7',
+        targetBoardId: 'FDP3P7_REFERENCE',
+        pinConstraints: {
+          version: 1,
+          topFileId: 'top',
+          assignments: [],
+        },
+        implementationSettings: {
+          version: 1,
+          placeMode: 'bounding_box',
+        },
+        synthesisCache: null,
+        implementationCache: null,
+      },
+      workspaceView: {
+        activeFileId: 'top',
+      },
+    }
+
+    vi.doMock('@tauri-apps/api/core', () => ({
+      invoke: vi.fn(async (command: string, args?: { path?: string }) => {
+        if (command !== 'read_project_file') {
+          throw new Error(`unexpected command: ${command}`)
+        }
+
+        if (args?.path === '/tmp/CanvasRegression/aspen.project.json') {
+          return JSON.stringify(rawSnapshot)
+        }
+
+        throw new Error('not found')
+      }),
+    }))
+
+    vi.doMock('@/stores/hardware', () => ({
+      hardwareStore: {
+        replaceCanvasDevices,
+      },
+    }))
+
+    vi.doMock('@/stores/recent-projects', () => ({
+      recentProjectsStore: {
+        rememberProject,
+      },
+    }))
+
+    const { loadProjectFromPath } = await import('./project-persistence')
+
+    await expect(loadProjectFromPath('/tmp/CanvasRegression/aspen.project.json')).resolves.toBe(
+      true,
+    )
+
+    expect(replaceCanvasDevices).toHaveBeenCalledTimes(1)
+    expect(replaceCanvasDevices).toHaveBeenCalledWith([])
+    expect(rememberProject).toHaveBeenCalledWith(
+      '/tmp/CanvasRegression/aspen.project.json',
+      'CanvasRegressionProject',
+    )
+  })
 })

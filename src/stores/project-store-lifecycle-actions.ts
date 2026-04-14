@@ -15,7 +15,7 @@ import {
   setImplementationCache as setProjectImplementationCache,
   setSynthesisCache as setProjectSynthesisCache,
 } from './project-save-state'
-import { invalidateProjectSnapshotCache } from './project-session'
+import { invalidateProjectContentSnapshotCache } from './project-session'
 
 export function createProjectStoreLifecycleActions(
   store: ProjectStoreLike,
@@ -44,12 +44,11 @@ export function createProjectStoreLifecycleActions(
 
     updateCode(newCode) {
       updateProjectCode(store, newCode)
-      invalidateProjectSnapshotCache(store)
+      invalidateProjectContentSnapshotCache(store)
     },
 
     setActiveFile(id) {
       setActiveProjectFile(store, id)
-      invalidateProjectSnapshotCache(store)
     },
 
     setSelectedNode(id) {
@@ -58,12 +57,12 @@ export function createProjectStoreLifecycleActions(
 
     setSynthesisCache(snapshot) {
       setProjectSynthesisCache(store, snapshot)
-      invalidateProjectSnapshotCache(store)
+      invalidateProjectContentSnapshotCache(store)
     },
 
     setImplementationCache(snapshot) {
       setProjectImplementationCache(store, snapshot)
-      invalidateProjectSnapshotCache(store)
+      invalidateProjectContentSnapshotCache(store)
     },
 
     markSaved(projectPath) {

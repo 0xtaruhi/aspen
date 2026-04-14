@@ -15,11 +15,11 @@ import { serializeProjectContentSnapshot, splitProjectSnapshot } from './project
 
 function getCachedContentSnapshotJson(store: ProjectStoreLike) {
   const canvasRevision = projectCanvasStore.snapshotRevision.value
-  if (store.snapshotCacheDirty || store.cachedCanvasRevision !== canvasRevision) {
+  if (store.contentSnapshotCacheDirty || store.cachedCanvasRevision !== canvasRevision) {
     store.cachedContentSnapshotJson = serializeProjectContentSnapshot(
       splitProjectSnapshot(store.toSnapshot()).contentSnapshot,
     )
-    store.snapshotCacheDirty = false
+    store.contentSnapshotCacheDirty = false
     store.cachedCanvasRevision = canvasRevision
   }
 

@@ -8,6 +8,7 @@ import type {
 } from '@/stores/project'
 
 import { composeProjectSnapshot, splitProjectSnapshot } from '@/stores/project-model'
+import { buildLoadedProjectSession } from '@/stores/project-session'
 import { invoke } from '@tauri-apps/api/core'
 
 import {
@@ -356,12 +357,13 @@ export async function loadProjectFromPath(path: string) {
   const loadedSnapshot: ProjectSnapshot = isProjectMetadataSnapshot(data)
     ? await hydrateProjectSnapshot(path, data)
     : (data as ProjectSnapshot)
+  const loadedSession = buildLoadedProjectSession(loadedSnapshot)
 
   projectStore.loadFromSnapshot(loadedSnapshot, { projectPath: path })
 
   await hydratePersistedSynthesisManifest(path)
   await hydratePersistedImplementationManifest(path)
-  await hardwareStore.replaceCanvasDevices(loadedSnapshot.content.canvasDevices)
+  await hardwareStore.replaceCanvasDevices(loadedSession.canvasDevices)
 
   recentProjectsStore.rememberProject(path, projectStore.toSnapshot().content.name)
   return true
