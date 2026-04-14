@@ -57,10 +57,40 @@ describe('project io service', () => {
         key: 'projectNameRequired',
       },
     })
+
+    expect(
+      validateCreateProjectAtDirectoryInput({
+        name: '.',
+        template: 'empty',
+        parentDirectoryPath: '/tmp/aspen',
+      }),
+    ).toEqual({
+      kind: 'failure',
+      reason: 'validation',
+      message: {
+        key: 'projectNameInvalidForDirectory',
+      },
+    })
+
+    expect(
+      validateCreateProjectAtDirectoryInput({
+        name: '..',
+        template: 'empty',
+        parentDirectoryPath: '/tmp/aspen',
+      }),
+    ).toEqual({
+      kind: 'failure',
+      reason: 'validation',
+      message: {
+        key: 'projectNameInvalidForDirectory',
+      },
+    })
   })
 
   it('forgets missing recent projects when opening from the recent-project service fails', async () => {
-    const loadProjectFromPath = vi.fn().mockRejectedValue(new Error('not found'))
+    const loadProjectFromPath = vi
+      .fn()
+      .mockRejectedValue(new Error('ENOENT: no such file or directory'))
     const removeProject = vi.fn()
 
     vi.doMock('./project-persistence', () => ({
@@ -104,7 +134,7 @@ describe('project io service', () => {
       message: {
         key: 'openProjectFailed',
         params: {
-          message: 'not found',
+          message: 'ENOENT: no such file or directory',
         },
       },
     })
@@ -168,5 +198,64 @@ describe('project io service', () => {
         path: '/tmp/saved-project/aspen.project.json',
       },
     })
+  })
+
+  it('restores the previous project state when create-project setup fails after replacing the store', async () => {
+    const readImportedSourceFiles = vi.fn().mockRejectedValue(new Error('import failed'))
+
+    vi.doMock('./project-persistence', () => ({
+      inspectProjectDirectory: vi.fn(),
+      loadProjectFromPath: vi.fn(),
+      readImportedSourceFiles,
+      syncInMemoryImplementationCacheAfterSave: vi.fn(),
+      syncInMemorySynthesisCacheAfterSave: vi.fn(),
+      writeProjectBundle: vi.fn(),
+    }))
+    vi.doMock('@/stores/recent-projects', () => ({
+      recentProjectsStore: {
+        rememberProject: vi.fn(),
+        removeProject: vi.fn(),
+      },
+    }))
+    vi.doUnmock('@/stores/project')
+    vi.doUnmock('@/stores/project-canvas')
+
+    const { projectStore } = await import('@/stores/project')
+    const { finalizeCreateProjectDirectory } = await import('./project-io-service')
+
+    projectStore.clearProject()
+    projectStore.createNewProject('ExistingProject', 'empty')
+    projectStore.updateCode('// keep me dirty')
+
+    const previousSnapshot = projectStore.toSnapshot()
+    const previousHasUnsavedChanges = projectStore.hasUnsavedChanges
+    const previousProjectPath = projectStore.projectPath
+
+    const result = await finalizeCreateProjectDirectory(
+      {
+        parentDirectoryPath: '/tmp',
+        projectDirectoryPath: '/tmp/NewProject',
+        projectName: 'NewProject',
+      },
+      {
+        template: 'empty',
+        importPaths: ['/tmp/init.mem'],
+      },
+    )
+
+    expect(readImportedSourceFiles).toHaveBeenCalledWith(['/tmp/init.mem'])
+    expect(result).toMatchObject({
+      kind: 'failure',
+      reason: 'error',
+      message: {
+        key: 'createProjectFailed',
+        params: {
+          message: 'import failed',
+        },
+      },
+    })
+    expect(projectStore.toSnapshot()).toEqual(previousSnapshot)
+    expect(projectStore.hasUnsavedChanges).toBe(previousHasUnsavedChanges)
+    expect(projectStore.projectPath).toBe(previousProjectPath)
   })
 })

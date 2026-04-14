@@ -36,7 +36,7 @@ async function runSynthesis(request: SynthesisRequestV1): Promise<SynthesisRepor
     projectStore.setSynthesisCache(snapshot)
 
     try {
-      await saveProjectToCurrentPath({ silent: true })
+      await saveProjectToCurrentPath()
     } catch (err) {
       setSynthesisMessage(
         translate('autoSaveProjectFailed', {

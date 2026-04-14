@@ -26,7 +26,7 @@ import {
 import {
   isMissingProjectPersistencePath,
   isProjectPersistenceTauriUnavailable,
-} from '@/lib/project-persistence-errors'
+} from './project-persistence-errors'
 import { projectStore } from '@/stores/project'
 import { recentProjectsStore } from '@/stores/recent-projects'
 import { hardwareStore } from '@/stores/hardware'

@@ -7,15 +7,18 @@ export function isProjectPersistenceTauriUnavailable(err: unknown) {
   return (
     message.includes('__TAURI_INTERNALS__') ||
     message.includes('window.__TAURI_INTERNALS__') ||
-    message.includes('plugin')
+    /tauri.*plugin/i.test(message) ||
+    message.includes("Cannot read properties of undefined (reading 'invoke')") ||
+    message.includes("Cannot read properties of undefined (reading 'transformCallback')")
   )
 }
 
 export function isMissingProjectPersistencePath(err: unknown) {
   const message = getProjectPersistenceErrorMessage(err).toLowerCase()
   return (
+    message.includes('enoent') ||
+    message.includes('no such file or directory') ||
     message.includes('no such file') ||
-    message.includes('not found') ||
     message.includes('cannot find the path')
   )
 }

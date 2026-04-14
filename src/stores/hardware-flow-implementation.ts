@@ -45,7 +45,7 @@ async function runImplementation(
     projectStore.setImplementationCache(snapshot)
 
     try {
-      await saveProjectToCurrentPath({ silent: true })
+      await saveProjectToCurrentPath()
     } catch (err) {
       setImplementationMessage(
         translate('autoSaveImplementationProjectFailed', {

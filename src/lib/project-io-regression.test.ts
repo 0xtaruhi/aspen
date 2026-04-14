@@ -181,4 +181,81 @@ describe('project io regressions', () => {
       },
     })
   })
+
+  it('surfaces save failures only once when saving the current project path fails', async () => {
+    const showProjectIoMessage = vi.fn()
+    const saveProjectBundleToPath = vi.fn().mockResolvedValue({
+      kind: 'failure',
+      reason: 'error',
+      message: {
+        key: 'saveProjectFailed',
+        params: {
+          message: 'write failed',
+        },
+      },
+      error: new Error('write failed'),
+    })
+
+    vi.doMock('@tauri-apps/api/core', () => ({
+      invoke: vi.fn(),
+    }))
+    vi.doMock('@tauri-apps/plugin-dialog', () => ({
+      open: vi.fn(),
+      save: vi.fn(),
+    }))
+    vi.doMock('@/lib/i18n', () => ({
+      translate: vi.fn((key: string) => key),
+    }))
+    vi.doMock('@/lib/project-layout', () => ({
+      ASPEN_PROJECT_FILENAME: 'aspen.project.json',
+      getProjectMetadataPath: vi.fn((path: string) => path),
+    }))
+    vi.doMock('@/lib/project-io-common', () => ({
+      getProjectIoErrorMessage: vi.fn((err: unknown) =>
+        err instanceof Error ? err.message : String(err),
+      ),
+      isProjectIoTauriUnavailable: vi.fn(() => false),
+      showProjectIoMessage,
+    }))
+    vi.doMock('@/lib/project-io-service', () => ({
+      applyImportedFilesToProject: vi.fn(),
+      finalizeCreateProjectDirectory: vi.fn(),
+      openProjectFromPath: vi.fn(),
+      openRecentProjectFromPath: vi.fn(),
+      prepareCreateProjectDirectory: vi.fn(),
+      saveProjectBundleToPath,
+      validateCreateProjectAtDirectoryInput: vi.fn(),
+    }))
+    vi.doMock('@/stores/hardware', () => ({
+      hardwareStore: {},
+    }))
+    vi.doMock('@/stores/project', () => ({
+      projectStore: {
+        files: [],
+        hasProject: true,
+        hasUnsavedChanges: false,
+        projectPath: '/tmp/demo/aspen.project.json',
+        toSnapshot: vi.fn(() => ({
+          content: {
+            name: 'DemoProject',
+          },
+        })),
+        markSaved: vi.fn(),
+      },
+    }))
+    vi.doMock('@/stores/project-unsaved-changes', () => ({
+      requestProjectUnsavedChanges: vi.fn(),
+    }))
+
+    const { saveProject } = await import('./project-io')
+
+    expect(await saveProject()).toBe(false)
+    expect(showProjectIoMessage).toHaveBeenCalledTimes(1)
+    expect(showProjectIoMessage).toHaveBeenCalledWith({
+      key: 'saveProjectFailed',
+      params: {
+        message: 'write failed',
+      },
+    })
+  })
 })

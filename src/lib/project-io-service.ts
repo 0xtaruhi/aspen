@@ -1,8 +1,11 @@
 import type { ImportFilesResult } from '@/stores/project-file-operations'
 
 import { projectStore } from '@/stores/project'
+import { projectCanvasStore } from '@/stores/project-canvas'
 import { recentProjectsStore } from '@/stores/recent-projects'
 
+import { cloneImplementationSettings } from '@/lib/implementation-settings'
+import { cloneProjectConstraintSnapshot } from '@/lib/project-constraints'
 import { ASPEN_PROJECT_FILENAME, joinPath } from '@/lib/project-layout'
 import {
   inspectProjectDirectory,
@@ -18,6 +21,12 @@ import {
   type ProjectIoMessageDescriptor,
   type ProjectIoServiceResult,
 } from '@/lib/project-io-common'
+import {
+  cloneProjectCanvasDevices,
+  cloneProjectImplementationCacheSnapshot,
+  cloneProjectNodes,
+  cloneProjectSynthesisCacheSnapshot,
+} from '@/stores/project-model'
 
 export type CreateProjectAtDirectoryOptions = {
   name: string
@@ -30,6 +39,29 @@ export type PreparedCreateProjectDirectory = {
   parentDirectoryPath: string
   projectDirectoryPath: string
   projectName: string
+}
+
+type ProjectCreationRollbackState = {
+  sessionId: number
+  files: ReturnType<typeof cloneProjectNodes>
+  activeFileId: string
+  selectedNodeId: string
+  renamingNodeId: string
+  creatingNodeId: string
+  selectionBeforeCreatingNodeId: string
+  activeFileBeforeCreatingNodeId: string
+  topFileId: string
+  topModuleName: string
+  targetDeviceId: typeof projectStore.targetDeviceId
+  targetBoardId: typeof projectStore.targetBoardId
+  pinConstraints: ReturnType<typeof cloneProjectConstraintSnapshot>
+  implementationSettings: ReturnType<typeof cloneImplementationSettings>
+  synthesisCache: ReturnType<typeof cloneProjectSynthesisCacheSnapshot>
+  implementationCache: ReturnType<typeof cloneProjectImplementationCacheSnapshot>
+  projectPath: string | null
+  savedContentSnapshotJson: string
+  savedFileSignatures: Record<string, string>
+  canvasDevices: ReturnType<typeof cloneProjectCanvasDevices>
 }
 
 const IMPORT_SKIPPED_NAMES_LIMIT = 3
@@ -67,6 +99,65 @@ function createImportResultSummary(result: ImportFilesResult) {
   }
 }
 
+function captureProjectCreationRollbackState(): ProjectCreationRollbackState {
+  return {
+    sessionId: projectStore.sessionId,
+    files: cloneProjectNodes(projectStore.files),
+    activeFileId: projectStore.activeFileId,
+    selectedNodeId: projectStore.selectedNodeId,
+    renamingNodeId: projectStore.renamingNodeId,
+    creatingNodeId: projectStore.creatingNodeId,
+    selectionBeforeCreatingNodeId: projectStore.selectionBeforeCreatingNodeId,
+    activeFileBeforeCreatingNodeId: projectStore.activeFileBeforeCreatingNodeId,
+    topFileId: projectStore.topFileId,
+    topModuleName: projectStore.topModuleName,
+    targetDeviceId: projectStore.targetDeviceId,
+    targetBoardId: projectStore.targetBoardId,
+    pinConstraints: cloneProjectConstraintSnapshot(projectStore.pinConstraints),
+    implementationSettings: cloneImplementationSettings(projectStore.implementationSettings),
+    synthesisCache: cloneProjectSynthesisCacheSnapshot(projectStore.synthesisCache),
+    implementationCache: cloneProjectImplementationCacheSnapshot(projectStore.implementationCache),
+    projectPath: projectStore.projectPath,
+    savedContentSnapshotJson: projectStore.savedContentSnapshotJson,
+    savedFileSignatures: { ...projectStore.savedFileSignatures },
+    canvasDevices: cloneProjectCanvasDevices(projectCanvasStore.canvasDevices.value),
+  }
+}
+
+function restoreProjectCreationRollbackState(state: ProjectCreationRollbackState) {
+  projectStore.files = state.files
+  projectStore.activeFileId = state.activeFileId
+  projectStore.selectedNodeId = state.selectedNodeId
+  projectStore.renamingNodeId = state.renamingNodeId
+  projectStore.creatingNodeId = state.creatingNodeId
+  projectStore.selectionBeforeCreatingNodeId = state.selectionBeforeCreatingNodeId
+  projectStore.activeFileBeforeCreatingNodeId = state.activeFileBeforeCreatingNodeId
+  projectStore.topFileId = state.topFileId
+  projectStore.topModuleName = state.topModuleName
+  projectStore.targetDeviceId = state.targetDeviceId
+  projectStore.targetBoardId = state.targetBoardId
+  projectStore.pinConstraints = state.pinConstraints
+  projectStore.implementationSettings = state.implementationSettings
+  projectStore.synthesisCache = state.synthesisCache
+  projectStore.implementationCache = state.implementationCache
+  projectStore.projectPath = state.projectPath
+  projectStore.savedContentSnapshotJson = state.savedContentSnapshotJson
+  projectStore.savedFileSignatures = { ...state.savedFileSignatures }
+  projectCanvasStore.setCanvasDevices(state.canvasDevices)
+  projectStore.cachedContentSnapshotJson = state.savedContentSnapshotJson
+  projectStore.contentSnapshotCacheDirty = true
+  projectStore.cachedCanvasRevision = projectCanvasStore.snapshotRevision.value
+  projectStore.sessionId = state.sessionId
+}
+
+function restoreCreationFailureResult<T>(
+  rollbackState: ProjectCreationRollbackState,
+  result: Extract<ProjectIoServiceResult<T>, { kind: 'failure' }>,
+) {
+  restoreProjectCreationRollbackState(rollbackState)
+  return result
+}
+
 export function validateCreateProjectAtDirectoryInput(
   options: CreateProjectAtDirectoryOptions,
 ): Extract<ProjectIoServiceResult<never>, { kind: 'failure' }> | null {
@@ -93,7 +184,7 @@ export function validateCreateProjectAtDirectoryInput(
     }
   }
 
-  if (/[\\/]/.test(projectName)) {
+  if (projectName === '.' || projectName === '..' || /[\\/]/.test(projectName)) {
     return {
       kind: 'failure',
       reason: 'validation',
@@ -275,6 +366,8 @@ export async function finalizeCreateProjectDirectory(
   prepared: PreparedCreateProjectDirectory,
   options: Pick<CreateProjectAtDirectoryOptions, 'template' | 'importPaths'>,
 ): Promise<ProjectIoServiceResult<{ metadataPath: string }>> {
+  const rollbackState = captureProjectCreationRollbackState()
+
   try {
     projectStore.createNewProject(prepared.projectName, options.template)
 
@@ -284,7 +377,7 @@ export async function finalizeCreateProjectDirectory(
       const rootNode = projectStore.rootNode
       if (!rootNode) {
         const error = new Error('Project root is missing.')
-        return {
+        return restoreCreationFailureResult(rollbackState, {
           kind: 'failure',
           reason: 'error',
           message: {
@@ -294,13 +387,13 @@ export async function finalizeCreateProjectDirectory(
             },
           },
           error,
-        }
+        })
       }
 
       const importedFiles = await readImportedSourceFiles(importPaths)
       const importResult = applyImportedFilesToProject(rootNode.id, importedFiles)
       if (importResult.kind === 'failure') {
-        return {
+        return restoreCreationFailureResult(rollbackState, {
           kind: 'failure',
           reason: 'error',
           message: {
@@ -312,7 +405,7 @@ export async function finalizeCreateProjectDirectory(
             },
           },
           error: importResult.error,
-        }
+        })
       }
       message = importResult.message
     }
@@ -322,7 +415,7 @@ export async function finalizeCreateProjectDirectory(
       preserveArtifacts: false,
     })
     if (saveResult.kind === 'failure') {
-      return {
+      return restoreCreationFailureResult(rollbackState, {
         kind: 'failure',
         reason: 'error',
         message: {
@@ -332,7 +425,7 @@ export async function finalizeCreateProjectDirectory(
           },
         },
         error: saveResult.error,
-      }
+      })
     }
 
     return {
@@ -343,7 +436,7 @@ export async function finalizeCreateProjectDirectory(
       message,
     }
   } catch (err) {
-    return {
+    return restoreCreationFailureResult(rollbackState, {
       kind: 'failure',
       reason: 'error',
       message: {
@@ -353,6 +446,6 @@ export async function finalizeCreateProjectDirectory(
         },
       },
       error: err,
-    }
+    })
   }
 }

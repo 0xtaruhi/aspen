@@ -315,7 +315,7 @@ export async function importProjectFiles() {
 
     if (projectStore.projectPath) {
       try {
-        await saveProjectToCurrentPath({ silent: true })
+        await saveProjectToCurrentPath()
       } catch (err) {
         showProjectIoMessage({
           key: 'saveProjectFailed',
@@ -449,7 +449,7 @@ export async function saveProject() {
   const legacySerialized = serializeLegacyProject()
 
   try {
-    if (await saveProjectToCurrentPath({ silent: false })) {
+    if (await saveProjectToCurrentPath()) {
       return true
     }
 
@@ -471,7 +471,7 @@ export async function saveProject() {
   }
 }
 
-export async function saveProjectToCurrentPath(options: { silent?: boolean } = {}) {
+export async function saveProjectToCurrentPath() {
   if (!projectStore.hasProject || !projectStore.projectPath) {
     return false
   }
@@ -483,10 +483,6 @@ export async function saveProjectToCurrentPath(options: { silent?: boolean } = {
     if (result.kind === 'failure') {
       if (isProjectIoTauriUnavailable(result.error)) {
         return false
-      }
-
-      if (!options.silent) {
-        showProjectIoMessage(result.message)
       }
 
       // Re-throw saveProjectBundleToPath failures so parent save flows like

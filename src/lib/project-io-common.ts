@@ -5,7 +5,7 @@ import {
   getProjectPersistenceErrorMessage,
   isMissingProjectPersistencePath,
   isProjectPersistenceTauriUnavailable,
-} from '@/lib/project-persistence-errors'
+} from './project-persistence-errors'
 
 type ProjectIoMessageParams = Record<string, string | number>
 
