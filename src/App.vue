@@ -35,10 +35,7 @@ const {
 </script>
 
 <template>
-  <div
-    class="app-shell-root relative isolate min-h-screen overflow-hidden text-foreground transition-colors"
-  >
-    <div aria-hidden="true" class="app-shell-ambient absolute inset-0 pointer-events-none" />
+  <div class="app-shell-root min-h-screen text-foreground transition-colors">
     <NewProjectDialog v-model:open="showNewProjectDialog" />
     <ProjectUnsavedChangesDialog />
     <SidebarProvider>
@@ -119,30 +116,6 @@ const {
 
 <style scoped>
 .app-shell-root {
-  background: transparent;
-}
-
-.app-shell-ambient {
-  z-index: 0;
-  background:
-    radial-gradient(
-      56rem 34rem at 0% -6%,
-      color-mix(in oklab, var(--window-ambient-secondary) 20%, transparent),
-      transparent 62%
-    ),
-    radial-gradient(
-      34rem 22rem at 16% 10%,
-      color-mix(in oklab, var(--window-ambient-primary) 42%, transparent),
-      transparent 68%
-    ),
-    radial-gradient(
-      28rem 18rem at 88% 0%,
-      color-mix(in oklab, var(--window-ambient-primary) 18%, transparent),
-      transparent 74%
-    );
-}
-
-.app-shell-header {
   background: transparent;
 }
 

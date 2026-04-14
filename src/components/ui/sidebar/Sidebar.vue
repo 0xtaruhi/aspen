@@ -26,7 +26,7 @@ const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
     data-slot="sidebar"
     :class="
       cn(
-        'sidebar-surface text-sidebar-foreground flex h-full w-(--sidebar-width) flex-col',
+        'bg-transparent text-sidebar-foreground flex h-full w-(--sidebar-width) flex-col',
         props.class,
       )
     "
@@ -41,7 +41,7 @@ const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
       data-slot="sidebar"
       data-mobile="true"
       :side="side"
-      class="sidebar-surface app-sidebar-glass text-sidebar-foreground w-(--sidebar-width) p-0 [&>button]:hidden"
+      class="app-sidebar-glass text-sidebar-foreground w-(--sidebar-width) p-0 [&>button]:hidden"
       :style="{
         '--sidebar-width': SIDEBAR_WIDTH_MOBILE,
       }"
@@ -96,16 +96,10 @@ const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
     >
       <div
         data-sidebar="sidebar"
-        class="sidebar-surface app-sidebar-glass group-data-[variant=floating]:border-sidebar-border flex h-full w-full flex-col group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border"
+        class="app-sidebar-glass group-data-[variant=floating]:border-sidebar-border flex h-full w-full flex-col group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border"
       >
         <slot />
       </div>
     </div>
   </div>
 </template>
-
-<style scoped>
-.sidebar-surface {
-  background: var(--window-sidebar-surface);
-}
-</style>
