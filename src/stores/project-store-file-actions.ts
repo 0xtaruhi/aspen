@@ -81,18 +81,27 @@ export function createProjectStoreFileActions(
     },
 
     createFile(parentId, name) {
-      createFile(store, parentId, name)
-      invalidateProjectContentSnapshotCache(store)
+      const created = createFile(store, parentId, name)
+      if (created) {
+        invalidateProjectContentSnapshotCache(store)
+      }
+      return created
     },
 
     createFolder(parentId, name) {
-      createFolder(store, parentId, name)
-      invalidateProjectContentSnapshotCache(store)
+      const created = createFolder(store, parentId, name)
+      if (created) {
+        invalidateProjectContentSnapshotCache(store)
+      }
+      return created
     },
 
     importFiles(parentId, files) {
-      importFiles(store, parentId, files)
-      invalidateProjectContentSnapshotCache(store)
+      const result = importFiles(store, parentId, files)
+      if (result.createdIds.length > 0) {
+        invalidateProjectContentSnapshotCache(store)
+      }
+      return result
     },
 
     deleteNode(id) {
@@ -102,7 +111,9 @@ export function createProjectStoreFileActions(
 
     commitNodeRename(id, newName) {
       const result = commitNodeRename(store, id, newName)
-      invalidateProjectContentSnapshotCache(store)
+      if (result.kind === 'created' || result.kind === 'discarded' || result.kind === 'renamed') {
+        invalidateProjectContentSnapshotCache(store)
+      }
       return result
     },
 

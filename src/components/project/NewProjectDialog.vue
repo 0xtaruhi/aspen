@@ -23,7 +23,7 @@ import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useI18n } from '@/lib/i18n'
-import { createProjectAtDirectory } from '@/lib/project-io'
+import { createProjectAtDirectory, PROJECT_IMPORT_SOURCE_FILE_EXTENSIONS } from '@/lib/project-io'
 
 const props = defineProps<{
   open: boolean
@@ -83,7 +83,12 @@ async function chooseProjectParentDirectory() {
 async function chooseImportSources() {
   const selected = await openDialog({
     multiple: true,
-    filters: [{ name: t('sourceFiles'), extensions: ['v', 'sv', 'vh', 'txt'] }],
+    filters: [
+      {
+        name: t('sourceFiles'),
+        extensions: [...PROJECT_IMPORT_SOURCE_FILE_EXTENSIONS],
+      },
+    ],
   })
 
   const selectedPaths =

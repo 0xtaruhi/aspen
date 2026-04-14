@@ -105,6 +105,19 @@ describe('project tree operations', () => {
     expect(rootChildren).toEqual(['folder-b', 'folder-a', 'top-file'])
   })
 
+  it('rejects moving a node into a folder that already has the same name', () => {
+    expect(projectStore.createFile('folder-b', 'top-file.v')).toBe(true)
+
+    expect(projectStore.moveNode('top-file', 'folder-b', 1)).toBe(false)
+
+    const folderB = projectStore.findNode('folder-b')
+    expect(folderB?.type).toBe('folder')
+    expect(folderB?.children?.map((child) => child.name)).toEqual(['top-file.v'])
+
+    const rootChildren = projectStore.rootNode?.children?.map((child: ProjectNode) => child.id)
+    expect(rootChildren).toEqual(['folder-a', 'top-file', 'folder-b'])
+  })
+
   it('rejects moving a folder into its own descendant subtree', () => {
     expect(projectStore.moveNode('folder-a', 'folder-a', 0)).toBe(false)
     expect(projectStore.moveNode('folder-a', 'nested-file', 0)).toBe(false)
@@ -124,6 +137,19 @@ describe('project tree operations', () => {
     })
     expect(projectStore.renamingNodeId).toBe('')
     expect(projectStore.findNode('top-file')?.name).toBe('renamed-top.v')
+  })
+
+  it('keeps inline rename active when the new name conflicts with a sibling', () => {
+    projectStore.createFile('root', 'existing-name.v')
+    projectStore.beginRenamingNode('top-file')
+
+    expect(projectStore.commitNodeRename('top-file', 'existing-name.v')).toEqual({
+      kind: 'conflict',
+      id: 'top-file',
+      nodeType: 'file',
+    })
+    expect(projectStore.renamingNodeId).toBe('top-file')
+    expect(projectStore.findNode('top-file')?.name).toBe('top-file.v')
   })
 
   it('clears inline rename state when a snapshot is loaded', () => {
@@ -153,6 +179,26 @@ describe('project tree operations', () => {
     expect(projectStore.activeFileId).toBe(createdId)
   })
 
+  it('seeds a unique placeholder name when creating a sibling with the default file name', () => {
+    expect(projectStore.createFile('root', 'new_file.v')).toBe(true)
+
+    const createdId = projectStore.beginCreatingFile('root')
+
+    expect(createdId).toBeTruthy()
+    expect(projectStore.findNode(createdId!)?.name).toBe('new_file (1).v')
+  })
+
+  it('rejects duplicate direct file creation in the same folder', () => {
+    expect(projectStore.createFile('root', 'duplicate.v')).toBe(true)
+    expect(projectStore.createFile('root', 'duplicate.v')).toBe(false)
+
+    const duplicateFiles = projectStore.rootNode?.children?.filter(
+      (child) => child.type === 'file' && child.name === 'duplicate.v',
+    )
+
+    expect(duplicateFiles).toHaveLength(1)
+  })
+
   it('discards a new inline-created node when rename is canceled', () => {
     const createdId = projectStore.beginCreatingFile('root')
     expect(createdId).toBeTruthy()
@@ -177,5 +223,26 @@ describe('project tree operations', () => {
     })
     expect(projectStore.findNode(createdId!)).toBeNull()
     expect(projectStore.creatingNodeId).toBe('')
+  })
+
+  it('skips imported files whose names already exist in the target folder', () => {
+    const result = projectStore.importFiles('root', [
+      {
+        name: 'top-file.v',
+        content: 'module duplicate; endmodule',
+      },
+      {
+        name: 'init.mem',
+        content: '00',
+      },
+    ])
+
+    expect(result).toEqual({
+      createdIds: [expect.any(String)],
+      skippedNames: ['top-file.v'],
+    })
+
+    const rootChildNames = projectStore.rootNode?.children?.map((child) => child.name)
+    expect(rootChildNames).toEqual(['folder-a', 'top-file.v', 'folder-b', 'init.mem'])
   })
 })

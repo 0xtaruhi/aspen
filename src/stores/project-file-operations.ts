@@ -6,6 +6,8 @@ import {
   createProjectFileNode,
   createProjectFolderNode,
   ensureFolderChildren,
+  hasSiblingNodeWithName,
+  normalizeProjectNodeName,
   nodeContainsDescendantId,
   removeNodeFromTree,
 } from './project-tree'
@@ -33,16 +35,31 @@ export interface ProjectFileOperationsStoreLike {
   clearCreatingNodeState(): void
 }
 
+export type ImportFilesResult = {
+  createdIds: string[]
+  skippedNames: string[]
+}
+
 export function createFile(store: ProjectFileOperationsStoreLike, parentId: string, name: string) {
   const parent = store.findNode(parentId)
-  if (parent && parent.type === 'folder') {
-    const node = createProjectFileNode(name)
-    ensureFolderChildren(parent).push(node)
-    const id = node.id
-    store.activeFileId = id
-    store.selectedNodeId = id
-    parent.isOpen = true
+  if (!parent || parent.type !== 'folder') {
+    return false
   }
+
+  const normalizedName = normalizeProjectNodeName(name)
+  const children = ensureFolderChildren(parent)
+  if (!normalizedName || hasSiblingNodeWithName(children, normalizedName)) {
+    return false
+  }
+
+  const node = createProjectFileNode(normalizedName)
+  children.push(node)
+  const id = node.id
+  store.activeFileId = id
+  store.selectedNodeId = id
+  parent.isOpen = true
+
+  return true
 }
 
 export function createFolder(
@@ -51,29 +68,50 @@ export function createFolder(
   name: string,
 ) {
   const parent = store.findNode(parentId)
-  if (parent && parent.type === 'folder') {
-    const node = createProjectFolderNode(name)
-    ensureFolderChildren(parent).push(node)
-    store.selectedNodeId = node.id
-    parent.isOpen = true
+  if (!parent || parent.type !== 'folder') {
+    return false
   }
+
+  const normalizedName = normalizeProjectNodeName(name)
+  const children = ensureFolderChildren(parent)
+  if (!normalizedName || hasSiblingNodeWithName(children, normalizedName)) {
+    return false
+  }
+
+  const node = createProjectFolderNode(normalizedName)
+  children.push(node)
+  store.selectedNodeId = node.id
+  parent.isOpen = true
+
+  return true
 }
 
 export function importFiles(
   store: ProjectFileOperationsStoreLike,
   parentId: string,
   files: Array<{ name: string; content: string }>,
-) {
+): ImportFilesResult {
   const parent = store.findNode(parentId)
   if (!parent || parent.type !== 'folder' || files.length === 0) {
-    return
+    return {
+      createdIds: [],
+      skippedNames: [],
+    }
   }
 
+  const children = ensureFolderChildren(parent)
   const createdIds: string[] = []
+  const skippedNames: string[] = []
   for (const [index, file] of files.entries()) {
+    const normalizedName = normalizeProjectNodeName(file.name)
+    if (!normalizedName || hasSiblingNodeWithName(children, normalizedName)) {
+      skippedNames.push(file.name)
+      continue
+    }
+
     const id = `${Date.now()}-${index}`
-    ensureFolderChildren(parent).push(
-      createProjectFileNode(file.name, {
+    children.push(
+      createProjectFileNode(normalizedName, {
         id,
         content: file.content,
       }),
@@ -94,6 +132,11 @@ export function importFiles(
   if (!store.topFileId) {
     store.topFileId = resolveTopFileId(store.files)
     store.pinConstraints.topFileId = store.topFileId
+  }
+
+  return {
+    createdIds,
+    skippedNames,
   }
 }
 
@@ -148,6 +191,10 @@ export function moveNode(
   }
 
   const targetContainer = targetParent ? (targetParent.children ??= []) : store.files
+  if (hasSiblingNodeWithName(targetContainer, source.node.name, { excludeId: source.node.id })) {
+    return false
+  }
+
   let insertionIndex = clampInsertionIndex(targetIndex, targetContainer.length)
 
   if (source.container === targetContainer) {

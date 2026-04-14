@@ -18,6 +18,8 @@ import { recentProjectsStore } from '@/stores/recent-projects'
 
 type UnsavedProjectAction = 'open-project' | 'create-project' | 'close-project' | 'quit-application'
 
+export const PROJECT_IMPORT_SOURCE_FILE_EXTENSIONS = ['v', 'sv', 'vh', 'txt', 'mem'] as const
+
 function getErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
@@ -272,7 +274,12 @@ export async function importProjectFiles() {
   try {
     const selected = await openDialog({
       multiple: true,
-      filters: [{ name: translate('sourceFiles'), extensions: ['v', 'sv', 'vh', 'txt'] }],
+      filters: [
+        {
+          name: translate('sourceFiles'),
+          extensions: [...PROJECT_IMPORT_SOURCE_FILE_EXTENSIONS],
+        },
+      ],
     })
 
     const selectedPaths =

@@ -1,9 +1,11 @@
 import type { ProjectNode } from './project-model'
 
 import {
+  createUniqueSiblingNodeName,
   createProjectFileNode,
   createProjectFolderNode,
   ensureFolderChildren,
+  hasSiblingNodeWithName,
   nextProjectNodeId,
   removeNodeFromTree,
 } from './project-tree'
@@ -17,6 +19,16 @@ export interface ProjectInlineEditStoreLike {
   selectionBeforeCreatingNodeId: string
   activeFileBeforeCreatingNodeId: string
   findNode(id: string, nodes?: ProjectNode[]): ProjectNode | null
+  findNodeLocation(
+    id: string,
+    nodes?: ProjectNode[],
+    parent?: ProjectNode | null,
+  ): {
+    node: ProjectNode
+    parent: ProjectNode | null
+    container: ProjectNode[]
+    index: number
+  } | null
 }
 
 export function clearCreatingNodeState(store: ProjectInlineEditStoreLike) {
@@ -109,12 +121,14 @@ export function beginCreatingNode(
   }
 
   const id = nextProjectNodeId()
+  const children = ensureFolderChildren(parent)
+  const uniqueInitialName = createUniqueSiblingNodeName(children, initialName)
   const node =
     type === 'file'
-      ? createProjectFileNode(initialName, { id })
-      : createProjectFolderNode(initialName, { id })
+      ? createProjectFileNode(uniqueInitialName, { id })
+      : createProjectFolderNode(uniqueInitialName, { id })
 
-  ensureFolderChildren(parent).push(node)
+  children.push(node)
   parent.isOpen = true
 
   store.selectionBeforeCreatingNodeId = store.selectedNodeId
@@ -128,21 +142,23 @@ export function beginCreatingNode(
 
 export function commitNodeRename(store: ProjectInlineEditStoreLike, id: string, newName: string) {
   const trimmedName = newName.trim()
-  const node = store.findNode(id)
+  const location = store.findNodeLocation(id)
+  const node = location?.node ?? null
   const isCreatingNode = store.creatingNodeId === id
   if (!node) {
     cancelRenamingNode(store, id)
     return { kind: 'discarded' as const, id, nodeType: null }
   }
 
-  store.renamingNodeId = ''
   if (!trimmedName || trimmedName === node.name) {
     if (isCreatingNode && !trimmedName) {
+      store.renamingNodeId = ''
       discardCreatingNode(store, id)
       return { kind: 'discarded' as const, id, nodeType: node.type }
     }
 
     if (isCreatingNode) {
+      store.renamingNodeId = ''
       clearCreatingNodeState(store)
       if (node.type === 'file') {
         store.activeFileId = id
@@ -150,9 +166,20 @@ export function commitNodeRename(store: ProjectInlineEditStoreLike, id: string, 
       return { kind: 'created' as const, id, nodeType: node.type }
     }
 
+    store.renamingNodeId = ''
     return { kind: 'noop' as const, id, nodeType: node.type }
   }
 
+  if (
+    location &&
+    hasSiblingNodeWithName(location.container, trimmedName, {
+      excludeId: id,
+    })
+  ) {
+    return { kind: 'conflict' as const, id, nodeType: node.type }
+  }
+
+  store.renamingNodeId = ''
   node.name = trimmedName
 
   if (isCreatingNode) {
