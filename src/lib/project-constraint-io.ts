@@ -36,7 +36,7 @@ function createBrowserDownload(content: string, filename: string) {
 }
 
 function defaultConstraintPath() {
-  const projectName = projectStore.toSnapshot().name || 'project'
+  const projectName = projectStore.toSnapshot().content.name || 'project'
   const filename = `${projectName}_cons.xml`
   const projectDirectory = getProjectOutputDirectory(projectStore.projectPath)
   return projectDirectory ? `${projectDirectory}/${filename}` : filename

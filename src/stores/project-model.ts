@@ -47,11 +47,9 @@ export type ProjectImplementationCacheSnapshot = {
   report: ImplementationReportV1
 }
 
-export type ProjectSnapshot = {
-  version: 1
+export type ProjectContentSnapshot = {
   name: string
   files: ProjectNode[]
-  activeFileId: string
   topFileId: string
   topModuleName: string
   targetDeviceId: FpgaDeviceId
@@ -63,7 +61,42 @@ export type ProjectSnapshot = {
   canvasDevices: CanvasDeviceSnapshot[]
 }
 
+export type ProjectWorkspaceViewSnapshot = {
+  activeFileId: string
+}
+
+export type ProjectSnapshot = {
+  version: 2
+  content: ProjectContentSnapshot
+  workspaceView: ProjectWorkspaceViewSnapshot
+}
+
 export type FileSignatureMap = Record<string, string>
+
+export function composeProjectSnapshot(
+  contentSnapshot: ProjectContentSnapshot,
+  workspaceViewSnapshot: ProjectWorkspaceViewSnapshot,
+): ProjectSnapshot {
+  return {
+    version: 2,
+    content: contentSnapshot,
+    workspaceView: workspaceViewSnapshot,
+  }
+}
+
+export function splitProjectSnapshot(snapshot: ProjectSnapshot): {
+  contentSnapshot: ProjectContentSnapshot
+  workspaceViewSnapshot: ProjectWorkspaceViewSnapshot
+} {
+  return {
+    contentSnapshot: snapshot.content,
+    workspaceViewSnapshot: snapshot.workspaceView,
+  }
+}
+
+export function serializeProjectContentSnapshot(snapshot: ProjectContentSnapshot) {
+  return JSON.stringify(snapshot)
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -484,44 +517,60 @@ export function normalizeProjectSnapshot(value: unknown): ProjectSnapshot {
     throw new Error('Invalid project file format')
   }
 
-  if (value.version !== 1) {
+  if (value.version !== 2) {
     throw new Error('Unsupported project file version')
   }
 
-  if (typeof value.name !== 'string') {
+  if (!isRecord(value.content)) {
+    throw new Error('Project content snapshot is missing')
+  }
+
+  if (!isRecord(value.workspaceView)) {
+    throw new Error('Project workspace view snapshot is missing')
+  }
+
+  if (typeof value.content.name !== 'string') {
     throw new Error('Project name is missing')
   }
 
-  if (typeof value.activeFileId !== 'string') {
+  if (typeof value.workspaceView.activeFileId !== 'string') {
     throw new Error('Active file id is missing')
   }
 
-  if (!Array.isArray(value.files) || !value.files.every(isProjectNode)) {
+  if (!Array.isArray(value.content.files) || !value.content.files.every(isProjectNode)) {
     throw new Error('Project files are invalid')
   }
 
-  const normalizedTargetDeviceId = normalizeFpgaDeviceId(value.targetDeviceId)
+  const normalizedTargetDeviceId = normalizeFpgaDeviceId(value.content.targetDeviceId)
   const resolvedTopFileId =
-    typeof value.topFileId === 'string' && value.topFileId.length > 0
-      ? value.topFileId
-      : resolveTopFileId(value.files)
+    typeof value.content.topFileId === 'string' && value.content.topFileId.length > 0
+      ? value.content.topFileId
+      : resolveTopFileId(value.content.files)
 
-  return {
-    version: 1,
-    name: value.name,
-    files: cloneProjectNodes(value.files),
-    activeFileId: value.activeFileId,
+  const contentSnapshot: ProjectContentSnapshot = {
+    name: value.content.name,
+    files: cloneProjectNodes(value.content.files),
     topFileId: resolvedTopFileId,
-    topModuleName: typeof value.topModuleName === 'string' ? value.topModuleName : '',
+    topModuleName:
+      typeof value.content.topModuleName === 'string' ? value.content.topModuleName : '',
     targetDeviceId: normalizedTargetDeviceId,
     targetBoardId: normalizeFpgaBoardId(
-      value.targetBoardId,
+      value.content.targetBoardId,
       getDefaultFpgaBoardIdForDevice(normalizedTargetDeviceId),
     ),
-    pinConstraints: normalizeProjectConstraintSnapshot(value.pinConstraints, resolvedTopFileId),
-    implementationSettings: normalizeImplementationSettings(value.implementationSettings),
-    synthesisCache: normalizeProjectSynthesisCacheSnapshot(value.synthesisCache),
-    implementationCache: normalizeProjectImplementationCacheSnapshot(value.implementationCache),
-    canvasDevices: normalizeProjectCanvasDevices(value.canvasDevices),
+    pinConstraints: normalizeProjectConstraintSnapshot(
+      value.content.pinConstraints,
+      resolvedTopFileId,
+    ),
+    implementationSettings: normalizeImplementationSettings(value.content.implementationSettings),
+    synthesisCache: normalizeProjectSynthesisCacheSnapshot(value.content.synthesisCache),
+    implementationCache: normalizeProjectImplementationCacheSnapshot(
+      value.content.implementationCache,
+    ),
+    canvasDevices: normalizeProjectCanvasDevices(value.content.canvasDevices),
   }
+
+  return composeProjectSnapshot(contentSnapshot, {
+    activeFileId: value.workspaceView.activeFileId,
+  })
 }

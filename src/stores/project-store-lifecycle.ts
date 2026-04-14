@@ -1,5 +1,4 @@
 import type { ProjectTemplate } from './project-templates'
-import type { ProjectSnapshot } from './project-model'
 import type { ProjectStoreState } from './project-store-state'
 import type { ProjectSessionStoreLike } from './project-session'
 
@@ -17,6 +16,10 @@ import {
   cloneProjectImplementationCacheSnapshot,
   cloneProjectNodes,
   cloneProjectSynthesisCacheSnapshot,
+  composeProjectSnapshot,
+  type ProjectContentSnapshot,
+  type ProjectSnapshot,
+  type ProjectWorkspaceViewSnapshot,
 } from './project-model'
 import { projectCanvasStore } from './project-canvas'
 import {
@@ -32,12 +35,12 @@ interface ProjectStoreLifecycleLike extends ProjectSessionStoreLike, ProjectStor
   sessionId: number
 }
 
-export function createProjectSnapshot(store: ProjectStoreLifecycleLike): ProjectSnapshot {
+export function createProjectContentSnapshot(
+  store: ProjectStoreLifecycleLike,
+): ProjectContentSnapshot {
   return {
-    version: 1,
     name: store.files[0]?.name || 'project',
     files: cloneProjectNodes(store.files),
-    activeFileId: store.activeFileId,
     topFileId: store.topFileId,
     topModuleName: store.topModuleName,
     targetDeviceId: store.targetDeviceId,
@@ -52,6 +55,21 @@ export function createProjectSnapshot(store: ProjectStoreLifecycleLike): Project
     implementationCache: cloneProjectImplementationCacheSnapshot(store.implementationCache),
     canvasDevices: cloneProjectCanvasDevices(projectCanvasStore.canvasDevices.value),
   }
+}
+
+export function createProjectWorkspaceViewSnapshot(
+  store: ProjectStoreLifecycleLike,
+): ProjectWorkspaceViewSnapshot {
+  return {
+    activeFileId: store.activeFileId,
+  }
+}
+
+export function createProjectSnapshot(store: ProjectStoreLifecycleLike): ProjectSnapshot {
+  return composeProjectSnapshot(
+    createProjectContentSnapshot(store),
+    createProjectWorkspaceViewSnapshot(store),
+  )
 }
 
 export function loadProjectFromSnapshot(

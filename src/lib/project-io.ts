@@ -89,9 +89,7 @@ async function openProjectInBrowserFallback() {
       if (
         typeof data === 'object' &&
         data !== null &&
-        'version' in data &&
         'layout' in data &&
-        (data as { version?: unknown }).version === 2 &&
         (data as { layout?: unknown }).layout === 'directory'
       ) {
         throw new Error('Directory-based Aspen projects require the desktop app to open.')
@@ -165,7 +163,7 @@ async function importFilesInBrowserFallback() {
 }
 
 function getBrowserFallbackFilename() {
-  return `${projectStore.toSnapshot().name || 'project'}.aspen.json`
+  return `${projectStore.toSnapshot().content.name || 'project'}.aspen.json`
 }
 
 function getDefaultMetadataPath() {
@@ -333,7 +331,7 @@ export async function saveProjectAs() {
     syncInMemorySynthesisCacheAfterSave(preserveArtifacts)
     syncInMemoryImplementationCacheAfterSave(preserveArtifacts)
     projectStore.markSaved(selected)
-    recentProjectsStore.rememberProject(selected, projectStore.toSnapshot().name)
+    recentProjectsStore.rememberProject(selected, projectStore.toSnapshot().content.name)
     return true
   } catch (err) {
     if (isTauriUnavailable(err)) {
@@ -409,7 +407,7 @@ export async function createProjectAtDirectory(options: {
     syncInMemorySynthesisCacheAfterSave(false)
     syncInMemoryImplementationCacheAfterSave(false)
     projectStore.markSaved(metadataPath)
-    recentProjectsStore.rememberProject(metadataPath, projectStore.toSnapshot().name)
+    recentProjectsStore.rememberProject(metadataPath, projectStore.toSnapshot().content.name)
     return true
   } catch (err) {
     if (isTauriUnavailable(err)) {
@@ -461,7 +459,10 @@ export async function saveProjectToCurrentPath(options: { silent?: boolean } = {
       preserveArtifacts: true,
     })
     projectStore.markSaved(projectStore.projectPath)
-    recentProjectsStore.rememberProject(projectStore.projectPath, projectStore.toSnapshot().name)
+    recentProjectsStore.rememberProject(
+      projectStore.projectPath,
+      projectStore.toSnapshot().content.name,
+    )
     return true
   } catch (err) {
     if (isTauriUnavailable(err)) {

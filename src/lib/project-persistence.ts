@@ -1,10 +1,14 @@
 import type {
+  ProjectContentSnapshot,
   ProjectImplementationCacheSnapshot,
   ProjectNode,
   ProjectSnapshot,
+  ProjectWorkspaceViewSnapshot,
   ProjectSynthesisCacheSnapshot,
 } from '@/stores/project'
 
+import { composeProjectSnapshot, splitProjectSnapshot } from '@/stores/project-model'
+import { buildLoadedProjectSession } from '@/stores/project-session'
 import { invoke } from '@tauri-apps/api/core'
 
 import {
@@ -27,10 +31,15 @@ type ProjectMetadataNode = Omit<ProjectNode, 'content'> & {
   children?: ProjectMetadataNode[]
 }
 
-type ProjectMetadataSnapshot = Omit<ProjectSnapshot, 'version' | 'files'> & {
-  version: 2
-  layout: 'directory'
+type ProjectMetadataContentSnapshot = Omit<ProjectContentSnapshot, 'files'> & {
   files: ProjectMetadataNode[]
+}
+
+type ProjectMetadataSnapshot = {
+  version: 3
+  layout: 'directory'
+  content: ProjectMetadataContentSnapshot
+  workspaceView: ProjectWorkspaceViewSnapshot
 }
 
 type ProjectSourceFileWriteRequest = {
@@ -74,9 +83,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isProjectMetadataSnapshot(value: unknown): value is ProjectMetadataSnapshot {
   return (
     isRecord(value) &&
-    value.version === 2 &&
+    value.version === 3 &&
     value.layout === 'directory' &&
-    Array.isArray(value.files)
+    isRecord(value.content) &&
+    Array.isArray(value.content.files) &&
+    isRecord(value.workspaceView) &&
+    typeof value.workspaceView.activeFileId === 'string'
   )
 }
 
@@ -123,28 +135,23 @@ function stripNodeContents(node: ProjectNode): ProjectMetadataNode {
 
 function createProjectMetadataSnapshot(options: { preserveArtifacts: boolean }) {
   const snapshot = projectStore.toSnapshot()
+  const { contentSnapshot, workspaceViewSnapshot } = splitProjectSnapshot(snapshot)
+  const { files, synthesisCache, implementationCache, ...persistedContentSnapshot } =
+    contentSnapshot
 
   return {
-    version: 2,
+    version: 3,
     layout: 'directory',
-    name: snapshot.name,
-    files: snapshot.files.map(stripNodeContents),
-    activeFileId: snapshot.activeFileId,
-    topFileId: snapshot.topFileId,
-    topModuleName: snapshot.topModuleName,
-    targetDeviceId: snapshot.targetDeviceId,
-    targetBoardId: snapshot.targetBoardId,
-    pinConstraints: snapshot.pinConstraints,
-    implementationSettings: snapshot.implementationSettings,
-    synthesisCache: clonePersistedSynthesisCache(
-      snapshot.synthesisCache,
-      options.preserveArtifacts,
-    ),
-    implementationCache: clonePersistedImplementationCache(
-      snapshot.implementationCache,
-      options.preserveArtifacts,
-    ),
-    canvasDevices: snapshot.canvasDevices,
+    content: {
+      ...persistedContentSnapshot,
+      files: files.map(stripNodeContents),
+      synthesisCache: clonePersistedSynthesisCache(synthesisCache, options.preserveArtifacts),
+      implementationCache: clonePersistedImplementationCache(
+        implementationCache,
+        options.preserveArtifacts,
+      ),
+    },
+    workspaceView: workspaceViewSnapshot,
   } satisfies ProjectMetadataSnapshot
 }
 
@@ -209,33 +216,37 @@ async function hydrateProjectSnapshot(
   }
 
   const hydratedFiles =
-    metadata.files.length === 1 && metadata.files[0]?.type === 'folder'
+    metadata.content.files.length === 1 && metadata.content.files[0]?.type === 'folder'
       ? [
           {
-            ...metadata.files[0],
+            ...metadata.content.files[0],
             children: await hydrateNodesFromDisk(
-              metadata.files[0].children ?? [],
+              metadata.content.files[0].children ?? [],
               sourcesDirectory,
             ),
           } satisfies ProjectNode,
         ]
-      : await hydrateNodesFromDisk(metadata.files, sourcesDirectory)
+      : await hydrateNodesFromDisk(metadata.content.files, sourcesDirectory)
 
-  return {
-    version: 1,
-    name: metadata.name,
+  const contentSnapshot: ProjectContentSnapshot = {
+    name: metadata.content.name,
     files: hydratedFiles,
-    activeFileId: metadata.activeFileId,
-    topFileId: metadata.topFileId,
-    topModuleName: metadata.topModuleName,
-    targetDeviceId: metadata.targetDeviceId,
-    targetBoardId: metadata.targetBoardId,
-    pinConstraints: metadata.pinConstraints,
-    implementationSettings: metadata.implementationSettings,
-    synthesisCache: metadata.synthesisCache,
-    implementationCache: metadata.implementationCache ?? null,
-    canvasDevices: Array.isArray(metadata.canvasDevices) ? metadata.canvasDevices : [],
+    topFileId: metadata.content.topFileId,
+    topModuleName: metadata.content.topModuleName,
+    targetDeviceId: metadata.content.targetDeviceId,
+    targetBoardId: metadata.content.targetBoardId,
+    pinConstraints: metadata.content.pinConstraints,
+    implementationSettings: metadata.content.implementationSettings,
+    synthesisCache: metadata.content.synthesisCache,
+    implementationCache: metadata.content.implementationCache ?? null,
+    canvasDevices: Array.isArray(metadata.content.canvasDevices)
+      ? metadata.content.canvasDevices
+      : [],
   }
+
+  return composeProjectSnapshot(contentSnapshot, {
+    activeFileId: metadata.workspaceView.activeFileId,
+  })
 }
 
 async function hydratePersistedSynthesisManifest(metadataPath: string) {
@@ -346,14 +357,15 @@ export async function loadProjectFromPath(path: string) {
   const loadedSnapshot: ProjectSnapshot = isProjectMetadataSnapshot(data)
     ? await hydrateProjectSnapshot(path, data)
     : (data as ProjectSnapshot)
+  const loadedSession = buildLoadedProjectSession(loadedSnapshot)
 
   projectStore.loadFromSnapshot(loadedSnapshot, { projectPath: path })
 
   await hydratePersistedSynthesisManifest(path)
   await hydratePersistedImplementationManifest(path)
-  await hardwareStore.replaceCanvasDevices(loadedSnapshot.canvasDevices)
+  await hardwareStore.replaceCanvasDevices(loadedSession.canvasDevices)
 
-  recentProjectsStore.rememberProject(path, projectStore.toSnapshot().name)
+  recentProjectsStore.rememberProject(path, projectStore.toSnapshot().content.name)
   return true
 }
 

@@ -6,62 +6,66 @@ import { projectStore } from './project'
 
 function createTreeSnapshot(): ProjectSnapshot {
   return {
-    version: 1,
-    name: 'TreeProject',
-    files: [
-      {
-        id: 'root',
-        name: 'TreeProject',
-        type: 'folder',
-        isOpen: true,
-        children: [
-          {
-            id: 'folder-a',
-            name: 'folder-a',
-            type: 'folder',
-            isOpen: true,
-            children: [
-              {
-                id: 'nested-file',
-                name: 'nested-file.v',
-                type: 'file',
-                content: 'module nested_file; endmodule',
-              },
-            ],
-          },
-          {
-            id: 'top-file',
-            name: 'top-file.v',
-            type: 'file',
-            content: 'module top_file; endmodule',
-          },
-          {
-            id: 'folder-b',
-            name: 'folder-b',
-            type: 'folder',
-            isOpen: true,
-            children: [],
-          },
-        ],
-      },
-    ],
-    activeFileId: 'top-file',
-    topFileId: 'top-file',
-    topModuleName: '',
-    targetDeviceId: projectStore.targetDeviceId,
-    targetBoardId: projectStore.targetBoardId,
-    pinConstraints: {
-      version: 1,
+    version: 2,
+    content: {
+      name: 'TreeProject',
+      files: [
+        {
+          id: 'root',
+          name: 'TreeProject',
+          type: 'folder',
+          isOpen: true,
+          children: [
+            {
+              id: 'folder-a',
+              name: 'folder-a',
+              type: 'folder',
+              isOpen: true,
+              children: [
+                {
+                  id: 'nested-file',
+                  name: 'nested-file.v',
+                  type: 'file',
+                  content: 'module nested_file; endmodule',
+                },
+              ],
+            },
+            {
+              id: 'top-file',
+              name: 'top-file.v',
+              type: 'file',
+              content: 'module top_file; endmodule',
+            },
+            {
+              id: 'folder-b',
+              name: 'folder-b',
+              type: 'folder',
+              isOpen: true,
+              children: [],
+            },
+          ],
+        },
+      ],
       topFileId: 'top-file',
-      assignments: [],
+      topModuleName: '',
+      targetDeviceId: projectStore.targetDeviceId,
+      targetBoardId: projectStore.targetBoardId,
+      pinConstraints: {
+        version: 1,
+        topFileId: 'top-file',
+        assignments: [],
+      },
+      implementationSettings: {
+        version: 1,
+        placeMode: projectStore.implementationSettings.placeMode,
+      },
+      synthesisCache: null,
+      implementationCache: null,
+      canvasDevices: [],
     },
-    implementationSettings: {
-      version: 1,
-      placeMode: projectStore.implementationSettings.placeMode,
+    workspaceView: {
+      activeFileId: 'top-file',
     },
-    synthesisCache: null,
-    implementationCache: null,
-    canvasDevices: [],
   }
 }
 
