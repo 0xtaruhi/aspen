@@ -79,17 +79,17 @@
   --chart-4: var(--theme-chart-4-light);
   --chart-5: var(--theme-chart-5-light);
   --radius: 0.5rem;
-  --sidebar: oklch(0.98 0.004 261);
+  --sidebar: oklch(0.985 0.004 261 / 0.78);
   --sidebar-foreground: oklch(0.13 0.028 261);
   --sidebar-primary: var(--theme-sidebar-primary-light);
   --sidebar-primary-foreground: var(--theme-sidebar-primary-foreground-light);
-  --sidebar-accent: oklch(0.96 0.004 261);
+  --sidebar-accent: oklch(0.97 0.004 261 / 0.78);
   --sidebar-accent-foreground: oklch(0.13 0.028 261);
-  --sidebar-border: oklch(0.92 0.006 261);
+  --sidebar-border: oklch(0.9 0.008 261 / 0.44);
   --sidebar-ring: var(--theme-ring-light);
   --window-header-surface: color-mix(in oklab, var(--background) 97%, var(--muted) 3%);
   --window-workspace-surface: var(--background);
-  --window-sidebar-surface: transparent;
+  --window-chrome-surface: transparent;
   --window-toolbar-surface: color-mix(in oklab, var(--background) 96%, var(--muted) 4%);
   --window-muted-surface: color-mix(in oklab, var(--muted) 96%, var(--background) 4%);
   --window-card-surface: var(--card);
@@ -102,7 +102,23 @@
   --window-editor-surface: var(--card);
   --window-chrome-top-highlight: color-mix(in oklab, white 18%, transparent);
   --window-chrome-bottom-line: color-mix(in oklab, var(--border) 62%, transparent);
-  --window-navigation-surface: transparent;
+  --window-chrome-highlight: transparent;
+  --window-chrome-edge: color-mix(in oklab, white 14%, var(--border) 86%);
+  --window-chrome-shadow: none;
+  --window-sidebar-surface: var(--window-chrome-surface);
+  --window-navigation-surface: var(--window-chrome-surface);
+  --window-sidebar-highlight: var(--window-chrome-highlight);
+  --window-sidebar-edge: var(--window-chrome-edge);
+  --window-sidebar-shadow: var(--window-chrome-shadow);
+  --window-sidebar-blur: 0px;
+  --window-sidebar-saturation: 100%;
+  --window-navigation-highlight: var(--window-chrome-highlight);
+  --window-navigation-edge: var(--window-chrome-edge);
+  --window-navigation-shadow: var(--window-chrome-shadow);
+  --window-navigation-blur: 0px;
+  --window-navigation-saturation: 100%;
+  --window-ambient-primary: color-mix(in oklab, var(--primary) 10%, transparent);
+  --window-ambient-secondary: color-mix(in oklab, white 72%, transparent);
 }
 
 .dark {
@@ -141,17 +157,17 @@
   --chart-3: var(--theme-chart-3-dark);
   --chart-4: var(--theme-chart-4-dark);
   --chart-5: var(--theme-chart-5-dark);
-  --sidebar: oklch(0.1 0.02 260);
+  --sidebar: oklch(0.105 0.02 260 / 0.78);
   --sidebar-foreground: oklch(0.98 0.004 261);
   --sidebar-primary: var(--theme-sidebar-primary-dark);
   --sidebar-primary-foreground: var(--theme-sidebar-primary-foreground-dark);
-  --sidebar-accent: oklch(0.16 0.024 260);
+  --sidebar-accent: oklch(0.18 0.026 260 / 0.76);
   --sidebar-accent-foreground: oklch(0.98 0.004 261);
-  --sidebar-border: oklch(0.2 0.03 260);
+  --sidebar-border: oklch(0.28 0.03 260 / 0.42);
   --sidebar-ring: var(--theme-ring-dark);
   --window-header-surface: color-mix(in oklab, var(--background) 94%, var(--muted) 6%);
   --window-workspace-surface: color-mix(in oklab, var(--background) 99%, black 1%);
-  --window-sidebar-surface: transparent;
+  --window-chrome-surface: transparent;
   --window-toolbar-surface: color-mix(in oklab, black 34%, var(--background) 66%);
   --window-muted-surface: color-mix(in oklab, var(--muted) 95%, var(--background) 5%);
   --window-card-surface: color-mix(in oklab, var(--card) 99%, black 1%);
@@ -164,7 +180,23 @@
   --window-editor-surface: color-mix(in oklab, var(--card) 98%, black 2%);
   --window-chrome-top-highlight: color-mix(in oklab, white 7%, transparent);
   --window-chrome-bottom-line: color-mix(in oklab, var(--border) 56%, transparent);
-  --window-navigation-surface: color-mix(in oklab, var(--background) 90%, transparent);
+  --window-chrome-highlight: transparent;
+  --window-chrome-edge: color-mix(in oklab, white 7%, var(--border) 93%);
+  --window-chrome-shadow: none;
+  --window-sidebar-surface: var(--window-chrome-surface);
+  --window-navigation-surface: var(--window-chrome-surface);
+  --window-sidebar-highlight: var(--window-chrome-highlight);
+  --window-sidebar-edge: var(--window-chrome-edge);
+  --window-sidebar-shadow: var(--window-chrome-shadow);
+  --window-sidebar-blur: 0px;
+  --window-sidebar-saturation: 100%;
+  --window-navigation-highlight: var(--window-chrome-highlight);
+  --window-navigation-edge: var(--window-chrome-edge);
+  --window-navigation-shadow: var(--window-chrome-shadow);
+  --window-navigation-blur: 0px;
+  --window-navigation-saturation: 100%;
+  --window-ambient-primary: color-mix(in oklab, var(--primary) 14%, transparent);
+  --window-ambient-secondary: color-mix(in oklab, white 8%, transparent);
 }
 
 @layer base {
@@ -208,10 +240,60 @@
     box-shadow: inset 0 -1px 0 var(--window-chrome-bottom-line);
   }
 
-  .app-navigation-glass {
+  .app-navigation-glass,
+  .app-sidebar-glass {
     position: relative;
+    isolation: isolate;
+    background: var(--chrome-surface);
+    box-shadow: none;
+  }
+
+  .app-navigation-glass {
     z-index: 2;
-    background: var(--window-navigation-surface);
+    --chrome-surface: var(--window-navigation-surface);
+    --chrome-highlight: var(--window-navigation-highlight);
+    --chrome-edge: var(--window-navigation-edge);
+    --chrome-shadow: var(--window-navigation-shadow);
+    --chrome-blur: var(--window-navigation-blur);
+    --chrome-saturation: var(--window-navigation-saturation);
+  }
+
+  .app-navigation-glass::after {
+    content: '';
+    position: absolute;
+    inset: auto 0 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      var(--window-chrome-bottom-line) 14% 86%,
+      transparent
+    );
+    pointer-events: none;
+  }
+
+  .app-sidebar-glass {
+    --chrome-surface: var(--window-sidebar-surface);
+    --chrome-highlight: var(--window-sidebar-highlight);
+    --chrome-edge: var(--window-sidebar-edge);
+    --chrome-shadow: var(--window-sidebar-shadow);
+    --chrome-blur: var(--window-sidebar-blur);
+    --chrome-saturation: var(--window-sidebar-saturation);
+  }
+
+  .app-sidebar-glass::after {
+    content: '';
+    position: absolute;
+    inset: 0 0 0 auto;
+    width: 1px;
+    background: linear-gradient(
+      180deg,
+      transparent,
+      color-mix(in oklab, var(--window-chrome-bottom-line) 92%, transparent) 12%,
+      color-mix(in oklab, var(--window-chrome-bottom-line) 74%, transparent) 88%,
+      transparent
+    );
+    pointer-events: none;
   }
 
   .app-dialog-panel,
@@ -266,6 +348,11 @@
   }
 
   @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .app-navigation-glass,
+    .app-sidebar-glass {
+      background: var(--chrome-surface);
+    }
+
     .app-dialog-panel,
     .app-popup-glass,
     .app-tooltip-glass,
