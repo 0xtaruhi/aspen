@@ -113,7 +113,6 @@ function toSafeNumberFromU64(value: bigint): number {
 }
 
 export function onDataCatalog(catalog: HardwareDataSignalCatalogV1) {
-  signalCatalog.clear()
   for (const entry of catalog.entries) {
     signalCatalog.set(entry.signal_id, entry.signal)
   }
