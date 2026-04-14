@@ -17,6 +17,8 @@
   "newFile": "New File",
   "newFolder": "New Folder",
   "importFiles": "Import Files",
+  "importProjectFilesFailed": "Failed to import project files: {message}",
+  "importProjectFilesSkippedDuplicates": "Skipped {count} duplicate project file(s): {names}",
   "renameSelectedFile": "Rename selected file",
   "deleteSelectedFile": "Delete selected file",
   "enterFileName": "Enter file name:",

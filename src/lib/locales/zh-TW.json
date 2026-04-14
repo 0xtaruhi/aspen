@@ -17,6 +17,8 @@
   "newFile": "新建檔案",
   "newFolder": "新建資料夾",
   "importFiles": "匯入檔案",
+  "importProjectFilesFailed": "匯入專案檔案失敗：{message}",
+  "importProjectFilesSkippedDuplicates": "已略過 {count} 個同名專案檔案：{names}",
   "renameSelectedFile": "重新命名目前的檔案",
   "deleteSelectedFile": "刪除目前的檔案",
   "enterFileName": "輸入檔名：",

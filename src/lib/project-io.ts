@@ -2,36 +2,29 @@ import { invoke } from '@tauri-apps/api/core'
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog'
 
 import { translate } from '@/lib/i18n'
+import { ASPEN_PROJECT_FILENAME, getProjectMetadataPath } from '@/lib/project-layout'
 import {
-  inspectProjectDirectory,
-  loadProjectFromPath,
-  readImportedSourceFiles,
-  syncInMemoryImplementationCacheAfterSave,
-  syncInMemorySynthesisCacheAfterSave,
-  writeProjectBundle,
-} from '@/lib/project-persistence'
-import { ASPEN_PROJECT_FILENAME, getProjectMetadataPath, joinPath } from '@/lib/project-layout'
+  getProjectIoErrorMessage,
+  isProjectIoTauriUnavailable,
+  showProjectIoMessage,
+} from '@/lib/project-io-common'
+import {
+  applyImportedFilesToProject,
+  finalizeCreateProjectDirectory,
+  openProjectFromPath,
+  openRecentProjectFromPath,
+  prepareCreateProjectDirectory,
+  saveProjectBundleToPath,
+  validateCreateProjectAtDirectoryInput,
+  type CreateProjectAtDirectoryOptions,
+} from '@/lib/project-io-service'
 import { hardwareStore } from '@/stores/hardware'
 import { projectStore } from '@/stores/project'
 import { requestProjectUnsavedChanges } from '@/stores/project-unsaved-changes'
-import { recentProjectsStore } from '@/stores/recent-projects'
 
 type UnsavedProjectAction = 'open-project' | 'create-project' | 'close-project' | 'quit-application'
 
 export const PROJECT_IMPORT_SOURCE_FILE_EXTENSIONS = ['v', 'sv', 'vh', 'txt', 'mem'] as const
-
-function getErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
-}
-
-function isTauriUnavailable(err: unknown): boolean {
-  const message = getErrorMessage(err)
-  return (
-    message.includes('__TAURI_INTERNALS__') ||
-    message.includes('window.__TAURI_INTERNALS__') ||
-    message.includes('plugin')
-  )
-}
 
 function getCurrentProjectName() {
   return projectStore.files[0]?.name || translate('projectNameDefault')
@@ -103,7 +96,12 @@ async function openProjectInBrowserFallback() {
 
       projectStore.loadFromSnapshot(data)
     } catch (err) {
-      window.alert(translate('openProjectFailed', { message: getErrorMessage(err) }))
+      showProjectIoMessage({
+        key: 'openProjectFailed',
+        params: {
+          message: getProjectIoErrorMessage(err),
+        },
+      })
     }
   }
 
@@ -156,7 +154,13 @@ async function importFilesInBrowserFallback() {
         })),
       )
 
-      projectStore.importFiles(rootNode.id, importedFiles)
+      const result = applyImportedFilesToProject(rootNode.id, importedFiles)
+      if (result.kind === 'failure') {
+        showProjectIoMessage(result.message)
+        resolve(false)
+        return
+      }
+
       resolve(true)
     }
 
@@ -180,15 +184,6 @@ function serializeLegacyProject() {
   return JSON.stringify(projectStore.toSnapshot(), null, 2)
 }
 
-function shouldForgetRecentProject(err: unknown) {
-  const message = getErrorMessage(err).toLowerCase()
-  return (
-    message.includes('no such file') ||
-    message.includes('not found') ||
-    message.includes('cannot find the path')
-  )
-}
-
 export async function openProject() {
   try {
     const selected = await openDialog({
@@ -204,14 +199,25 @@ export async function openProject() {
       return false
     }
 
-    return await loadProjectFromPath(selected)
+    const result = await openProjectFromPath(selected)
+    if (result.kind === 'failure') {
+      showProjectIoMessage(result.message)
+      return false
+    }
+
+    return result.value
   } catch (err) {
-    if (isTauriUnavailable(err)) {
+    if (isProjectIoTauriUnavailable(err)) {
       await openProjectInBrowserFallback()
       return true
     }
 
-    window.alert(translate('openProjectFailed', { message: getErrorMessage(err) }))
+    showProjectIoMessage({
+      key: 'openProjectFailed',
+      params: {
+        message: getProjectIoErrorMessage(err),
+      },
+    })
     return false
   }
 }
@@ -249,20 +255,17 @@ export async function closeProject(options: { promptForUnsavedChanges?: boolean 
 }
 
 export async function openRecentProject(path: string) {
-  try {
-    if (!(await resolveUnsavedProjectChanges('open-project'))) {
-      return false
-    }
-
-    return await loadProjectFromPath(path)
-  } catch (err) {
-    if (shouldForgetRecentProject(err)) {
-      recentProjectsStore.removeProject(path)
-    }
-
-    window.alert(translate('openProjectFailed', { message: getErrorMessage(err) }))
+  if (!(await resolveUnsavedProjectChanges('open-project'))) {
     return false
   }
+
+  const result = await openRecentProjectFromPath(path)
+  if (result.kind === 'failure') {
+    showProjectIoMessage(result.message)
+    return false
+  }
+
+  return result.value
 }
 
 export async function importProjectFiles() {
@@ -296,19 +299,37 @@ export async function importProjectFiles() {
       })),
     )
 
-    projectStore.importFiles(rootNode.id, importedFiles)
+    const result = applyImportedFilesToProject(rootNode.id, importedFiles)
+    if (result.kind === 'failure') {
+      showProjectIoMessage(result.message)
+      return false
+    }
 
     if (projectStore.projectPath) {
-      await saveProjectToCurrentPath({ silent: true })
+      try {
+        await saveProjectToCurrentPath({ silent: true })
+      } catch (err) {
+        showProjectIoMessage({
+          key: 'saveProjectFailed',
+          params: {
+            message: getProjectIoErrorMessage(err),
+          },
+        })
+      }
     }
 
     return true
   } catch (err) {
-    if (isTauriUnavailable(err)) {
+    if (isProjectIoTauriUnavailable(err)) {
       return await importFilesInBrowserFallback()
     }
 
-    window.alert(translate('openProjectFailed', { message: getErrorMessage(err) }))
+    showProjectIoMessage({
+      key: 'importProjectFilesFailed',
+      params: {
+        message: getProjectIoErrorMessage(err),
+      },
+    })
     return false
   }
 }
@@ -332,103 +353,80 @@ export async function saveProjectAs() {
     }
 
     const preserveArtifacts = selected === projectStore.projectPath
-    await writeProjectBundle(selected, {
+    const result = await saveProjectBundleToPath(selected, {
       preserveArtifacts,
     })
-    syncInMemorySynthesisCacheAfterSave(preserveArtifacts)
-    syncInMemoryImplementationCacheAfterSave(preserveArtifacts)
-    projectStore.markSaved(selected)
-    recentProjectsStore.rememberProject(selected, projectStore.toSnapshot().content.name)
+    if (result.kind === 'failure') {
+      if (isProjectIoTauriUnavailable(result.error)) {
+        saveProjectInBrowserFallback(legacySerialized, getBrowserFallbackFilename())
+        projectStore.markSaved(null)
+        return true
+      }
+
+      showProjectIoMessage(result.message)
+      return false
+    }
+
     return true
   } catch (err) {
-    if (isTauriUnavailable(err)) {
+    if (isProjectIoTauriUnavailable(err)) {
       saveProjectInBrowserFallback(legacySerialized, getBrowserFallbackFilename())
       projectStore.markSaved(null)
       return true
     }
 
-    window.alert(translate('saveProjectFailed', { message: getErrorMessage(err) }))
+    showProjectIoMessage({
+      key: 'saveProjectFailed',
+      params: {
+        message: getProjectIoErrorMessage(err),
+      },
+    })
     return false
   }
 }
 
-export async function createProjectAtDirectory(options: {
-  name: string
-  template: 'empty' | 'blinky' | 'uart'
-  parentDirectoryPath: string
-  importPaths?: readonly string[]
-}) {
-  const projectName = options.name.trim()
-  const parentDirectoryPath = options.parentDirectoryPath.trim()
-
-  if (!projectName) {
-    window.alert(translate('projectNameRequired'))
+export async function createProjectAtDirectory(options: CreateProjectAtDirectoryOptions) {
+  const validationFailure = validateCreateProjectAtDirectoryInput(options)
+  if (validationFailure) {
+    showProjectIoMessage(validationFailure.message)
     return false
   }
 
-  if (!parentDirectoryPath) {
-    window.alert(translate('projectParentDirectoryRequired'))
+  const prepared = await prepareCreateProjectDirectory(options)
+  if (prepared.kind === 'failure' && prepared.reason === 'validation') {
+    showProjectIoMessage(prepared.message)
     return false
   }
 
-  if (/[\\/]/.test(projectName)) {
-    window.alert(translate('projectNameInvalidForDirectory'))
+  if (!(await resolveUnsavedProjectChanges('create-project'))) {
     return false
   }
 
-  const projectDirectoryPath = joinPath(parentDirectoryPath, projectName)
-
-  try {
-    const inspection = await inspectProjectDirectory(projectDirectoryPath)
-    if (inspection.exists) {
-      if (inspection.metadata_exists) {
-        window.alert(translate('projectDirectoryAlreadyContainsProject'))
-        return false
-      }
-
-      if (inspection.visible_entry_count > 0) {
-        window.alert(translate('projectDirectoryMustBeEmpty'))
-        return false
-      }
-    }
-
-    if (!(await resolveUnsavedProjectChanges('create-project'))) {
-      return false
-    }
-
-    projectStore.createNewProject(projectName, options.template)
-
-    const importPaths = options.importPaths ?? []
-    if (importPaths.length > 0) {
-      const rootNode = projectStore.rootNode
-      if (!rootNode) {
-        throw new Error('Project root is missing')
-      }
-
-      const importedFiles = await readImportedSourceFiles(importPaths)
-      projectStore.importFiles(rootNode.id, importedFiles)
-    }
-
-    const metadataPath = joinPath(projectDirectoryPath, ASPEN_PROJECT_FILENAME)
-    await writeProjectBundle(metadataPath, { preserveArtifacts: false })
-    syncInMemorySynthesisCacheAfterSave(false)
-    syncInMemoryImplementationCacheAfterSave(false)
-    projectStore.markSaved(metadataPath)
-    recentProjectsStore.rememberProject(metadataPath, projectStore.toSnapshot().content.name)
-    return true
-  } catch (err) {
-    if (isTauriUnavailable(err)) {
-      if (!(await resolveUnsavedProjectChanges('create-project'))) {
-        return false
-      }
-
-      projectStore.createNewProject(options.name, options.template)
+  if (prepared.kind === 'failure') {
+    if (isProjectIoTauriUnavailable(prepared.error)) {
+      projectStore.createNewProject(options.name.trim(), options.template)
       return true
     }
 
-    window.alert(translate('createProjectFailed', { message: getErrorMessage(err) }))
+    showProjectIoMessage(prepared.message)
     return false
   }
+
+  const result = await finalizeCreateProjectDirectory(prepared.value, {
+    template: options.template,
+    importPaths: options.importPaths,
+  })
+  if (result.kind === 'failure') {
+    if (isProjectIoTauriUnavailable(result.error)) {
+      projectStore.createNewProject(options.name.trim(), options.template)
+      return true
+    }
+
+    showProjectIoMessage(result.message)
+    return false
+  }
+
+  return true
 }
 
 export async function saveProject() {
@@ -445,13 +443,18 @@ export async function saveProject() {
 
     return await saveProjectAs()
   } catch (err) {
-    if (isTauriUnavailable(err)) {
+    if (isProjectIoTauriUnavailable(err)) {
       saveProjectInBrowserFallback(legacySerialized, getBrowserFallbackFilename())
       projectStore.markSaved(null)
       return true
     }
 
-    window.alert(translate('saveProjectFailed', { message: getErrorMessage(err) }))
+    showProjectIoMessage({
+      key: 'saveProjectFailed',
+      params: {
+        message: getProjectIoErrorMessage(err),
+      },
+    })
     return false
   }
 }
@@ -462,22 +465,25 @@ export async function saveProjectToCurrentPath(options: { silent?: boolean } = {
   }
 
   try {
-    await writeProjectBundle(projectStore.projectPath, {
+    const result = await saveProjectBundleToPath(projectStore.projectPath, {
       preserveArtifacts: true,
     })
-    projectStore.markSaved(projectStore.projectPath)
-    recentProjectsStore.rememberProject(
-      projectStore.projectPath,
-      projectStore.toSnapshot().content.name,
-    )
-    return true
-  } catch (err) {
-    if (isTauriUnavailable(err)) {
-      return false
+    if (result.kind === 'failure') {
+      if (isProjectIoTauriUnavailable(result.error)) {
+        return false
+      }
+
+      if (!options.silent) {
+        showProjectIoMessage(result.message)
+      }
+
+      throw result.error ?? new Error(translate(result.message.key, result.message.params))
     }
 
-    if (!options.silent) {
-      window.alert(translate('saveProjectFailed', { message: getErrorMessage(err) }))
+    return true
+  } catch (err) {
+    if (isProjectIoTauriUnavailable(err)) {
+      return false
     }
 
     throw err

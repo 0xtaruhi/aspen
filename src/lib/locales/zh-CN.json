@@ -17,6 +17,8 @@
   "newFile": "新建文件",
   "newFolder": "新建文件夹",
   "importFiles": "导入文件",
+  "importProjectFilesFailed": "导入项目文件失败：{message}",
+  "importProjectFilesSkippedDuplicates": "已跳过 {count} 个重名项目文件：{names}",
   "renameSelectedFile": "重命名当前文件",
   "deleteSelectedFile": "删除当前文件",
   "enterFileName": "输入文件名：",

@@ -2,21 +2,13 @@ import { invoke } from '@tauri-apps/api/core'
 import { save as saveDialog } from '@tauri-apps/plugin-dialog'
 
 import { getProjectOutputDirectory } from '@/lib/project-layout'
+import {
+  getProjectIoErrorMessage,
+  isProjectIoTauriUnavailable,
+  showProjectIoMessage,
+} from '@/lib/project-io-common'
 import { projectStore } from '@/stores/project'
 import { translate } from './i18n'
-
-function getErrorMessage(err: unknown) {
-  return err instanceof Error ? err.message : String(err)
-}
-
-function isTauriUnavailable(err: unknown) {
-  const message = getErrorMessage(err)
-  return (
-    message.includes('__TAURI_INTERNALS__') ||
-    message.includes('window.__TAURI_INTERNALS__') ||
-    message.includes('plugin')
-  )
-}
 
 function createBrowserDownload(content: string, filename: string) {
   if (typeof document === 'undefined') {
@@ -60,12 +52,17 @@ export async function exportConstraintXml(content: string) {
 
     return selected
   } catch (err) {
-    if (isTauriUnavailable(err)) {
+    if (isProjectIoTauriUnavailable(err)) {
       createBrowserDownload(content, defaultConstraintPath().split('/').pop() || 'constraints.xml')
       return defaultConstraintPath()
     }
 
-    window.alert(translate('saveProjectFailed', { message: getErrorMessage(err) }))
+    showProjectIoMessage({
+      key: 'saveProjectFailed',
+      params: {
+        message: getProjectIoErrorMessage(err),
+      },
+    })
     return null
   }
 }
