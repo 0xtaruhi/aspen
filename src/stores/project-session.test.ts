@@ -59,6 +59,55 @@ describe('project session helpers', () => {
     expect(session.topModuleName).toBe('top')
   })
 
+  it('falls back when persisted active or top ids point to folders', () => {
+    const session = buildLoadedProjectSession({
+      version: 2,
+      content: {
+        name: 'LoadedProject',
+        files: [
+          {
+            id: 'root',
+            name: 'LoadedProject',
+            type: 'folder',
+            isOpen: true,
+            children: [
+              {
+                id: 'nested-folder',
+                name: 'Nested',
+                type: 'folder',
+                isOpen: true,
+                children: [
+                  {
+                    id: 'top-file',
+                    name: 'top.v',
+                    type: 'file',
+                    content: 'module top(input clk, output led); assign led = clk; endmodule',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        topFileId: 'nested-folder',
+        topModuleName: 'nested_folder',
+        pinConstraints: {
+          version: 1,
+          topFileId: 'nested-folder',
+          assignments: [],
+        },
+      },
+      workspaceView: {
+        activeFileId: 'root',
+      },
+    })
+
+    expect(session.activeFileId).toBe('top-file')
+    expect(session.selectedNodeId).toBe('top-file')
+    expect(session.topFileId).toBe('top-file')
+    expect(session.topModuleName).toBe('')
+    expect(session.pinConstraints.topFileId).toBe('top-file')
+  })
+
   it('builds a fresh template-backed project session with defaults', () => {
     const session = buildTemplateProjectSession('Blink', 'blinky')
 

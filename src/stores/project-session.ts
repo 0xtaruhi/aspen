@@ -99,12 +99,12 @@ export function buildLoadedProjectSession(snapshot: unknown): ProjectSessionPayl
   const parsedSnapshot = normalizeProjectSnapshot(snapshot)
   const { contentSnapshot, workspaceViewSnapshot } = splitProjectSnapshot(parsedSnapshot)
   const nextFiles = cloneProjectNodes(contentSnapshot.files)
-  const nextActiveFileId = findNodeInTree(workspaceViewSnapshot.activeFileId, nextFiles)
-    ? workspaceViewSnapshot.activeFileId
-    : findFirstFileId(nextFiles)
-  const nextTopFileId = findNodeInTree(contentSnapshot.topFileId, nextFiles)
-    ? contentSnapshot.topFileId
-    : resolveTopFileId(nextFiles)
+  const activeNode = findNodeInTree(workspaceViewSnapshot.activeFileId, nextFiles)
+  const nextActiveFileId =
+    activeNode?.type === 'file' ? workspaceViewSnapshot.activeFileId : findFirstFileId(nextFiles)
+  const topNode = findNodeInTree(contentSnapshot.topFileId, nextFiles)
+  const nextTopFileId =
+    topNode?.type === 'file' ? contentSnapshot.topFileId : resolveTopFileId(nextFiles)
   const nextPinConstraints = cloneProjectConstraintSnapshot(contentSnapshot.pinConstraints)
   const resolvedConstraintTarget = nextPinConstraints.topFileId
     ? findNodeInTree(nextPinConstraints.topFileId, nextFiles)
