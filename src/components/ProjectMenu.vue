@@ -61,25 +61,29 @@ async function handleCloseProject() {
 
 <template>
   <NewProjectDialog v-model:open="showNewProjectDialog" />
-  <SidebarMenu>
+  <SidebarMenu data-tauri-drag-region="false">
     <SidebarMenuItem>
       <DropdownMenu>
         <DropdownMenuTrigger as-child>
           <SidebarMenuButton
             size="lg"
-            class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+            class="data-[state=open]:bg-sidebar-accent/82 data-[state=open]:text-sidebar-accent-foreground"
           >
-            <div
-              class="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground"
-            >
-              <Box class="size-4" />
+            <div data-sidebar-slot="icon" class="text-sidebar-primary-foreground">
+              <div
+                class="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary"
+              >
+                <Box class="size-4" />
+              </div>
             </div>
-            <div class="grid flex-1 text-left text-sm leading-tight">
+            <div data-sidebar-slot="label" class="grid text-left text-sm leading-tight">
               <span class="truncate font-medium">
                 {{ activeProject }}
               </span>
             </div>
-            <ChevronsUpDown class="ml-auto" />
+            <div data-sidebar-slot="trailing">
+              <ChevronsUpDown class="size-4" />
+            </div>
           </SidebarMenuButton>
         </DropdownMenuTrigger>
         <DropdownMenuContent

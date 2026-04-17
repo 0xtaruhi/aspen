@@ -54,18 +54,21 @@ const { t } = useI18n()
                     :is-active="item.isActive"
                     :disabled="item.disabled"
                   >
-                    <component :is="item.icon" v-if="item.icon" />
-                    <span>{{ item.label ?? item.title }}</span>
-                    <LoaderCircle
-                      v-if="item.isRunning"
-                      class="ml-auto size-4 animate-spin text-sidebar-foreground/70"
-                    />
-                    <ChevronRight
-                      :class="[
-                        'transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90',
-                        item.isRunning ? '' : 'ml-auto',
-                      ]"
-                    />
+                    <div data-sidebar-slot="icon">
+                      <component :is="item.icon" v-if="item.icon" />
+                    </div>
+                    <div data-sidebar-slot="label">
+                      <span>{{ item.label ?? item.title }}</span>
+                    </div>
+                    <div data-sidebar-slot="trailing" class="gap-2">
+                      <LoaderCircle
+                        v-if="item.isRunning"
+                        class="size-4 animate-spin text-sidebar-foreground/70"
+                      />
+                      <ChevronRight
+                        class="transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90"
+                      />
+                    </div>
                   </SidebarMenuButton>
                 </CollapsibleTrigger>
                 <CollapsibleContent>
@@ -97,12 +100,18 @@ const { t } = useI18n()
               :disabled="item.disabled"
               @click="!item.disabled && item.action ? item.action() : null"
             >
-              <component :is="item.icon" v-if="item.icon" />
-              <span>{{ item.label ?? item.title }}</span>
-              <LoaderCircle
-                v-if="item.isRunning"
-                class="ml-auto size-4 animate-spin text-sidebar-foreground/70"
-              />
+              <div data-sidebar-slot="icon">
+                <component :is="item.icon" v-if="item.icon" />
+              </div>
+              <div data-sidebar-slot="label">
+                <span>{{ item.label ?? item.title }}</span>
+              </div>
+              <div data-sidebar-slot="trailing">
+                <LoaderCircle
+                  v-if="item.isRunning"
+                  class="size-4 animate-spin text-sidebar-foreground/70"
+                />
+              </div>
             </SidebarMenuButton>
           </template>
         </SidebarMenuItem>

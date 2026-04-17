@@ -60,38 +60,45 @@ const {
   <div class="h-full flex flex-col bg-transparent">
     <!-- Toolbar -->
     <div class="app-toolbar-glass h-12 flex items-center px-4 gap-2">
-      <Button variant="outline" size="sm" class="gap-2" :disabled="isBusy" @click="autoConnect">
-        <Plug class="w-4 h-4" />
-        {{ isConnecting ? t('connectingEllipsis') : t('autoConnect') }}
-      </Button>
+      <div class="-ml-1 flex items-center gap-2">
+        <Button variant="outline" size="sm" class="gap-2" :disabled="isBusy" @click="autoConnect">
+          <Plug class="w-4 h-4" />
+          {{ isConnecting ? t('connectingEllipsis') : t('autoConnect') }}
+        </Button>
 
-      <Button
-        v-if="hardwareStatus"
-        variant="ghost"
-        size="sm"
-        class="gap-2 text-destructive hover:text-destructive"
-        @click="disconnect"
-      >
-        <XCircle class="w-4 h-4" />
-        {{ t('disconnectHardware') }}
-      </Button>
+        <Button
+          v-if="hardwareStatus"
+          variant="ghost"
+          size="sm"
+          class="gap-2 text-destructive hover:text-destructive"
+          @click="disconnect"
+        >
+          <XCircle class="w-4 h-4" />
+          {{ t('disconnectHardware') }}
+        </Button>
 
-      <Separator orientation="vertical" class="h-6 mx-2" />
+        <Separator orientation="vertical" class="h-6 mx-2" />
 
-      <Button
-        variant="ghost"
-        size="icon"
-        :title="t('refreshTargets')"
-        :disabled="isBusy"
-        @click="refreshStatus"
-      >
-        <RefreshCw class="w-4 h-4" :class="isConnecting ? 'animate-spin' : ''" />
-      </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          :title="t('refreshTargets')"
+          :disabled="isBusy"
+          @click="refreshStatus"
+        >
+          <RefreshCw class="w-4 h-4" :class="isConnecting ? 'animate-spin' : ''" />
+        </Button>
 
-      <Button size="sm" class="gap-2" :disabled="!canOpenProgramDialog" @click="openProgramDialog">
-        <Play class="w-4 h-4" />
-        {{ t('programDeviceShort') }}
-      </Button>
+        <Button
+          size="sm"
+          class="gap-2"
+          :disabled="!canOpenProgramDialog"
+          @click="openProgramDialog"
+        >
+          <Play class="w-4 h-4" />
+          {{ t('programDeviceShort') }}
+        </Button>
+      </div>
 
       <span v-if="hotplugLog" class="text-xs text-muted-foreground ml-auto">
         {{ hotplugLog }}
@@ -116,7 +123,7 @@ const {
           <div class="p-2 font-medium text-xs text-muted-foreground uppercase tracking-wider mb-2">
             {{ t('hardwareTargets') }}
           </div>
-          <ScrollArea class="h-full">
+          <ScrollArea class="h-full" :hide-scrollbar="true">
             <div
               v-if="targets.length === 0"
               class="p-4 text-sm text-muted-foreground text-center italic"
@@ -167,7 +174,7 @@ const {
 
         <!-- Device Details & Operations -->
         <ResizablePanel :default-size="75" class="bg-transparent p-0">
-          <ScrollArea class="h-full">
+          <ScrollArea class="h-full" :hide-scrollbar="true">
             <div
               v-if="selectedDevice"
               class="max-w-3xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 px-6 py-6"

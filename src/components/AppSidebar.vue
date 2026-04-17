@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { SidebarProps } from '@/components/ui/sidebar'
 
-import { Bug, Cpu, FileCode2, FolderCog, FolderOpen, FolderPlus, Plus, Plug } from 'lucide-vue-next'
+import { Bug, FileCode2, FolderCog, FolderOpen, FolderPlus, Plus, Plug } from 'lucide-vue-next'
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -19,9 +19,10 @@ import {
   SidebarGroup,
   SidebarGroupLabel,
   SidebarHeader,
-  SidebarRail,
+  useSidebar,
 } from '@/components/ui/sidebar'
 import { useI18n } from '@/lib/i18n'
+import { isMacDesktop } from '@/lib/window-frame'
 import { type AppRouteName, moduleForRouteName, modulePathMap } from '@/router'
 import { hardwareStore } from '@/stores/hardware'
 import { projectStore } from '@/stores/project'
@@ -33,6 +34,9 @@ const props = withDefaults(defineProps<SidebarProps>(), {
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
+const reserveMacTrafficLights = isMacDesktop
+const { state } = useSidebar()
+const showMacCollapsedRail = computed(() => reserveMacTrafficLights && state.value === 'collapsed')
 
 function navigate(path: string) {
   void router.push(path)
@@ -46,13 +50,6 @@ const isSynthesisRunning = hardwareStore.synthesisRunning
 const isImplementationRunning = hardwareStore.implementationRunning
 
 const data = computed(() => ({
-  teams: [
-    {
-      name: 'Aspen FPGA',
-      logo: Cpu,
-      plan: 'Pro',
-    },
-  ],
   navMain: [
     {
       title: 'Project Management',
@@ -154,70 +151,113 @@ function handleImportFiles() {
 
 <template>
   <Sidebar v-bind="props">
-    <SidebarHeader>
+    <SidebarHeader
+      v-if="!showMacCollapsedRail"
+      :class="[reserveMacTrafficLights ? 'app-sidebar-header-macos' : '']"
+    >
       <ProjectMenu />
     </SidebarHeader>
     <SidebarContent class="overflow-hidden">
-      <div class="hidden min-h-0 flex-1 flex-col group-data-[collapsible=icon]:flex">
+      <div v-if="showMacCollapsedRail" class="app-sidebar-collapsed-macos-stack">
+        <ProjectMenu />
         <NavMain :items="data.navMain" />
       </div>
+      <template v-else>
+        <div class="hidden min-h-0 flex-1 flex-col group-data-[collapsible=icon]:flex">
+          <NavMain :items="data.navMain" />
+        </div>
 
-      <div class="min-h-0 flex-1 group-data-[collapsible=icon]:hidden">
-        <ResizablePanelGroup direction="vertical" class="h-full">
-          <ResizablePanel :default-size="46" :min-size="18">
-            <SidebarGroup class="h-full min-h-0 gap-2">
-              <div class="flex items-center gap-1 px-2">
-                <SidebarGroupLabel class="h-8 px-0">{{ t('projectSources') }}</SidebarGroupLabel>
-                <div class="ml-auto flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class="h-7 w-7"
-                    :title="t('newFile')"
-                    :disabled="!rootNode"
-                    @click="handleNewFile"
-                  >
-                    <Plus class="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class="h-7 w-7"
-                    :title="t('newFolder')"
-                    :disabled="!rootNode"
-                    @click="handleNewFolder"
-                  >
-                    <FolderPlus class="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class="h-7 w-7"
-                    :title="t('importFiles')"
-                    :disabled="!rootNode"
-                    @click="handleImportFiles"
-                  >
-                    <FolderOpen class="h-4 w-4" />
-                  </Button>
-                  <TopModuleSelect v-if="rootNode" />
+        <div class="min-h-0 flex-1 group-data-[collapsible=icon]:hidden">
+          <ResizablePanelGroup direction="vertical" class="h-full">
+            <ResizablePanel :default-size="46" :min-size="18">
+              <SidebarGroup class="h-full min-h-0 gap-2">
+                <div class="flex items-center gap-1 px-2">
+                  <SidebarGroupLabel class="h-8 px-0">{{ t('projectSources') }}</SidebarGroupLabel>
+                  <div class="ml-auto flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      class="h-7 w-7"
+                      :title="t('newFile')"
+                      :disabled="!rootNode"
+                      @click="handleNewFile"
+                    >
+                      <Plus class="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      class="h-7 w-7"
+                      :title="t('newFolder')"
+                      :disabled="!rootNode"
+                      @click="handleNewFolder"
+                    >
+                      <FolderPlus class="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      class="h-7 w-7"
+                      :title="t('importFiles')"
+                      :disabled="!rootNode"
+                      @click="handleImportFiles"
+                    >
+                      <FolderOpen class="h-4 w-4" />
+                    </Button>
+                    <TopModuleSelect v-if="rootNode" />
+                  </div>
                 </div>
-              </div>
-              <div class="min-h-0 flex-1 overflow-hidden">
-                <ProjectExplorer />
-              </div>
-            </SidebarGroup>
-          </ResizablePanel>
+                <div class="min-h-0 flex-1 overflow-hidden">
+                  <ProjectExplorer />
+                </div>
+              </SidebarGroup>
+            </ResizablePanel>
 
-          <ResizableHandle with-handle />
+            <ResizableHandle
+              class="bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 data-[orientation=vertical]:h-2"
+            />
 
-          <ResizablePanel :default-size="54" :min-size="20">
-            <ScrollArea class="h-full">
-              <NavMain :items="data.navMain" />
-            </ScrollArea>
-          </ResizablePanel>
-        </ResizablePanelGroup>
-      </div>
+            <ResizablePanel :default-size="54" :min-size="20">
+              <ScrollArea class="h-full">
+                <NavMain :items="data.navMain" />
+              </ScrollArea>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </div>
+      </template>
     </SidebarContent>
-    <SidebarRail />
   </Sidebar>
 </template>
+
+<style scoped>
+.app-sidebar-header-macos {
+  padding: 2.75rem 0.5rem 0.5rem;
+}
+
+.app-sidebar-header-macos :deep([data-slot='sidebar-menu-button'][data-size='lg']) {
+  padding-left: 4.5rem !important;
+}
+
+.app-sidebar-collapsed-macos-stack {
+  --app-sidebar-collapsed-top-clearance: 2.75rem;
+  --app-sidebar-collapsed-stack-gap: 0.5rem;
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--app-sidebar-collapsed-stack-gap);
+  padding: var(--app-sidebar-collapsed-top-clearance) 0.5rem 0.5rem;
+}
+
+.app-sidebar-collapsed-macos-stack :deep([data-slot='sidebar-menu-button'][data-size='lg']) {
+  padding-left: 0 !important;
+}
+
+.app-sidebar-collapsed-macos-stack :deep([data-slot='sidebar-group']) {
+  padding: 0;
+}
+
+.app-sidebar-collapsed-macos-stack :deep([data-slot='sidebar-group-label']) {
+  display: none;
+}
+</style>

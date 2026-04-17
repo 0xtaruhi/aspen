@@ -261,7 +261,7 @@ function projectDirectory() {
         </div>
       </CardHeader>
       <CardContent class="flex-1 min-h-0 p-0">
-        <ScrollArea class="h-full w-full px-4 pb-4">
+        <ScrollArea class="h-full w-full px-4 pb-4" :hide-scrollbar="true">
           <div v-if="!synthesisReport" class="py-4 text-sm text-muted-foreground">
             {{ t('runSynthesisToInspect') }}
           </div>

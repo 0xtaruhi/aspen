@@ -13,7 +13,6 @@ use tauri::Emitter;
 pub fn run() {
     let hardware_runtime = Arc::new(hardware::HardwareRuntime::default());
     let builder = tauri::Builder::default()
-        .plugin(tauri_plugin_liquid_glass::init())
         .setup({
             let hardware_runtime = Arc::clone(&hardware_runtime);
             move |app| {

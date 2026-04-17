@@ -442,7 +442,7 @@ function goToSynthesis() {
             <p class="mt-3 text-xs text-muted-foreground">{{ filteredPortSummary }}</p>
           </div>
           <div class="min-h-0 flex-1 overflow-hidden rounded-xl border border-border/70">
-            <ScrollArea class="h-full">
+            <ScrollArea class="h-full" :hide-scrollbar="true">
               <Table>
                 <TableHeader
                   class="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80"

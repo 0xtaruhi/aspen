@@ -261,7 +261,7 @@ function goToSynthesis() {
   <NewProjectDialog v-model:open="showNewProjectDialog" />
 
   <div
-    class="flex h-full min-h-0 flex-col gap-6 overflow-x-hidden overflow-y-auto p-8 animate-in fade-in duration-500"
+    class="app-scrollbar-hidden flex h-full min-h-0 flex-col gap-6 overflow-x-hidden overflow-y-auto p-8 animate-in fade-in duration-500"
   >
     <div class="flex items-center justify-between shrink-0 gap-4">
       <div>

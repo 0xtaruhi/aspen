@@ -28,18 +28,18 @@ export { default as SidebarTrigger } from './SidebarTrigger.vue'
 export { useSidebar } from './utils'
 
 export const sidebarMenuButtonVariants = cva(
-  'peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0',
+  "peer/menu-button grid w-full min-w-0 grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-x-2 overflow-hidden rounded-md text-left text-sm outline-hidden ring-sidebar-ring transition-[grid-template-columns,height] duration-200 ease-linear hover:bg-sidebar-accent/72 hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent/84 active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent/82 data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent/72 data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:grid-cols-[2rem_0fr_0rem] group-data-[collapsible=icon]:gap-x-0 [&>[data-sidebar-slot='icon']]:flex [&>[data-sidebar-slot='icon']]:h-8 [&>[data-sidebar-slot='icon']]:w-8 [&>[data-sidebar-slot='icon']]:items-center [&>[data-sidebar-slot='icon']]:justify-center [&>[data-sidebar-slot='icon']>svg]:size-4 [&>[data-sidebar-slot='icon']>svg]:shrink-0 [&>[data-sidebar-slot='label']]:min-w-0 [&>[data-sidebar-slot='label']]:overflow-hidden [&>[data-sidebar-slot='label']]:whitespace-nowrap [&>[data-sidebar-slot='label']]:transition-opacity [&>[data-sidebar-slot='trailing']]:flex [&>[data-sidebar-slot='trailing']]:items-center [&>[data-sidebar-slot='trailing']]:justify-end [&>[data-sidebar-slot='trailing']]:overflow-hidden [&>[data-sidebar-slot='trailing']]:transition-opacity group-data-[collapsible=icon]:[&>[data-sidebar-slot='label']]:opacity-0 group-data-[collapsible=icon]:[&>[data-sidebar-slot='trailing']]:opacity-0",
   {
     variants: {
       variant: {
-        default: 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+        default: 'hover:bg-sidebar-accent/72 hover:text-sidebar-accent-foreground',
         outline:
-          'bg-background shadow-[0_0_0_1px_hsl(var(--sidebar-border))] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_hsl(var(--sidebar-accent))]',
+          'bg-background/68 shadow-[0_0_0_1px_hsl(var(--sidebar-border))] hover:bg-sidebar-accent/72 hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_hsl(var(--sidebar-accent))]',
       },
       size: {
         default: 'h-8 text-sm',
-        sm: 'h-7 text-xs',
-        lg: 'h-12 text-sm group-data-[collapsible=icon]:p-0!',
+        sm: "h-7 text-xs [&>[data-sidebar-slot='icon']]:h-7 [&>[data-sidebar-slot='icon']]:w-7",
+        lg: "h-12 text-sm [&>[data-sidebar-slot='icon']]:h-12 [&>[data-sidebar-slot='icon']]:w-8",
       },
     },
     defaultVariants: {
