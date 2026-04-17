@@ -27,10 +27,7 @@ function isPressed(row: number, column: number) {
 
 <template>
   <div class="flex h-full w-full items-center justify-center px-1.5 py-1.5">
-    <div
-      class="device-panel-shell rounded-md p-1.5"
-      :style="{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }"
-    >
+    <div class="device-panel-shell rounded-md p-1.5">
       <div
         class="grid gap-1"
         :style="{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }"

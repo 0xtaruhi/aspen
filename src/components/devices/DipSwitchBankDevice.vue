@@ -27,7 +27,7 @@ function toggleBit(index: number) {
         v-for="index in width"
         :key="index"
         type="button"
-        class="device-panel-shell flex h-18 flex-col items-center justify-between rounded-md px-1 py-2"
+        class="device-panel-shell flex h-[72px] flex-col items-center justify-between rounded-md px-1 py-2"
         @click.stop="toggleBit(index - 1)"
       >
         <span class="text-[10px] font-medium text-[var(--device-panel-label)]">{{
