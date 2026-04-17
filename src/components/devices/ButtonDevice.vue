@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from '@/lib/i18n'
+import { cn } from '@/lib/utils'
 
 defineProps<{
   isOn?: boolean
@@ -23,8 +24,12 @@ function release() {
   <div class="flex items-center justify-center">
     <button
       type="button"
-      class="device-panel-shell device-button-shell h-14 w-14 rounded-full border-2 transition-colors"
-      :class="isOn ? 'device-button-shell-active' : ''"
+      :class="
+        cn(
+          'device-panel-shell device-button-shell h-14 w-14 rounded-full border-2 transition-colors',
+          isOn && 'device-button-shell-active',
+        )
+      "
       @pointerdown.prevent="press"
       @pointerup="release"
       @pointerleave="release"

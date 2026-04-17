@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { cn } from '@/lib/utils'
+
 const props = defineProps<{
   width: number
   bits: boolean[]
@@ -34,17 +36,31 @@ function toggleBit(index: number) {
           index - 1
         }}</span>
         <span
-          class="device-panel-slot relative flex h-9 w-5 items-center rounded-full px-0.5"
-          :class="bitValue(index - 1) ? 'justify-start' : 'justify-end'"
+          :class="
+            cn(
+              'device-panel-slot relative flex h-9 w-5 items-center rounded-full px-0.5',
+              bitValue(index - 1) ? 'justify-start' : 'justify-end',
+            )
+          "
         >
           <span
-            class="device-metal-cap h-4 w-4 rounded-full transition-transform"
-            :class="bitValue(index - 1) ? 'bg-emerald-300' : 'bg-zinc-300'"
-          />
+            :class="
+              cn(
+                'flex h-4 w-4 items-center justify-center rounded-full transition-transform',
+                bitValue(index - 1) ? 'bg-emerald-300' : 'bg-zinc-300',
+              )
+            "
+          >
+            <span class="device-metal-cap h-3 w-3 rounded-full" />
+          </span>
         </span>
         <span
-          class="text-[10px] font-semibold"
-          :class="bitValue(index - 1) ? 'text-emerald-300' : 'device-panel-label-dim'"
+          :class="
+            cn(
+              'text-[10px] font-semibold',
+              bitValue(index - 1) ? 'text-emerald-300' : 'device-panel-label-dim',
+            )
+          "
         >
           {{ bitValue(index - 1) ? 'ON' : 'OFF' }}
         </span>
