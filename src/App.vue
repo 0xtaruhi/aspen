@@ -60,7 +60,7 @@ const {
               aria-hidden="true"
               class="app-shell-titlebar-safe-area hidden w-0 shrink-0 group-has-[[data-collapsible=icon]]/sidebar-wrapper:block group-has-[[data-collapsible=icon]]/sidebar-wrapper:w-[0.75rem]"
             />
-            <SidebarTrigger class="-ml-1" />
+            <SidebarTrigger class="-ml-1" data-tauri-drag-region="false" />
 
             <Breadcrumb class="app-shell-breadcrumb">
               <BreadcrumbList class="app-shell-breadcrumb-list">
@@ -81,7 +81,7 @@ const {
               </BreadcrumbList>
             </Breadcrumb>
 
-            <div class="ml-auto flex items-center gap-2">
+            <div class="ml-auto flex items-center gap-2" data-tauri-drag-region="false">
               <button
                 class="relative inline-flex h-9 w-9 items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent/72 hover:text-accent-foreground"
                 :title="t('settings')"
@@ -198,6 +198,7 @@ const {
 
 .app-shell-stage {
   padding: 0.2rem 0.5rem 0.5rem 0.35rem;
+  /* Stop the workspace-card drop shadow from bleeding into the sidebar area. */
   clip-path: inset(-80px -80px -80px 0);
 }
 

@@ -61,7 +61,7 @@ async function handleCloseProject() {
 
 <template>
   <NewProjectDialog v-model:open="showNewProjectDialog" />
-  <SidebarMenu>
+  <SidebarMenu data-tauri-drag-region="false">
     <SidebarMenuItem>
       <DropdownMenu>
         <DropdownMenuTrigger as-child>

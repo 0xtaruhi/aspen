@@ -241,7 +241,7 @@ fn apply_macos_window_material<R: tauri::Runtime>(
 ) -> Result<(), String> {
     window
         .set_effects(macos_window_effects())
-        .map_err(|err| err.to_string())?;
+        .map_err(|err| format!("failed to set window effects: {err}"))?;
 
     window
         .with_webview(|webview| unsafe {
@@ -250,7 +250,7 @@ fn apply_macos_window_material<R: tauri::Runtime>(
             let background = NSColor::clearColor();
             ns_window.setBackgroundColor(Some(&background));
         })
-        .map_err(|err| err.to_string())
+        .map_err(|err| format!("failed to apply NSWindow styling: {err}"))
 }
 
 #[cfg(not(target_os = "macos"))]
