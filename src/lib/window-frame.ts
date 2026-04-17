@@ -9,6 +9,14 @@ const platform =
 export const isMacDesktop = isTauri() && platform.includes('mac')
 export const showCustomWindowControls = isTauri() && !isMacDesktop
 
+export function applyPlatformThemeClass() {
+  if (typeof document === 'undefined') {
+    return
+  }
+
+  document.documentElement.dataset.platformTheme = isMacDesktop ? 'macos' : 'neutral'
+}
+
 export function runWindowAction(action: 'minimize' | 'toggleMaximize' | 'close') {
   if (!isTauri()) return
   const window = getCurrentWindow()
