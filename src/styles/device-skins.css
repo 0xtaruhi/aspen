@@ -1,0 +1,48 @@
+@layer components {
+  .device-panel-shell {
+    border: 1px solid var(--device-panel-border);
+    background:
+      linear-gradient(180deg, color-mix(in oklab, white 5%, transparent), transparent 16px),
+      var(--device-panel-surface);
+    box-shadow: inset 0 1px 0 color-mix(in oklab, white 8%, transparent);
+  }
+
+  .device-panel-slot {
+    border: 1px solid color-mix(in oklab, var(--device-panel-border) 92%, transparent);
+    background: color-mix(in oklab, var(--device-panel-slot) 90%, black 10%);
+  }
+
+  .device-panel-slot-button {
+    color: var(--device-panel-label);
+  }
+
+  .device-panel-slot-button:hover {
+    background: color-mix(in oklab, var(--device-panel-slot) 74%, white 8%);
+  }
+
+  .device-panel-label-dim {
+    color: color-mix(in oklab, var(--device-panel-label) 70%, transparent);
+  }
+
+  .device-console-screen {
+    border: 1px solid var(--device-console-border);
+    background:
+      linear-gradient(180deg, color-mix(in oklab, white 2%, transparent), transparent 12px),
+      var(--device-console-surface);
+    box-shadow: inset 0 1px 0 color-mix(in oklab, white 5%, transparent);
+  }
+
+  .device-metal-cap {
+    border: 1px solid color-mix(in oklab, white 24%, var(--device-panel-border));
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklab, white 28%, var(--muted)),
+      color-mix(in oklab, var(--muted) 84%, black 16%)
+    );
+  }
+
+  .device-metal-dot {
+    background: color-mix(in oklab, var(--device-panel-border) 84%, black 16%);
+    box-shadow: inset 0 1px 1px color-mix(in oklab, white 10%, transparent);
+  }
+}

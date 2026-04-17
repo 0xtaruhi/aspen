@@ -23,8 +23,8 @@ function release() {
   <div class="flex items-center justify-center">
     <button
       type="button"
-      class="h-14 w-14 rounded-full border-2 shadow-inner transition-colors"
-      :class="isOn ? 'border-sky-400 bg-sky-500/30' : 'border-zinc-600 bg-zinc-800'"
+      class="device-panel-shell device-button-shell h-14 w-14 rounded-full border-2 transition-colors"
+      :class="isOn ? 'device-button-shell-active' : ''"
       @pointerdown.prevent="press"
       @pointerup="release"
       @pointerleave="release"
@@ -34,3 +34,22 @@ function release() {
     </button>
   </div>
 </template>
+
+<style scoped>
+.device-button-shell {
+  box-shadow:
+    inset 0 2px 10px color-mix(in oklab, white 8%, transparent),
+    inset 0 -10px 18px color-mix(in oklab, black 20%, transparent);
+}
+
+.device-button-shell-active {
+  border-color: color-mix(in oklab, var(--primary) 58%, white 42%);
+  background:
+    radial-gradient(
+      circle at 35% 30%,
+      color-mix(in oklab, white 12%, transparent),
+      transparent 18px
+    ),
+    color-mix(in oklab, var(--primary) 22%, var(--device-panel-surface));
+}
+</style>

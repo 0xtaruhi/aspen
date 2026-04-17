@@ -28,7 +28,7 @@ function isPressed(row: number, column: number) {
 <template>
   <div class="flex h-full w-full items-center justify-center px-1.5 py-1.5">
     <div
-      class="rounded-md border border-zinc-800 bg-zinc-950/90 p-1.5"
+      class="device-panel-shell rounded-md p-1.5"
       :style="{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }"
     >
       <div
@@ -42,8 +42,8 @@ function isPressed(row: number, column: number) {
           class="grid h-8 w-8 place-items-center rounded-sm border text-[10px] font-semibold transition-colors"
           :class="
             isPressed(Math.floor((index - 1) / columns), (index - 1) % columns)
-              ? 'border-emerald-400 bg-emerald-500/15 text-emerald-100'
-              : 'border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800'
+              ? 'border-emerald-400 bg-emerald-500/18 text-emerald-100'
+              : 'device-panel-slot device-panel-slot-button'
           "
           @click.stop="
             emit(

@@ -21,9 +21,7 @@ const emit = defineEmits<{
       ↺
     </button>
 
-    <div
-      class="relative flex h-24 w-24 items-center justify-center rounded-full border border-zinc-700 bg-[radial-gradient(circle_at_30%_28%,rgba(255,255,255,0.22),rgba(82,82,91,0.08),rgba(24,24,27,0.98)_72%)] shadow-[inset_0_-10px_24px_rgba(0,0,0,0.4),0_10px_28px_rgba(0,0,0,0.22)]"
-    >
+    <div class="encoder-knob relative flex h-24 w-24 items-center justify-center rounded-full">
       <div
         class="absolute h-10 w-1.5 -translate-y-6 rounded-full bg-amber-300 transition-transform"
         :style="{ transform: `rotate(${(props.phase % 4) * 90}deg) translateY(-24px)` }"
@@ -32,9 +30,7 @@ const emit = defineEmits<{
         v-if="props.hasButton"
         type="button"
         class="h-9 w-9 rounded-full border transition-colors"
-        :class="
-          props.buttonPressed ? 'border-sky-400 bg-sky-500/30' : 'border-zinc-600 bg-zinc-900'
-        "
+        :class="props.buttonPressed ? 'border-sky-400 bg-sky-500/30' : 'device-panel-slot'"
         @pointerdown.stop.prevent="emit('toggle-button', true)"
         @pointerup.stop="emit('toggle-button', false)"
         @pointerleave="emit('toggle-button', false)"
@@ -51,3 +47,18 @@ const emit = defineEmits<{
     </button>
   </div>
 </template>
+
+<style scoped>
+.encoder-knob {
+  border: 1px solid var(--device-panel-border);
+  background: radial-gradient(
+    circle at 30% 28%,
+    color-mix(in oklab, white 22%, transparent),
+    color-mix(in oklab, var(--device-panel-border) 14%, transparent),
+    color-mix(in oklab, var(--device-panel-slot) 88%, black 12%) 72%
+  );
+  box-shadow:
+    inset 0 -10px 24px color-mix(in oklab, black 36%, transparent),
+    0 10px 28px color-mix(in oklab, black 18%, transparent);
+}
+</style>

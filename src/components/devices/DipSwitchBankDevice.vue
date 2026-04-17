@@ -27,22 +27,24 @@ function toggleBit(index: number) {
         v-for="index in width"
         :key="index"
         type="button"
-        class="flex h-18 flex-col items-center justify-between rounded-md border border-zinc-700 bg-zinc-900 px-1 py-2 shadow-inner"
+        class="device-panel-shell flex h-18 flex-col items-center justify-between rounded-md px-1 py-2"
         @click.stop="toggleBit(index - 1)"
       >
-        <span class="text-[10px] font-medium text-zinc-400">{{ index - 1 }}</span>
+        <span class="text-[10px] font-medium text-[var(--device-panel-label)]">{{
+          index - 1
+        }}</span>
         <span
-          class="relative flex h-9 w-5 items-center rounded-full border border-zinc-700 bg-zinc-950 px-0.5"
+          class="device-panel-slot relative flex h-9 w-5 items-center rounded-full px-0.5"
           :class="bitValue(index - 1) ? 'justify-start' : 'justify-end'"
         >
           <span
-            class="h-4 w-4 rounded-full border border-zinc-500 bg-zinc-300 transition-transform"
+            class="device-metal-cap h-4 w-4 rounded-full transition-transform"
             :class="bitValue(index - 1) ? 'bg-emerald-300' : 'bg-zinc-300'"
           />
         </span>
         <span
           class="text-[10px] font-semibold"
-          :class="bitValue(index - 1) ? 'text-emerald-300' : 'text-zinc-500'"
+          :class="bitValue(index - 1) ? 'text-emerald-300' : 'device-panel-label-dim'"
         >
           {{ bitValue(index - 1) ? 'ON' : 'OFF' }}
         </span>

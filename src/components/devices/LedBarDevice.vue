@@ -18,14 +18,16 @@ function bitValue(index: number) {
     >
       <div v-for="index in width" :key="index" class="flex flex-col items-center gap-2">
         <div
-          class="h-8 w-full rounded-sm border border-zinc-700 bg-zinc-950 transition-all duration-150"
+          class="device-panel-slot h-8 w-full rounded-sm transition-all duration-150"
           :style="
             bitValue(index - 1)
               ? { backgroundColor: color ?? '#4ade80', boxShadow: `0 0 18px ${color ?? '#4ade80'}` }
               : undefined
           "
         />
-        <span class="text-[10px] text-zinc-500">{{ index - 1 }}</span>
+        <span class="device-panel-label-dim text-[10px]">
+          {{ index - 1 }}
+        </span>
       </div>
     </div>
   </div>

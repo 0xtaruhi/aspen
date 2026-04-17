@@ -136,8 +136,12 @@ onBeforeUnmount(() => {
       <div
         v-for="(lit, index) in bars"
         :key="index"
-        class="h-9 rounded-sm border border-zinc-800 transition-colors"
-        :class="lit ? 'bg-emerald-500/80 shadow-[0_0_12px_rgba(16,185,129,0.35)]' : 'bg-zinc-900'"
+        class="device-panel-slot h-9 rounded-sm transition-colors"
+        :class="
+          lit
+            ? 'border-emerald-400/50 bg-emerald-500/80 shadow-[0_0_12px_rgba(16,185,129,0.35)]'
+            : ''
+        "
       />
     </div>
   </div>

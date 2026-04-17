@@ -22,20 +22,20 @@ function segmentOn(mask: number, bitIndex: number) {
 
 <template>
   <div
-    class="flex h-full w-full items-center justify-center overflow-hidden rounded-md bg-zinc-950/90 px-1 py-0.5"
+    class="device-panel-shell flex h-full w-full items-center justify-center overflow-hidden rounded-md px-1 py-0.5"
   >
     <div class="flex items-center justify-center gap-1.5">
       <div
         v-for="(mask, digitIndex) in digits"
         :key="digitIndex"
-        class="relative h-16 w-9 rounded-md border border-zinc-800 bg-black/70"
+        class="device-panel-slot relative h-16 w-9 rounded-md"
       >
         <div
           class="absolute left-1.5 top-1 h-1 w-6 rounded-full"
           :class="
             segmentOn(mask, 0)
               ? 'bg-rose-400 shadow-[0_0_10px_rgba(251,113,133,0.65)]'
-              : 'bg-zinc-800'
+              : 'segment-display-off'
           "
         />
         <div
@@ -43,7 +43,7 @@ function segmentOn(mask: number, bitIndex: number) {
           :class="
             segmentOn(mask, 1)
               ? 'bg-rose-400 shadow-[0_0_10px_rgba(251,113,133,0.65)]'
-              : 'bg-zinc-800'
+              : 'segment-display-off'
           "
         />
         <div
@@ -51,7 +51,7 @@ function segmentOn(mask: number, bitIndex: number) {
           :class="
             segmentOn(mask, 2)
               ? 'bg-rose-400 shadow-[0_0_10px_rgba(251,113,133,0.65)]'
-              : 'bg-zinc-800'
+              : 'segment-display-off'
           "
         />
         <div
@@ -59,7 +59,7 @@ function segmentOn(mask: number, bitIndex: number) {
           :class="
             segmentOn(mask, 3)
               ? 'bg-rose-400 shadow-[0_0_10px_rgba(251,113,133,0.65)]'
-              : 'bg-zinc-800'
+              : 'segment-display-off'
           "
         />
         <div
@@ -67,7 +67,7 @@ function segmentOn(mask: number, bitIndex: number) {
           :class="
             segmentOn(mask, 4)
               ? 'bg-rose-400 shadow-[0_0_10px_rgba(251,113,133,0.65)]'
-              : 'bg-zinc-800'
+              : 'segment-display-off'
           "
         />
         <div
@@ -75,7 +75,7 @@ function segmentOn(mask: number, bitIndex: number) {
           :class="
             segmentOn(mask, 5)
               ? 'bg-rose-400 shadow-[0_0_10px_rgba(251,113,133,0.65)]'
-              : 'bg-zinc-800'
+              : 'segment-display-off'
           "
         />
         <div
@@ -83,7 +83,7 @@ function segmentOn(mask: number, bitIndex: number) {
           :class="
             segmentOn(mask, 6)
               ? 'bg-rose-400 shadow-[0_0_10px_rgba(251,113,133,0.65)]'
-              : 'bg-zinc-800'
+              : 'segment-display-off'
           "
         />
         <div
@@ -91,10 +91,20 @@ function segmentOn(mask: number, bitIndex: number) {
           :class="
             segmentOn(mask, 7)
               ? 'bg-rose-300 shadow-[0_0_8px_rgba(253,164,175,0.75)]'
-              : 'bg-zinc-700'
+              : 'segment-display-dot-off'
           "
         />
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+.segment-display-off {
+  background: color-mix(in oklab, var(--device-panel-border) 48%, transparent);
+}
+
+.segment-display-dot-off {
+  background: color-mix(in oklab, var(--device-panel-border) 62%, transparent);
+}
+</style>

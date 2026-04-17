@@ -65,7 +65,9 @@ function pixelStyle(intensity: number) {
   const color = parseRgbChannels(props.color)
   return {
     backgroundColor:
-      intensity > 0 ? `rgba(${color.on}, ${alpha.toFixed(3)})` : 'rgba(82, 82, 91, 0.42)',
+      intensity > 0
+        ? `rgba(${color.on}, ${alpha.toFixed(3)})`
+        : 'color-mix(in oklab, var(--device-panel-border) 56%, transparent)',
     boxShadow:
       intensity > 0 ? `0 0 10px rgba(${color.glow}, ${(alpha * 0.85).toFixed(3)})` : 'none',
   }
@@ -77,10 +79,7 @@ function pixelStyle(intensity: number) {
     class="flex h-full w-full items-center justify-center"
     :style="{ padding: `${MATRIX_OUTER_PADDING_PX}px` }"
   >
-    <div
-      class="inline-grid rounded-xl bg-[linear-gradient(180deg,rgba(16,16,20,0.98),rgba(8,8,12,0.98))] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
-      :style="gridStyle"
-    >
+    <div class="device-panel-shell led-matrix-board inline-grid rounded-xl" :style="gridStyle">
       <div
         v-for="(pixel, index) in pixelValues"
         :key="index"
@@ -94,3 +93,11 @@ function pixelStyle(intensity: number) {
     </div>
   </div>
 </template>
+
+<style scoped>
+.led-matrix-board {
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklab, white 10%, transparent),
+    0 10px 24px color-mix(in oklab, black 18%, transparent);
+}
+</style>
