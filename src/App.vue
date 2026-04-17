@@ -149,6 +149,8 @@ const {
 }
 
 .app-shell-workspace {
+  position: relative;
+  isolation: isolate;
   border-radius: calc(var(--radius-xl) + 8px);
   border: 1px solid color-mix(in oklab, var(--border) 86%, transparent);
   background:
@@ -161,7 +163,19 @@ const {
     var(--window-workspace-surface);
   box-shadow:
     0 0 0 0.5px color-mix(in oklab, black 8%, transparent),
-    0 10px 40px -12px color-mix(in oklab, black 14%, transparent);
+    10px 16px 28px -22px color-mix(in oklab, black 16%, transparent),
+    4px 8px 16px -14px color-mix(in oklab, black 10%, transparent);
+}
+
+.app-shell-workspace::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow:
+    inset 1px 0 0 color-mix(in oklab, white 12%, transparent),
+    inset 0 1px 0 color-mix(in oklab, white 10%, transparent);
 }
 
 .app-shell-root-native-frame .app-shell-workspace {
