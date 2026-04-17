@@ -3,7 +3,6 @@ import { Settings2 } from 'lucide-vue-next'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 
 import AppSidebar from '@/components/AppSidebar.vue'
-import WindowControls from '@/components/WindowControls.vue'
 import ProjectUnsavedChangesDialog from '@/components/project/ProjectUnsavedChangesDialog.vue'
 import NewProjectDialog from '@/components/project/NewProjectDialog.vue'
 import { Button } from '@/components/ui/button'
@@ -17,7 +16,7 @@ import {
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { useAppShell } from '@/lib/app-shell'
 import { useI18n } from '@/lib/i18n'
-import { isMacDesktop, runWindowAction, showCustomWindowControls } from '@/lib/window-frame'
+import { isMacDesktop } from '@/lib/window-frame'
 
 const route = useRoute()
 const router = useRouter()
@@ -50,11 +49,7 @@ const {
         <header
           class="app-shell-header app-navigation-glass flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear z-10 group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12"
         >
-          <div
-            :class="['flex w-full items-center gap-2 px-4', showCustomWindowControls ? 'pr-1' : '']"
-            data-tauri-drag-region
-            @dblclick="showCustomWindowControls && runWindowAction('toggleMaximize')"
-          >
+          <div class="flex w-full items-center gap-2 px-4" data-tauri-drag-region>
             <div
               v-if="isMacDesktop"
               aria-hidden="true"
@@ -94,7 +89,6 @@ const {
                 />
                 <Settings2 class="h-4 w-4" />
               </button>
-              <WindowControls v-if="showCustomWindowControls" />
             </div>
           </div>
         </header>
