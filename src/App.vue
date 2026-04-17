@@ -16,6 +16,7 @@ import {
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { useAppShell } from '@/lib/app-shell'
 import { useI18n } from '@/lib/i18n'
+import { cn } from '@/lib/utils'
 import { isMacDesktop } from '@/lib/window-frame'
 
 const route = useRoute()
@@ -36,10 +37,12 @@ const {
 
 <template>
   <div
-    :class="[
-      'app-shell-root h-full min-h-0 text-foreground transition-colors',
-      isMacDesktop ? 'app-shell-root-native-frame' : '',
-    ]"
+    :class="
+      cn(
+        'app-shell-root h-full min-h-0 text-foreground transition-colors',
+        isMacDesktop && 'app-shell-root-native-frame',
+      )
+    "
   >
     <NewProjectDialog v-model:open="showNewProjectDialog" />
     <ProjectUnsavedChangesDialog />
@@ -94,10 +97,12 @@ const {
         </header>
 
         <div
-          :class="[
-            'app-shell-stage flex min-h-0 flex-1 flex-col',
-            isMacDesktop ? 'app-shell-stage-native-frame' : '',
-          ]"
+          :class="
+            cn(
+              'app-shell-stage flex min-h-0 flex-1 flex-col',
+              isMacDesktop && 'app-shell-stage-native-frame',
+            )
+          "
         >
           <div class="app-shell-workspace flex min-h-0 flex-1 flex-col overflow-hidden">
             <section
@@ -185,7 +190,8 @@ const {
 
 .app-shell-stage {
   padding: 0.2rem 0.5rem 0.5rem 0.35rem;
-  /* Stop the workspace-card drop shadow from bleeding into the sidebar area. */
+  /* Intentionally constrain the left edge so the workspace shadow stays out of
+   * the sidebar rail instead of bleeding across the chrome boundary. */
   clip-path: inset(-80px -80px -80px 0);
 }
 
@@ -205,6 +211,10 @@ const {
 @media (max-width: 768px) {
   .app-shell-stage {
     padding: 0.15rem 0.35rem 0.35rem;
+  }
+
+  .app-shell-stage-native-frame {
+    padding-left: 0;
   }
 
   .app-shell-workspace {

@@ -154,7 +154,6 @@ function handleImportFiles() {
     <SidebarHeader
       v-if="!showMacCollapsedRail"
       :class="[reserveMacTrafficLights ? 'app-sidebar-header-macos' : '']"
-      data-tauri-drag-region
     >
       <ProjectMenu />
     </SidebarHeader>
