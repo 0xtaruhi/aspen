@@ -8,11 +8,11 @@ use objc2_app_kit::{
 use objc2_foundation::{NSArray, NSString, NSUserDefaults};
 #[cfg(target_os = "windows")]
 use tauri::window::Color;
-use tauri::{Manager, Theme};
 #[cfg(target_os = "macos")]
-use tauri_plugin_liquid_glass::{GlassMaterialVariant, LiquidGlassConfig, LiquidGlassExt};
-#[cfg(target_os = "windows")]
-use window_vibrancy::{apply_acrylic, apply_mica};
+use tauri::window::{Effect, EffectState, EffectsBuilder};
+use tauri::Manager;
+#[cfg(not(target_os = "macos"))]
+use tauri::Theme;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum ThemeMode {
@@ -45,6 +45,7 @@ fn theme_name(is_dark: bool) -> String {
     if is_dark { "dark" } else { "light" }.to_string()
 }
 
+#[cfg(not(target_os = "macos"))]
 fn resolved_dark_for_window<R: tauri::Runtime>(
     window: &tauri::WebviewWindow<R>,
 ) -> Result<bool, String> {
@@ -136,13 +137,11 @@ pub fn configure_window_material<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 }
 
 #[cfg(target_os = "macos")]
-fn liquid_glass_config(is_dark: bool) -> LiquidGlassConfig {
-    LiquidGlassConfig {
-        corner_radius: 0.0,
-        tint_color: is_dark.then(|| "#02030588".to_string()),
-        variant: GlassMaterialVariant::Sidebar,
-        ..Default::default()
-    }
+fn macos_window_effects() -> tauri::utils::config::WindowEffectsConfig {
+    EffectsBuilder::new()
+        .effect(Effect::Sidebar)
+        .state(EffectState::Active)
+        .build()
 }
 
 #[cfg(target_os = "macos")]
@@ -226,16 +225,32 @@ fn apply_macos_window_appearance<R: tauri::Runtime>(
 
 #[cfg(target_os = "macos")]
 fn apply_window_theme<R: tauri::Runtime>(
-    app: &tauri::AppHandle<R>,
+    _app: &tauri::AppHandle<R>,
     window: &tauri::WebviewWindow<R>,
     mode: ThemeMode,
     _resolved_dark: bool,
 ) -> Result<bool, String> {
     let actual_dark = apply_macos_window_appearance(window, mode)?;
-    app.liquid_glass()
-        .set_effect(window, liquid_glass_config(actual_dark))
-        .map_err(|err| err.to_string())?;
+    apply_macos_window_material(window)?;
     Ok(actual_dark)
+}
+
+#[cfg(target_os = "macos")]
+fn apply_macos_window_material<R: tauri::Runtime>(
+    window: &tauri::WebviewWindow<R>,
+) -> Result<(), String> {
+    window
+        .set_effects(macos_window_effects())
+        .map_err(|err| err.to_string())?;
+
+    window
+        .with_webview(|webview| unsafe {
+            let ns_window: &NSWindow = &*webview.ns_window().cast();
+            ns_window.setOpaque(false);
+            let background = NSColor::clearColor();
+            ns_window.setBackgroundColor(Some(&background));
+        })
+        .map_err(|err| err.to_string())
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -258,22 +273,10 @@ fn apply_window_theme<R: tauri::Runtime>(
 
 #[cfg(target_os = "macos")]
 fn apply_window_material<R: tauri::Runtime>(
-    app: &tauri::AppHandle<R>,
+    _app: &tauri::AppHandle<R>,
     window: &tauri::WebviewWindow<R>,
 ) -> Result<(), String> {
-    let is_dark = resolved_dark_for_window(window).or_else(|_| system_dark_mode())?;
-
-    app.liquid_glass()
-        .set_effect(window, liquid_glass_config(is_dark))
-        .map_err(|err| err.to_string())?;
-
-    window
-        .with_webview(|webview| unsafe {
-            let ns_window: &NSWindow = &*webview.ns_window().cast();
-            let background = NSColor::windowBackgroundColor();
-            ns_window.setBackgroundColor(Some(&background));
-        })
-        .map_err(|err| err.to_string())
+    apply_macos_window_material(window)
 }
 
 #[cfg(target_os = "windows")]
@@ -283,14 +286,7 @@ fn apply_window_material<R: tauri::Runtime>(
 ) -> Result<(), String> {
     window
         .set_background_color(Some(Color(0, 0, 0, 0)))
-        .map_err(|err| err.to_string())?;
-
-    if windows_supports_mica() {
-        apply_mica(window, None)
-    } else {
-        apply_acrylic(window, None)
-    }
-    .map_err(|err| err.to_string())
+        .map_err(|err| err.to_string())
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -299,19 +295,4 @@ fn apply_window_material<R: tauri::Runtime>(
     _window: &tauri::WebviewWindow<R>,
 ) -> Result<(), String> {
     Ok(())
-}
-
-#[cfg(target_os = "windows")]
-fn windows_supports_mica() -> bool {
-    use std::mem::size_of;
-
-    use windows_sys::{
-        Wdk::System::SystemServices::RtlGetVersion,
-        Win32::System::SystemInformation::OSVERSIONINFOW,
-    };
-
-    let mut version = OSVERSIONINFOW::default();
-    version.dwOSVersionInfoSize = size_of::<OSVERSIONINFOW>() as u32;
-    let status = unsafe { RtlGetVersion(&mut version) };
-    status >= 0 && version.dwMajorVersion >= 10 && version.dwBuildNumber >= 22_000
 }
