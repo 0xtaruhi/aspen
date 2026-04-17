@@ -62,9 +62,7 @@ const panelStyle = computed(() => ({ width: props.width + 'px' }))
   top: 0;
   right: 0;
   height: 100vh;
-  background:
-    linear-gradient(to bottom, color-mix(in oklab, white 8%, transparent), transparent 28px),
-    var(--window-drawer-surface);
+  background: var(--window-drawer-surface);
   color: var(--popover-foreground);
   z-index: 51;
   display: flex;
@@ -72,9 +70,7 @@ const panelStyle = computed(() => ({ width: props.width + 'px' }))
   border-left: 1px solid var(--border);
   -webkit-backdrop-filter: saturate(135%) blur(10px);
   backdrop-filter: saturate(135%) blur(10px);
-  box-shadow:
-    -14px 0 32px color-mix(in oklab, black 14%, transparent),
-    inset 1px 0 0 color-mix(in oklab, white 8%, transparent);
+  box-shadow: -14px 0 32px color-mix(in oklab, black 14%, transparent);
 }
 
 .rd-header {

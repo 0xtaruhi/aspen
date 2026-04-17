@@ -139,11 +139,6 @@ const {
   overflow: clip;
   background:
     radial-gradient(circle at 18% 0%, var(--window-workspace-ambient), transparent 36rem),
-    linear-gradient(
-      180deg,
-      color-mix(in oklab, var(--window-toolbar-surface) 46%, transparent),
-      transparent 9rem
-    ),
     color-mix(in oklab, var(--background) 28%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border) 28%, transparent);
 }
@@ -155,27 +150,11 @@ const {
   border: 1px solid color-mix(in oklab, var(--border) 86%, transparent);
   background:
     radial-gradient(circle at 18% 0%, var(--window-workspace-ambient), transparent 34rem),
-    linear-gradient(
-      180deg,
-      color-mix(in oklab, var(--window-toolbar-surface) 58%, transparent),
-      transparent 8.5rem
-    ),
     var(--window-workspace-surface);
   box-shadow:
     0 0 0 0.5px color-mix(in oklab, black 8%, transparent),
     10px 16px 28px -22px color-mix(in oklab, black 16%, transparent),
     4px 8px 16px -14px color-mix(in oklab, black 10%, transparent);
-}
-
-.app-shell-workspace::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  box-shadow:
-    inset 1px 0 0 color-mix(in oklab, white 12%, transparent),
-    inset 0 1px 0 color-mix(in oklab, white 10%, transparent);
 }
 
 .app-shell-root-native-frame .app-shell-workspace {
