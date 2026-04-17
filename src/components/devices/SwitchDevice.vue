@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { cn } from '@/lib/utils'
-
 const props = defineProps<{
   isOn?: boolean
 }>()
@@ -27,12 +25,8 @@ function toggle() {
       <div class="device-panel-slot relative h-12 w-8 rounded">
         <!-- Toggle Lever -->
         <div
-          :class="
-            cn(
-              'switch-lever absolute left-1 h-6 w-6 rounded transition-all duration-200',
-              isOn ? 'top-1' : 'bottom-1',
-            )
-          "
+          class="switch-lever absolute left-1 h-6 w-6 rounded transition-all duration-200"
+          :class="isOn ? 'top-1' : 'bottom-1'"
         >
           <div class="device-metal-cap h-full w-full rounded"></div>
         </div>
