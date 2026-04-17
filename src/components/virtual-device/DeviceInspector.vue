@@ -251,7 +251,7 @@ async function removeDevice() {
 
 <template>
   <div class="flex h-full min-h-0 flex-col bg-transparent">
-    <ScrollArea class="h-full" :hide-scrollbar="true">
+    <ScrollArea class="h-full">
       <div v-if="device" class="flex min-h-full flex-col p-5">
         <div class="flex items-start gap-3">
           <div class="grid h-11 w-11 place-items-center rounded-2xl border border-border bg-muted">
