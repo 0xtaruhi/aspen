@@ -3,6 +3,7 @@ import { Settings2 } from 'lucide-vue-next'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 
 import AppSidebar from '@/components/AppSidebar.vue'
+import WindowControls from '@/components/WindowControls.vue'
 import ProjectUnsavedChangesDialog from '@/components/project/ProjectUnsavedChangesDialog.vue'
 import NewProjectDialog from '@/components/project/NewProjectDialog.vue'
 import { Button } from '@/components/ui/button'
@@ -13,10 +14,10 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
-import { Separator } from '@/components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { useAppShell } from '@/lib/app-shell'
 import { useI18n } from '@/lib/i18n'
+import { isMacDesktop, runWindowAction, showCustomWindowControls } from '@/lib/window-frame'
 
 const route = useRoute()
 const router = useRouter()
@@ -35,37 +36,54 @@ const {
 </script>
 
 <template>
-  <div class="app-shell-root min-h-screen text-foreground transition-colors">
+  <div
+    :class="[
+      'app-shell-root h-full min-h-0 text-foreground transition-colors',
+      isMacDesktop ? 'app-shell-root-native-frame' : '',
+    ]"
+  >
     <NewProjectDialog v-model:open="showNewProjectDialog" />
     <ProjectUnsavedChangesDialog />
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset class="relative h-screen overflow-hidden flex flex-col">
+      <SidebarInset class="relative flex h-full min-h-0 flex-col">
         <header
           class="app-shell-header app-navigation-glass flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear z-10 group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12"
         >
-          <div class="flex items-center gap-2 px-4 w-full">
+          <div
+            :class="['flex w-full items-center gap-2 px-4', showCustomWindowControls ? 'pr-1' : '']"
+            data-tauri-drag-region
+            @dblclick="showCustomWindowControls && runWindowAction('toggleMaximize')"
+          >
+            <div
+              v-if="isMacDesktop"
+              aria-hidden="true"
+              class="app-shell-titlebar-safe-area hidden w-0 shrink-0 group-has-[[data-collapsible=icon]]/sidebar-wrapper:block group-has-[[data-collapsible=icon]]/sidebar-wrapper:w-[0.75rem]"
+            />
             <SidebarTrigger class="-ml-1" />
-            <Separator orientation="vertical" class="mr-2 h-4" />
 
-            <Breadcrumb>
-              <BreadcrumbList>
+            <Breadcrumb class="app-shell-breadcrumb">
+              <BreadcrumbList class="app-shell-breadcrumb-list">
                 <BreadcrumbItem v-if="showModuleBreadcrumb" class="hidden md:block">
-                  <BreadcrumbPage>{{ activeModuleLabel }}</BreadcrumbPage>
+                  <BreadcrumbPage class="app-shell-breadcrumb-page">
+                    {{ activeModuleLabel }}
+                  </BreadcrumbPage>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator
                   v-if="showModuleBreadcrumb && showSurfaceBreadcrumb"
-                  class="hidden md:block"
+                  class="app-shell-breadcrumb-separator hidden md:flex"
                 />
                 <BreadcrumbItem v-if="showSurfaceBreadcrumb">
-                  <BreadcrumbPage>{{ activeSurfaceLabel }}</BreadcrumbPage>
+                  <BreadcrumbPage class="app-shell-breadcrumb-page">
+                    {{ activeSurfaceLabel }}
+                  </BreadcrumbPage>
                 </BreadcrumbItem>
               </BreadcrumbList>
             </Breadcrumb>
 
             <div class="ml-auto flex items-center gap-2">
               <button
-                class="relative inline-flex h-9 w-9 items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+                class="relative inline-flex h-9 w-9 items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent/72 hover:text-accent-foreground"
                 :title="t('settings')"
                 :aria-label="t('openSettings')"
                 @click="openSettings"
@@ -76,37 +94,45 @@ const {
                 />
                 <Settings2 class="h-4 w-4" />
               </button>
+              <WindowControls v-if="showCustomWindowControls" />
             </div>
           </div>
         </header>
 
-        <div class="app-shell-workspace flex-1 min-h-0 overflow-hidden flex flex-col">
-          <section
-            v-if="backgroundJobs.length > 0"
-            class="app-shell-jobs shrink-0 border-b border-border/70 px-4 py-3"
-          >
-            <div class="flex flex-wrap items-center gap-3">
-              <span class="text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground">
-                {{ t('backgroundJobs') }}
-              </span>
-              <div
-                v-for="job in backgroundJobs"
-                :key="job.routeName"
-                class="app-shell-job-card flex flex-wrap items-center gap-2 rounded-md border border-border px-3 py-2"
-              >
-                <span class="text-sm font-medium">{{ job.label }}</span>
-                <span class="text-xs text-muted-foreground">
-                  {{ t('runningInBackground') }}
+        <div
+          :class="[
+            'app-shell-stage flex min-h-0 flex-1 flex-col',
+            isMacDesktop ? 'app-shell-stage-native-frame' : '',
+          ]"
+        >
+          <div class="app-shell-workspace flex min-h-0 flex-1 flex-col overflow-hidden">
+            <section
+              v-if="backgroundJobs.length > 0"
+              class="app-shell-jobs shrink-0 border-b border-border/70 px-4 py-3"
+            >
+              <div class="flex flex-wrap items-center gap-3">
+                <span class="text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground">
+                  {{ t('backgroundJobs') }}
                 </span>
-                <Button size="sm" variant="outline" @click="openBackgroundJob(job.routeName)">
-                  {{ t('view') }}
-                </Button>
+                <div
+                  v-for="job in backgroundJobs"
+                  :key="job.routeName"
+                  class="app-shell-job-card flex flex-wrap items-center gap-2 rounded-md border border-border px-3 py-2"
+                >
+                  <span class="text-sm font-medium">{{ job.label }}</span>
+                  <span class="text-xs text-muted-foreground">
+                    {{ t('runningInBackground') }}
+                  </span>
+                  <Button size="sm" variant="outline" @click="openBackgroundJob(job.routeName)">
+                    {{ t('view') }}
+                  </Button>
+                </div>
               </div>
-            </div>
-          </section>
+            </section>
 
-          <div class="flex-1 min-h-0 overflow-hidden">
-            <RouterView />
+            <div class="min-h-0 flex-1 overflow-hidden">
+              <RouterView />
+            </div>
           </div>
         </div>
       </SidebarInset>
@@ -115,12 +141,69 @@ const {
 </template>
 
 <style scoped>
-.app-shell-root {
-  background: transparent;
+.app-shell-root-native-frame {
+  overflow: clip;
+  background:
+    radial-gradient(circle at 18% 0%, var(--window-workspace-ambient), transparent 36rem),
+    linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--window-toolbar-surface) 46%, transparent),
+      transparent 9rem
+    ),
+    color-mix(in oklab, var(--background) 28%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border) 28%, transparent);
 }
 
 .app-shell-workspace {
-  background: var(--window-workspace-surface);
+  border-radius: calc(var(--radius-xl) + 8px);
+  border: 1px solid color-mix(in oklab, var(--border) 86%, transparent);
+  background:
+    radial-gradient(circle at 18% 0%, var(--window-workspace-ambient), transparent 34rem),
+    linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--window-toolbar-surface) 58%, transparent),
+      transparent 8.5rem
+    ),
+    var(--window-workspace-surface);
+  box-shadow:
+    0 0 0 0.5px color-mix(in oklab, black 8%, transparent),
+    0 10px 40px -12px color-mix(in oklab, black 14%, transparent);
+}
+
+.app-shell-root-native-frame .app-shell-workspace {
+  border-radius: calc(var(--radius-xl) + 2px);
+}
+
+.app-shell-breadcrumb {
+  display: flex;
+  min-height: 2rem;
+  align-items: center;
+}
+
+.app-shell-breadcrumb-list {
+  min-height: 2rem;
+  align-items: center;
+}
+
+.app-shell-breadcrumb-page,
+.app-shell-breadcrumb-separator {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
+.app-shell-titlebar-safe-area {
+  transition: width 180ms ease;
+}
+
+.app-shell-stage {
+  padding: 0.2rem 0.5rem 0.5rem 0.35rem;
+  clip-path: inset(-80px -80px -80px 0);
+}
+
+.app-shell-stage-native-frame {
+  padding: 0.2rem 0.5rem 0.5rem 0;
+  transition: padding 180ms ease;
 }
 
 .app-shell-jobs {
@@ -129,5 +212,15 @@ const {
 
 .app-shell-job-card {
   background: var(--window-card-surface);
+}
+
+@media (max-width: 768px) {
+  .app-shell-stage {
+    padding: 0.15rem 0.35rem 0.35rem;
+  }
+
+  .app-shell-workspace {
+    border-radius: calc(var(--radius-xl) + 4px);
+  }
 }
 </style>

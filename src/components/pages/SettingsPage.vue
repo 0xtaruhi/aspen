@@ -53,7 +53,7 @@ const {
 </script>
 
 <template>
-  <div class="h-full overflow-auto bg-transparent">
+  <div class="app-scrollbar-hidden h-full overflow-auto bg-transparent">
     <div class="mx-auto flex max-w-5xl flex-col gap-6 px-8 py-8">
       <div class="flex flex-wrap items-end justify-between gap-4">
         <div class="space-y-2">
@@ -367,7 +367,7 @@ const {
                     {{ t('releaseNotes') }}
                   </p>
                   <div
-                    class="max-h-40 overflow-auto rounded-xl border border-border/80 bg-background px-3 py-2 text-sm text-muted-foreground"
+                    class="app-scrollbar-hidden max-h-40 overflow-auto rounded-xl border border-border/80 bg-background px-3 py-2 text-sm text-muted-foreground"
                   >
                     <pre class="whitespace-pre-wrap font-sans">{{ updateState.latestBody }}</pre>
                   </div>
