@@ -1,12 +1,14 @@
+import type { ThemeMode } from '@/lib/theme'
+
 import { reactive } from 'vue'
 
 import { syncNativeMenuLanguage } from '@/lib/native-language'
+import { setThemeMode } from '@/lib/theme'
 import {
   applyThemeAccentColor,
   DEFAULT_THEME_ACCENT,
   normalizeThemeAccentColor,
-} from '../lib/theme-accent'
-import { setThemeMode, type ThemeMode } from '../lib/theme'
+} from '@/lib/theme-accent'
 
 export type AppLanguage = 'en-US' | 'zh-CN' | 'zh-TW'
 
