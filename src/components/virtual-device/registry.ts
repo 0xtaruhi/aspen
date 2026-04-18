@@ -97,8 +97,10 @@ export type CanvasDeviceUiDefinition = {
   buildRendererListeners?: (
     device: CanvasDeviceSnapshot,
     actions: CanvasDeviceActionContext,
-  ) => Record<string, (...args: any[]) => void> | undefined
+  ) => CanvasDeviceRendererListeners | undefined
 }
+
+export type CanvasDeviceRendererListeners = Record<string, (...args: never[]) => void>
 
 function getBitsetTelemetry(telemetry: HardwareCanvasDeviceTelemetryEntry | undefined) {
   return telemetry?.payload.kind === 'bitset' ? telemetry.payload.bits : null

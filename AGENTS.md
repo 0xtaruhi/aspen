@@ -44,6 +44,7 @@ Follow repository facts first, then these conventions.
 
 - `package.json` scripts are primary for JS/TS workflows.
 - `src-tauri/tauri.conf.json` controls Tauri pre-dev/pre-build hooks.
+- `eslint.config.mjs` configures frontend/script linting.
 - Prettier is configured via `.prettierrc.json` and `.prettierignore`.
 - Frontend tests are configured via `vitest.config.ts`.
 
@@ -59,6 +60,8 @@ Follow repository facts first, then these conventions.
 
 - Canonical frontend build: `pnpm build`
   - Expands to: `vue-tsc --noEmit && vite build`
+- Frontend lint: `pnpm lint`
+- Frontend lint autofix: `pnpm lint:fix`
 - Frontend typecheck: `pnpm typecheck`
 - Frontend format write: `pnpm format`
 - Frontend format check: `pnpm format:check`
@@ -71,9 +74,9 @@ Follow repository facts first, then these conventions.
 
 ### Lint/Format Status
 
-- There is currently no ESLint script in `package.json`.
+- ESLint is configured via `eslint.config.mjs`; use `pnpm lint` and `pnpm lint:fix`.
 - Use Prettier (`pnpm format` / `pnpm format:check`) for formatting.
-- Treat typecheck (`pnpm typecheck`) plus build (`pnpm build`) as frontend quality gates.
+- Treat lint (`pnpm lint`), typecheck (`pnpm typecheck`), and build (`pnpm build`) as frontend quality gates.
 
 ### Pre-commit Hooks
 
@@ -101,6 +104,7 @@ Use these when Rust tests exist:
 ## Pre-PR Verification Checklist
 
 - `pnpm prepare:yosys-bundle`
+- `pnpm lint`
 - `pnpm build`
 - `pnpm tauri build` for desktop-impacting changes
 - `cargo test --manifest-path src-tauri/Cargo.toml` when Rust code changes

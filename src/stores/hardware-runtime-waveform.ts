@@ -301,9 +301,7 @@ export function onWaveformBatchBinary(batch: HardwareWaveformBatchBinaryV1) {
 
   if (view.byteLength >= BIDIRECTIONAL_WAVEFORM_HEADER_BYTES) {
     const bufferCount = view.getUint16(offset, true)
-    offset += 2
-    waveformFlags = view.getUint16(offset, true)
-    offset += 2
+    waveformFlags = view.getUint16(offset + 2, true)
 
     const expectedBytes =
       BIDIRECTIONAL_WAVEFORM_HEADER_BYTES + expectedWordsPerBuffer * bufferCount * 2

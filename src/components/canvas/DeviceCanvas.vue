@@ -4,6 +4,7 @@ import { computed, onUnmounted, ref, watch, type CSSProperties } from 'vue'
 import BaseDevice from '../devices/BaseDevice.vue'
 import WireLayer from './WireLayer.vue'
 import {
+  type CanvasDeviceRendererListeners,
   buildCanvasDeviceRendererListeners,
   buildCanvasDeviceRendererProps,
   getCanvasDeviceRenderer,
@@ -714,8 +715,8 @@ function rendererProps(device: CanvasDeviceSnapshot) {
 
 function rendererListeners(
   device: CanvasDeviceSnapshot,
-): Record<string, (...args: any[]) => void> | undefined {
-  const listeners: Record<string, (...args: any[]) => void> = {}
+): CanvasDeviceRendererListeners | undefined {
+  const listeners: CanvasDeviceRendererListeners = {}
 
   if (canvasDeviceEmitsToggle(device.type)) {
     listeners.toggle = (value: boolean) => {
