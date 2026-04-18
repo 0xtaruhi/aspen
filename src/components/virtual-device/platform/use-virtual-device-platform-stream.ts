@@ -6,6 +6,7 @@ import { useI18n } from '@/lib/i18n'
 import { hardwareStore } from '@/stores/hardware'
 import { HARDWARE_STREAM_CLOCK_DELAY, hardwareWorkbenchStore } from '@/stores/hardware-workbench'
 
+import { getErrorMessage } from './error-helpers'
 import {
   computeStreamScheduleLagMs,
   formatActualHz,
@@ -59,10 +60,6 @@ export function useVirtualDevicePlatformStream({
   const shouldWarnStreamBacklogState = computed(() => {
     return shouldWarnStreamBacklog(streamStatus.value.queue_fill, streamScheduleLagMs.value)
   })
-
-  function getErrorMessage(error: unknown) {
-    return error instanceof Error ? error.message : String(error)
-  }
 
   function resetDisplayActualHz(rateHz = 0) {
     const nextRate = Number.isFinite(rateHz) && rateHz > 0 ? rateHz : 0

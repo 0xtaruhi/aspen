@@ -9,6 +9,7 @@ import { hardwareStore } from '@/stores/hardware'
 import { projectStore } from '@/stores/project'
 import { signalCatalogStore } from '@/stores/signal-catalog'
 
+import { getErrorMessage } from './error-helpers'
 import { STREAM_SIGNAL_LIMIT } from './stream-helpers'
 import { useVirtualDevicePlatformDevices } from './use-virtual-device-platform-devices'
 import { useVirtualDevicePlatformStream } from './use-virtual-device-platform-stream'
@@ -56,10 +57,6 @@ export function useVirtualDevicePlatformState() {
       .join('\u0000')
   })
   const canvasSessionKey = computed(() => String(projectStore.sessionId))
-
-  function getErrorMessage(error: unknown) {
-    return error instanceof Error ? error.message : String(error)
-  }
 
   const {
     actualHzLabel,
