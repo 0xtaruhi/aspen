@@ -120,6 +120,7 @@ describe('virtual device platform binding sanitation', () => {
     selectedDeviceIds?: string[]
     streamInputSignalOrder?: string[]
     streamOutputSignalOrder?: string[]
+    projectWaveformSignalOrder?: string[]
     keepScope?: boolean
     setWaveformEnabledImpl?: (enabled: boolean) => Promise<void>
   }) {
@@ -190,6 +191,12 @@ describe('virtual device platform binding sanitation', () => {
     vi.doMock('@/stores/project', () => ({
       projectStore: {
         sessionId: 1,
+      },
+    }))
+
+    vi.doMock('@/stores/project-waveform', () => ({
+      projectWaveformStore: {
+        signalOrder: ref(options.projectWaveformSignalOrder ?? []),
       },
     }))
 
@@ -349,6 +356,27 @@ describe('virtual device platform binding sanitation', () => {
     })
 
     expect(state?.waveformSignals.value).toEqual(['clk'])
+  })
+
+  it('preserves persisted waveform lane order when visible signals change', async () => {
+    const selectedDevice = createDipSwitchDevice(['sig_a', 'sig_b'])
+    const { state } = await instantiateWithCatalog({
+      hasSignalSourceReport: true,
+      hasStaleSignalSourceReport: false,
+      workbenchSignals: ['sig_a', 'sig_b'],
+      allSignals: [
+        { name: 'clk', direction: 'input' },
+        { name: 'sig_a', direction: 'output' },
+        { name: 'sig_b', direction: 'output' },
+      ],
+      canvasDevices: [selectedDevice],
+      selectedDeviceIds: [selectedDevice.id],
+      streamInputSignalOrder: ['clk'],
+      streamOutputSignalOrder: ['sig_a', 'sig_b'],
+      projectWaveformSignalOrder: ['sig_b', 'clk', 'sig_a'],
+    })
+
+    expect(state?.waveformSignals.value).toEqual(['sig_b', 'clk', 'sig_a'])
   })
 
   it('clears waveform toggle errors only after a later toggle succeeds', async () => {
