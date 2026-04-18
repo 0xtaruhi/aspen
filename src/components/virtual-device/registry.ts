@@ -100,7 +100,11 @@ export type CanvasDeviceUiDefinition = {
   ) => CanvasDeviceRendererListeners | undefined
 }
 
-export type CanvasDeviceRendererListeners = Record<string, (...args: never[]) => void>
+type CanvasDeviceRendererListener = {
+  bivarianceHack(...args: unknown[]): void
+}['bivarianceHack']
+
+export type CanvasDeviceRendererListeners = Record<string, CanvasDeviceRendererListener>
 
 function getBitsetTelemetry(telemetry: HardwareCanvasDeviceTelemetryEntry | undefined) {
   return telemetry?.payload.kind === 'bitset' ? telemetry.payload.bits : null
