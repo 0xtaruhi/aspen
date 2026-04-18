@@ -46,6 +46,7 @@ export interface ProjectStoreState {
   cachedContentSnapshotJson: string
   contentSnapshotCacheDirty: boolean
   cachedCanvasRevision: number
+  cachedWaveformRevision: number
   savedFileSignatures: FileSignatureMap
 }
 
@@ -84,6 +85,7 @@ export function createProjectStoreState(): ProjectStoreState {
     cachedContentSnapshotJson: '',
     contentSnapshotCacheDirty: true,
     cachedCanvasRevision: 0,
+    cachedWaveformRevision: 0,
     savedFileSignatures: {},
   }
 }

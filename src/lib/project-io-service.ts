@@ -2,6 +2,7 @@ import type { ImportFilesResult } from '@/stores/project-file-operations'
 
 import { projectStore } from '@/stores/project'
 import { projectCanvasStore } from '@/stores/project-canvas'
+import { projectWaveformStore } from '@/stores/project-waveform'
 import { recentProjectsStore } from '@/stores/recent-projects'
 
 import { cloneImplementationSettings } from '@/lib/implementation-settings'
@@ -26,6 +27,7 @@ import {
   cloneProjectImplementationCacheSnapshot,
   cloneProjectNodes,
   cloneProjectSynthesisCacheSnapshot,
+  cloneProjectWaveformViewSnapshot,
 } from '@/stores/project-model'
 
 export type CreateProjectAtDirectoryOptions = {
@@ -62,6 +64,7 @@ type ProjectCreationRollbackState = {
   savedContentSnapshotJson: string
   savedFileSignatures: Record<string, string>
   canvasDevices: ReturnType<typeof cloneProjectCanvasDevices>
+  waveformView: ReturnType<typeof cloneProjectWaveformViewSnapshot>
 }
 
 const IMPORT_SKIPPED_NAMES_LIMIT = 3
@@ -130,6 +133,7 @@ function captureProjectCreationRollbackState(): ProjectCreationRollbackState {
     savedContentSnapshotJson: projectStore.savedContentSnapshotJson,
     savedFileSignatures: { ...projectStore.savedFileSignatures },
     canvasDevices: cloneProjectCanvasDevices(projectCanvasStore.canvasDevices.value),
+    waveformView: cloneProjectWaveformViewSnapshot(projectWaveformStore.toSnapshot()),
   }
 }
 
@@ -153,9 +157,11 @@ function restoreProjectCreationRollbackState(state: ProjectCreationRollbackState
   projectStore.savedContentSnapshotJson = state.savedContentSnapshotJson
   projectStore.savedFileSignatures = { ...state.savedFileSignatures }
   projectCanvasStore.setCanvasDevices(state.canvasDevices)
+  projectWaveformStore.setSnapshot(state.waveformView)
   projectStore.cachedContentSnapshotJson = state.savedContentSnapshotJson
   projectStore.contentSnapshotCacheDirty = true
   projectStore.cachedCanvasRevision = projectCanvasStore.snapshotRevision.value
+  projectStore.cachedWaveformRevision = projectWaveformStore.snapshotRevision.value
   projectStore.sessionId = state.sessionId
 }
 

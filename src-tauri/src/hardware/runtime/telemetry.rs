@@ -205,6 +205,35 @@ impl HardwareRuntime {
         payload
     }
 
+    pub(super) fn encode_binary_waveform_batch(
+        sequence: u64,
+        generated_at_ms: u64,
+        actual_hz: f64,
+        words_per_cycle: u16,
+        batch_cycles: u16,
+        write_buffer: &[u16],
+        read_buffer: &[u16],
+    ) -> Vec<u8> {
+        let mut payload = Vec::with_capacity(32 + (write_buffer.len() + read_buffer.len()) * 2);
+        payload.extend_from_slice(&sequence.to_le_bytes());
+        payload.extend_from_slice(&generated_at_ms.to_le_bytes());
+        payload.extend_from_slice(&actual_hz.to_le_bytes());
+        payload.extend_from_slice(&words_per_cycle.to_le_bytes());
+        payload.extend_from_slice(&batch_cycles.to_le_bytes());
+        payload.extend_from_slice(&2u16.to_le_bytes());
+        payload.extend_from_slice(&0u16.to_le_bytes());
+
+        for word in write_buffer {
+            payload.extend_from_slice(&word.to_le_bytes());
+        }
+
+        for word in read_buffer {
+            payload.extend_from_slice(&word.to_le_bytes());
+        }
+
+        payload
+    }
+
     pub(super) fn emit_pending_signal_updates(
         app: &AppHandle,
         last_latest_by_signal: &mut HashMap<u16, bool>,
@@ -248,5 +277,34 @@ impl HardwareRuntime {
             },
         );
         *pending_meta = PendingSignalBatchMeta::default();
+    }
+
+    pub(super) fn emit_waveform_batch(
+        app: &AppHandle,
+        sequence: u64,
+        generated_at_ms: u64,
+        actual_hz: f64,
+        words_per_cycle: usize,
+        batch_cycles: u16,
+        write_buffer: &[u16],
+        read_buffer: &[u16],
+    ) {
+        let payload = Self::encode_binary_waveform_batch(
+            sequence,
+            generated_at_ms,
+            actual_hz,
+            words_per_cycle.min(usize::from(u16::MAX)) as u16,
+            batch_cycles,
+            write_buffer,
+            read_buffer,
+        );
+
+        let _ = app.emit(
+            "hardware:waveform_batch_bin",
+            crate::hardware::types::HardwareWaveformBatchBinaryV1 {
+                version: 1,
+                payload,
+            },
+        );
     }
 }

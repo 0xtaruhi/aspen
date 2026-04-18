@@ -3,6 +3,7 @@ import DeviceCanvas from '@/components/canvas/DeviceCanvas.vue'
 import ComponentGallery from '@/components/ComponentGallery.vue'
 import RightDrawer from '@/components/RightDrawer.vue'
 import DeviceInspector from '@/components/virtual-device/DeviceInspector.vue'
+import WaveformPanel from '@/components/virtual-device/platform/WaveformPanel.vue'
 import { useVirtualDevicePlatformState } from '@/components/virtual-device/platform/use-virtual-device-platform-state'
 import VirtualDeviceManualDialog from '@/components/virtual-device/platform/VirtualDeviceManualDialog.vue'
 import VirtualDeviceStatusBanner from '@/components/virtual-device/platform/VirtualDeviceStatusBanner.vue'
@@ -19,7 +20,6 @@ const {
   closeManualDialog,
   deleteSelectedDevices,
   galleryDropBlockInset,
-  galleryTitle,
   hasAnySynthesisSignals,
   hasCanvasDevices,
   hasSelectedSource,
@@ -44,16 +44,17 @@ const {
   streamSignalOverflow,
   streamStatus,
   toggleGallery,
+  toggleWaveformPanel,
   toggleStream,
+  waveformPanelOpen,
+  waveformSignals,
 } = useVirtualDevicePlatformState()
 </script>
 
 <template>
   <div class="h-full flex flex-col bg-transparent">
     <VirtualDeviceToolbar
-      :show-gallery="showGallery"
       :interaction-mode="canvasInteractionMode"
-      :gallery-title="galleryTitle"
       :stream-running="streamRunning"
       :configured-signal-count="streamStatus.configured_signal_count"
       :visible-signal-count="streamSignalNames.length"
@@ -65,7 +66,9 @@ const {
       :rate-input="rateInput"
       :can-apply-settings="canApplySettings"
       :can-toggle-stream="canToggleStream"
+      :waveform-panel-open="waveformPanelOpen"
       @toggle-gallery="toggleGallery"
+      @toggle-waveform-panel="toggleWaveformPanel"
       @update:interaction-mode="canvasInteractionMode = $event"
       @update:rate-input="rateInput = $event"
       @delete-selected="deleteSelectedDevices"
@@ -86,16 +89,20 @@ const {
       :has-stale-synthesis-signals="hasStaleSynthesisSignals"
     />
 
-    <div class="relative flex-1 min-h-0 overflow-hidden">
-      <ComponentGallery :open="showGallery" @close="showGallery = false" />
-      <DeviceCanvas
-        :key="canvasSessionKey"
-        v-model:selected-device-id="selectedDeviceId"
-        v-model:selected-device-ids="selectedDeviceIds"
-        :blocked-top-inset="showGallery ? galleryDropBlockInset : 0"
-        :interaction-mode="canvasInteractionMode"
-        @open-settings="openInspectorForDevice"
-      />
+    <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div class="relative min-h-0 flex-1 overflow-hidden">
+        <ComponentGallery :open="showGallery" @close="showGallery = false" />
+        <DeviceCanvas
+          :key="canvasSessionKey"
+          v-model:selected-device-id="selectedDeviceId"
+          v-model:selected-device-ids="selectedDeviceIds"
+          :blocked-top-inset="showGallery ? galleryDropBlockInset : 0"
+          :interaction-mode="canvasInteractionMode"
+          @open-settings="openInspectorForDevice"
+        />
+      </div>
+
+      <WaveformPanel v-if="waveformPanelOpen" :signals="waveformSignals" />
     </div>
 
     <RightDrawer v-model:modelValue="inspectorOpen">

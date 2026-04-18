@@ -47,6 +47,12 @@ export type ProjectImplementationCacheSnapshot = {
   report: ImplementationReportV1
 }
 
+export type ProjectWaveformViewSnapshot = {
+  version: 1
+  signalOrder: string[]
+  signalColorOverrides: Record<string, string>
+}
+
 export type ProjectContentSnapshot = {
   name: string
   files: ProjectNode[]
@@ -59,6 +65,7 @@ export type ProjectContentSnapshot = {
   synthesisCache: ProjectSynthesisCacheSnapshot | null
   implementationCache: ProjectImplementationCacheSnapshot | null
   canvasDevices: CanvasDeviceSnapshot[]
+  waveformView: ProjectWaveformViewSnapshot
 }
 
 export type ProjectWorkspaceViewSnapshot = {
@@ -96,6 +103,77 @@ export function splitProjectSnapshot(snapshot: ProjectSnapshot): {
 
 export function serializeProjectContentSnapshot(snapshot: ProjectContentSnapshot) {
   return JSON.stringify(snapshot)
+}
+
+export function emptyProjectWaveformViewSnapshot(): ProjectWaveformViewSnapshot {
+  return {
+    version: 1,
+    signalOrder: [],
+    signalColorOverrides: {},
+  }
+}
+
+function normalizeWaveformSignalOrder(signalOrder: readonly string[]) {
+  const seen = new Set<string>()
+  const normalized: string[] = []
+
+  for (const signal of signalOrder) {
+    const nextSignal = signal.trim()
+    if (!nextSignal || seen.has(nextSignal)) {
+      continue
+    }
+
+    seen.add(nextSignal)
+    normalized.push(nextSignal)
+  }
+
+  return normalized
+}
+
+function normalizeWaveformColorOverrides(
+  signalColorOverrides: Record<string, unknown>,
+): Record<string, string> {
+  const normalized: Record<string, string> = {}
+
+  for (const [signal, color] of Object.entries(signalColorOverrides)) {
+    const nextSignal = signal.trim()
+    const nextColor = typeof color === 'string' ? color.trim() : ''
+    if (!nextSignal || !nextColor) {
+      continue
+    }
+
+    normalized[nextSignal] = nextColor
+  }
+
+  return normalized
+}
+
+export function cloneProjectWaveformViewSnapshot(
+  snapshot: ProjectWaveformViewSnapshot,
+): ProjectWaveformViewSnapshot {
+  return {
+    version: 1,
+    signalOrder: [...snapshot.signalOrder],
+    signalColorOverrides: { ...snapshot.signalColorOverrides },
+  }
+}
+
+export function normalizeProjectWaveformViewSnapshot(value: unknown): ProjectWaveformViewSnapshot {
+  if (!isRecord(value) || value.version !== 1) {
+    return emptyProjectWaveformViewSnapshot()
+  }
+
+  return {
+    version: 1,
+    signalOrder: Array.isArray(value.signalOrder)
+      ? normalizeWaveformSignalOrder(
+          value.signalOrder.filter((signal) => typeof signal === 'string'),
+        )
+      : [],
+    signalColorOverrides: isRecord(value.signalColorOverrides)
+      ? normalizeWaveformColorOverrides(value.signalColorOverrides)
+      : {},
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -568,6 +646,7 @@ export function normalizeProjectSnapshot(value: unknown): ProjectSnapshot {
       value.content.implementationCache,
     ),
     canvasDevices: normalizeProjectCanvasDevices(value.content.canvasDevices),
+    waveformView: normalizeProjectWaveformViewSnapshot(value.content.waveformView),
   }
 
   return composeProjectSnapshot(contentSnapshot, {

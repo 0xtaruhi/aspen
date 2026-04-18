@@ -12,15 +12,22 @@ import {
 } from './project-store-view'
 import { projectCanvasStore } from './project-canvas'
 import { serializeProjectContentSnapshot, splitProjectSnapshot } from './project-model'
+import { projectWaveformStore } from './project-waveform'
 
 function getCachedContentSnapshotJson(store: ProjectStoreLike) {
   const canvasRevision = projectCanvasStore.snapshotRevision.value
-  if (store.contentSnapshotCacheDirty || store.cachedCanvasRevision !== canvasRevision) {
+  const waveformRevision = projectWaveformStore.snapshotRevision.value
+  if (
+    store.contentSnapshotCacheDirty ||
+    store.cachedCanvasRevision !== canvasRevision ||
+    store.cachedWaveformRevision !== waveformRevision
+  ) {
     store.cachedContentSnapshotJson = serializeProjectContentSnapshot(
       splitProjectSnapshot(store.toSnapshot()).contentSnapshot,
     )
     store.contentSnapshotCacheDirty = false
     store.cachedCanvasRevision = canvasRevision
+    store.cachedWaveformRevision = waveformRevision
   }
 
   return store.cachedContentSnapshotJson

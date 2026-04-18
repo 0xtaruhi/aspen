@@ -426,6 +426,12 @@ pub struct HardwareDataBatchBinaryV1 {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct HardwareWaveformBatchBinaryV1 {
+    pub version: u8,
+    pub payload: Vec<u8>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct HardwareDataSignalCatalogEntryV1 {
     pub signal_id: u16,
     pub signal: String,
@@ -512,6 +518,8 @@ pub struct HardwareDataStreamConfigV1 {
     pub target_hz: f64,
     pub input_signal_order: Vec<String>,
     pub output_signal_order: Vec<String>,
+    #[serde(default)]
+    pub waveform_enabled: bool,
     pub words_per_cycle: u16,
     pub min_batch_cycles: u16,
     pub max_wait_us: u32,
@@ -525,6 +533,7 @@ impl Default for HardwareDataStreamConfigV1 {
             target_hz: 1.0,
             input_signal_order: Vec::new(),
             output_signal_order: Vec::new(),
+            waveform_enabled: false,
             words_per_cycle: 4,
             min_batch_cycles: 128,
             max_wait_us: 2_000,

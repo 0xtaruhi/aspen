@@ -89,6 +89,9 @@ describe('virtual device platform binding sanitation', () => {
     hasSignalSourceReport: boolean
     hasStaleSignalSourceReport: boolean
     workbenchSignals: string[]
+    allSignals?: Array<{ name: string; direction: 'input' | 'output' | 'inout' }>
+    streamInputSignalOrder?: string[]
+    streamOutputSignalOrder?: string[]
   }) {
     const bindCanvasSignal = vi.fn(async () => undefined)
     const upsertCanvasDevice = vi.fn(async () => undefined)
@@ -132,6 +135,8 @@ describe('virtual device platform binding sanitation', () => {
         canvasDevices,
         dataStreamStatus: ref(createDataStreamStatus()),
         state: ref(createHardwareState()),
+        setWaveformEnabled: vi.fn(async () => undefined),
+        setWaveformTrackedSignals: vi.fn(),
         bindCanvasSignal,
         upsertCanvasDevice,
         setDataStreamRate: vi.fn(async () => undefined),
@@ -163,37 +168,47 @@ describe('virtual device platform binding sanitation', () => {
       },
     }))
 
+    const signalEntries = (
+      options.allSignals ??
+      options.workbenchSignals.map((name) => ({
+        name,
+        direction: 'output' as const,
+      }))
+    ).map(({ name, direction }) => ({
+      name,
+      bitName: name,
+      assignedPin: null,
+      assignedPinRole: null,
+      boardFunction: null,
+      bindingLabel: name,
+      direction,
+      width: '',
+    }))
+
     vi.doMock('@/stores/signal-catalog', () => ({
       signalCatalogStore: {
+        signals: ref(signalEntries),
         workbenchSignals: ref(
-          options.workbenchSignals.map((name) => ({
-            name,
-            bitName: name,
-            assignedPin: null,
-            assignedPinRole: null,
-            boardFunction: null,
-            bindingLabel: name,
-            direction: 'output',
-            width: '',
-          })),
+          signalEntries.filter((signal) => options.workbenchSignals.includes(signal.name)),
         ),
         hasSignalSourceReport: ref(options.hasSignalSourceReport),
         hasStaleSignalSourceReport: ref(options.hasStaleSignalSourceReport),
+        streamInputSignalOrder: ref(options.streamInputSignalOrder ?? []),
+        streamOutputSignalOrder: ref(options.streamOutputSignalOrder ?? []),
       },
     }))
 
     const { useVirtualDevicePlatformState } = await import('./use-virtual-device-platform-state')
 
     const scope = effectScope()
-    scope.run(() => {
-      useVirtualDevicePlatformState()
-    })
+    const state = scope.run(() => useVirtualDevicePlatformState()) ?? null
     await Promise.resolve()
     await nextTick()
     scope.stop()
 
     return {
       bindCanvasSignal,
+      state,
       upsertCanvasDevice,
     }
   }
@@ -218,5 +233,21 @@ describe('virtual device platform binding sanitation', () => {
 
     expect(bindCanvasSignal).not.toHaveBeenCalled()
     expect(upsertCanvasDevice).not.toHaveBeenCalled()
+  })
+
+  it('includes clock-like input signals in default waveform candidates', async () => {
+    const { state } = await instantiateWithCatalog({
+      hasSignalSourceReport: true,
+      hasStaleSignalSourceReport: false,
+      workbenchSignals: ['led'],
+      allSignals: [
+        { name: 'clk', direction: 'input' },
+        { name: 'led', direction: 'output' },
+      ],
+      streamInputSignalOrder: ['clk'],
+      streamOutputSignalOrder: ['led'],
+    })
+
+    expect(state?.waveformSignals.value).toEqual(['clk', 'led'])
   })
 })

@@ -83,8 +83,6 @@
   "failedRefreshStreamStatus": "更新資料流狀態失敗：{message}",
   "workbenchRequiresSynthesisDescription": "請先執行綜合，載入供 Workbench 綁定與即時 I/O 使用的頂層埠清單。",
   "workbenchSynthesisOutdatedDescription": "目前使用的是上一次成功綜合的埠清單。原始碼變更後請重新綜合，以更新綁定與即時 I/O。",
-  "hideComponentGallery": "隱藏元件庫",
-  "openComponentGallery": "開啟元件庫",
   "toggleComponentGallery": "切換元件庫",
   "clearCanvasConfirm": "確定要移除 Workbench 畫布上的所有元件嗎？",
   "streamOverflowWarning": "{count} 個埠超出 64 位元資料流視窗，目前不會參與即時 I/O。",

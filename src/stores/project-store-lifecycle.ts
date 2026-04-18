@@ -17,11 +17,13 @@ import {
   cloneProjectNodes,
   cloneProjectSynthesisCacheSnapshot,
   composeProjectSnapshot,
+  normalizeProjectSnapshot,
   type ProjectContentSnapshot,
   type ProjectSnapshot,
   type ProjectWorkspaceViewSnapshot,
 } from './project-model'
 import { projectCanvasStore } from './project-canvas'
+import { projectWaveformStore } from './project-waveform'
 import {
   applyProjectSession,
   buildEmptyProjectSession,
@@ -54,6 +56,7 @@ export function createProjectContentSnapshot(
     synthesisCache: cloneProjectSynthesisCacheSnapshot(store.synthesisCache),
     implementationCache: cloneProjectImplementationCacheSnapshot(store.implementationCache),
     canvasDevices: cloneProjectCanvasDevices(projectCanvasStore.canvasDevices.value),
+    waveformView: projectWaveformStore.toSnapshot(),
   }
 }
 
@@ -77,9 +80,11 @@ export function loadProjectFromSnapshot(
   snapshot: unknown,
   options: { projectPath?: string | null } = {},
 ) {
-  const session = buildLoadedProjectSession(snapshot)
+  const parsedSnapshot = normalizeProjectSnapshot(snapshot)
+  const session = buildLoadedProjectSession(parsedSnapshot)
   applyProjectSession(store, session)
   projectCanvasStore.setCanvasDevices(session.canvasDevices)
+  projectWaveformStore.setSnapshot(parsedSnapshot.content.waveformView)
   store.sessionId += 1
   markProjectSessionSaved(store, options.projectPath ?? null)
 }
@@ -108,6 +113,7 @@ export function createNewProject(
   const session = buildTemplateProjectSession(name, template)
   applyProjectSession(store, session)
   projectCanvasStore.setCanvasDevices(session.canvasDevices)
+  projectWaveformStore.resetState()
   store.sessionId += 1
   markProjectSessionSaved(store, null)
 }
@@ -116,6 +122,7 @@ export function clearProject(store: ProjectStoreLifecycleLike) {
   const session = buildEmptyProjectSession()
   applyProjectSession(store, session)
   projectCanvasStore.setCanvasDevices(session.canvasDevices)
+  projectWaveformStore.resetState()
   store.sessionId += 1
   markProjectSessionSaved(store, null)
 }

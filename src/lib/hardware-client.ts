@@ -342,6 +342,11 @@ export interface HardwareDataBatchBinaryV1 {
   payload: number[]
 }
 
+export interface HardwareWaveformBatchBinaryV1 {
+  version: 1
+  payload: number[]
+}
+
 export interface HardwareDataSignalCatalogEntryV1 {
   signal_id: number
   signal: string
@@ -404,6 +409,7 @@ export interface HardwareDataStreamConfigV1 {
   target_hz: number
   input_signal_order: string[]
   output_signal_order: string[]
+  waveform_enabled: boolean
   words_per_cycle: number
   min_batch_cycles: number
   max_wait_us: number
@@ -532,6 +538,12 @@ export async function setHardwareDataStreamRate(
   })
 }
 
+export async function setHardwareWaveformEnabled(enabled: boolean): Promise<void> {
+  await invoke('set_hardware_waveform_enabled', {
+    enabled,
+  })
+}
+
 export async function startHardwareDataStream(): Promise<void> {
   await invoke('start_hardware_data_stream')
 }
@@ -560,6 +572,14 @@ export async function listenHardwareDataBatchBinary(
   callback: (batch: HardwareDataBatchBinaryV1) => void,
 ): Promise<UnlistenFn> {
   return listen<HardwareDataBatchBinaryV1>('hardware:data_batch_bin', (event) => {
+    callback(event.payload)
+  })
+}
+
+export async function listenHardwareWaveformBatchBinary(
+  callback: (batch: HardwareWaveformBatchBinaryV1) => void,
+): Promise<UnlistenFn> {
+  return listen<HardwareWaveformBatchBinaryV1>('hardware:waveform_batch_bin', (event) => {
     callback(event.payload)
   })
 }

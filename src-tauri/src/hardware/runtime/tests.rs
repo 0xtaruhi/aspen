@@ -193,6 +193,71 @@ fn binary_batch_header_carries_stream_rates() {
 }
 
 #[test]
+fn binary_waveform_batch_carries_raw_words() {
+    let payload = HardwareRuntime::encode_binary_waveform_batch(
+        12,
+        345,
+        2_500.0,
+        2,
+        3,
+        &[0x1001, 0x1002, 0x1003, 0x1004, 0x1005, 0x1006],
+        &[0x0001, 0x0002, 0x0003, 0x0004, 0x0005, 0x0006],
+    );
+
+    assert_eq!(payload.len(), 32 + 24);
+    assert_eq!(u64::from_le_bytes(payload[0..8].try_into().unwrap()), 12);
+    assert_eq!(u64::from_le_bytes(payload[8..16].try_into().unwrap()), 345);
+    assert_eq!(
+        f64::from_le_bytes(payload[16..24].try_into().unwrap()),
+        2_500.0
+    );
+    assert_eq!(u16::from_le_bytes(payload[24..26].try_into().unwrap()), 2);
+    assert_eq!(u16::from_le_bytes(payload[26..28].try_into().unwrap()), 3);
+    assert_eq!(u16::from_le_bytes(payload[28..30].try_into().unwrap()), 2);
+    assert_eq!(
+        u16::from_le_bytes(payload[32..34].try_into().unwrap()),
+        0x1001
+    );
+    assert_eq!(
+        u16::from_le_bytes(payload[42..44].try_into().unwrap()),
+        0x1006
+    );
+    assert_eq!(
+        u16::from_le_bytes(payload[44..46].try_into().unwrap()),
+        0x0001
+    );
+    assert_eq!(
+        u16::from_le_bytes(payload[54..56].try_into().unwrap()),
+        0x0006
+    );
+}
+
+#[test]
+fn waveform_sample_stride_caps_capture_rate() {
+    assert_eq!(HardwareRuntime::waveform_sample_stride(10_000.0), 1);
+    assert_eq!(HardwareRuntime::waveform_sample_stride(60_000.0), 1);
+    assert_eq!(HardwareRuntime::waveform_sample_stride(1_000_000.0), 17);
+}
+
+#[test]
+fn append_waveform_samples_decimates_cycles() {
+    let mut pending_write = Vec::new();
+    let mut pending_read = Vec::new();
+    let sampled_cycles = HardwareRuntime::append_waveform_samples(
+        &mut pending_write,
+        &mut pending_read,
+        &[0x1001, 0x1002, 0x1003, 0x1004, 0x1005, 0x1006],
+        &[0x0001, 0x0002, 0x0003, 0x0004, 0x0005, 0x0006],
+        2,
+        2,
+    );
+
+    assert_eq!(sampled_cycles, 2);
+    assert_eq!(pending_write, vec![0x1001, 0x1002, 0x1005, 0x1006]);
+    assert_eq!(pending_read, vec![0x0001, 0x0002, 0x0005, 0x0006]);
+}
+
+#[test]
 fn collect_data_sample_prefers_drivers_and_keeps_receiver_fallback() {
     let runtime = HardwareRuntime::default();
 
@@ -410,6 +475,17 @@ fn configure_data_stream_propagates_vericomm_clock_delays() {
             .vericomm_clock_low_delay,
         13
     );
+}
+
+#[test]
+fn set_waveform_enabled_updates_stream_config() {
+    let runtime = HardwareRuntime::default();
+
+    runtime
+        .set_waveform_enabled(true)
+        .expect("waveform flag update should succeed");
+
+    assert!(runtime.data_stream_config.lock().unwrap().waveform_enabled);
 }
 
 #[test]

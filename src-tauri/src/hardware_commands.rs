@@ -72,6 +72,14 @@ pub fn set_hardware_data_stream_rate(
 }
 
 #[tauri::command]
+pub fn set_hardware_waveform_enabled(
+    runtime: tauri::State<'_, Arc<HardwareRuntime>>,
+    enabled: bool,
+) -> Result<(), String> {
+    runtime.set_waveform_enabled(enabled)
+}
+
+#[tauri::command]
 pub async fn get_hardware_status(
     app: tauri::AppHandle,
     runtime: tauri::State<'_, Arc<HardwareRuntime>>,

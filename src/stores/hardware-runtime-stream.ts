@@ -2,6 +2,7 @@ import type { HardwareDataStreamConfigV1 } from '@/lib/hardware-client'
 
 import {
   configureHardwareDataStream,
+  setHardwareWaveformEnabled,
   setHardwareDataStreamRate,
   startHardwareDataStream,
   stopHardwareDataStream,
@@ -22,6 +23,9 @@ import {
   dataStreamStatus,
   resetRuntimeState,
 } from './hardware-runtime-state'
+import { setWaveformSignalOrders } from './hardware-runtime-waveform'
+
+let waveformEnabled = false
 
 export async function configureDataStream(
   inputSignalOrder: readonly string[],
@@ -37,6 +41,7 @@ export async function configureDataStream(
     target_hz: dataStreamStatus.value.target_hz || 1,
     input_signal_order: configuredSignalOrder(inputSignalOrder),
     output_signal_order: configuredSignalOrder(outputSignalOrder),
+    waveform_enabled: waveformEnabled,
     words_per_cycle: Math.max(1, Math.floor(wordsPerCycle)),
     min_batch_cycles: dataStreamStatus.value.min_batch_cycles || DATA_DEFAULT_MIN_BATCH_CYCLES,
     max_wait_us: dataStreamStatus.value.max_wait_us || DATA_DEFAULT_MAX_WAIT_US,
@@ -49,6 +54,7 @@ export async function configureDataStream(
       dataStreamStatus.value.vericomm_clock_low_delay ??
       DATA_DEFAULT_CLOCK_LOW_DELAY,
   }
+  setWaveformSignalOrders(nextConfig.input_signal_order, nextConfig.output_signal_order)
 
   try {
     const status = await configureHardwareDataStream(nextConfig)
@@ -72,6 +78,17 @@ export async function configureDataStream(
       return dataStreamStatus.value
     }
     throw err
+  }
+}
+
+export async function setWaveformEnabled(enabled: boolean) {
+  waveformEnabled = enabled
+  try {
+    await setHardwareWaveformEnabled(enabled)
+  } catch (err) {
+    if (!isTauriUnavailable(err)) {
+      throw err
+    }
   }
 }
 

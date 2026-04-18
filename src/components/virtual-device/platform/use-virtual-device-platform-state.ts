@@ -25,6 +25,23 @@ const DISPLAY_ACTUAL_HZ_INTERVAL_MS = 250
 const DISPLAY_ACTUAL_HZ_SAMPLE_WINDOW = 5
 const DISPLAY_ACTUAL_HZ_CONFIRMATION_SAMPLES = 3
 
+function normalizeSignalOrder(signals: readonly string[]) {
+  const seen = new Set<string>()
+  const normalized: string[] = []
+
+  for (const signal of signals) {
+    const nextSignal = signal.trim()
+    if (!nextSignal || seen.has(nextSignal)) {
+      continue
+    }
+
+    seen.add(nextSignal)
+    normalized.push(nextSignal)
+  }
+
+  return normalized
+}
+
 export function useVirtualDevicePlatformState() {
   const showGallery = ref(false)
   const canvasInteractionMode = ref<CanvasInteractionMode>('select')
@@ -34,6 +51,7 @@ export function useVirtualDevicePlatformState() {
   const manualDialogOpen = ref(false)
   const manualDeviceId = ref<string | null>(null)
   const reopenInspectorAfterManual = ref(false)
+  const waveformPanelOpen = ref(false)
   const streamBusy = ref(false)
   const streamMessage = ref('')
   const rateInput = ref<string | number>('1000')
@@ -44,17 +62,24 @@ export function useVirtualDevicePlatformState() {
   let displayActualHzTimer: ReturnType<typeof setInterval> | null = null
   const { t } = useI18n()
 
-  const availableSignalCount = computed(() => signalCatalogStore.workbenchSignals.value.length)
   const hasAnySynthesisSignals = signalCatalogStore.hasSignalSourceReport
   const hasStaleSynthesisSignals = signalCatalogStore.hasStaleSignalSourceReport
   const hasSelectedSource = computed(() => Boolean(designContextStore.selectedSource.value))
+  const streamObservableSignals = computed(() => {
+    return normalizeSignalOrder([
+      ...signalCatalogStore.streamInputSignalOrder.value,
+      ...signalCatalogStore.streamOutputSignalOrder.value,
+    ])
+  })
+  const availableSignalCount = computed(() => streamObservableSignals.value.length)
   const streamSignalNames = computed(() => {
-    return signalCatalogStore.workbenchSignals.value
-      .slice(0, STREAM_SIGNAL_LIMIT)
-      .map((signal) => signal.name)
+    return streamObservableSignals.value.slice(0, STREAM_SIGNAL_LIMIT)
   })
   const streamSignalOverflow = computed(() => {
     return Math.max(0, availableSignalCount.value - streamSignalNames.value.length)
+  })
+  const allSignalNameSet = computed(() => {
+    return new Set(signalCatalogStore.signals.value.map((signal) => signal.name))
   })
   const workbenchSignalNameSet = computed(() => {
     return new Set(signalCatalogStore.workbenchSignals.value.map((signal) => signal.name))
@@ -89,9 +114,6 @@ export function useVirtualDevicePlatformState() {
     return !streamBusy.value && isHardwareConnected.value
   })
   const actualHzLabel = computed(() => formatActualHz(displayActualHz.value))
-  const galleryTitle = computed(() => {
-    return showGallery.value ? t('hideComponentGallery') : t('openComponentGallery')
-  })
   const canvasSessionKey = computed(() => String(projectStore.sessionId))
   const effectiveStreamRateHz = computed(() => {
     return Math.max(streamStatus.value.actual_hz, streamStatus.value.target_hz, 1)
@@ -116,9 +138,27 @@ export function useVirtualDevicePlatformState() {
 
     return canvasDevices.value.find((device) => device.id === manualDeviceId.value) ?? null
   })
+  const waveformSignals = computed(() => {
+    const selectedSignals = selectedDeviceIds.value.flatMap((deviceId) => {
+      const device = canvasDevices.value.find((entry) => entry.id === deviceId)
+      return device ? getCanvasDeviceBoundSignals(device) : []
+    })
+    const uniqueSelectedSignals = [
+      ...new Set(selectedSignals.map((signal) => signal?.trim() ?? '')),
+    ].filter((signal) => Boolean(signal) && allSignalNameSet.value.has(signal))
 
+    if (uniqueSelectedSignals.length > 0) {
+      return uniqueSelectedSignals
+    }
+
+    return streamObservableSignals.value
+  })
   function toggleGallery() {
     showGallery.value = !showGallery.value
+  }
+
+  function toggleWaveformPanel() {
+    waveformPanelOpen.value = !waveformPanelOpen.value
   }
 
   async function sanitizeUnsupportedBindings() {
@@ -195,6 +235,7 @@ export function useVirtualDevicePlatformState() {
     manualDialogOpen.value = false
     manualDeviceId.value = null
     reopenInspectorAfterManual.value = false
+    waveformPanelOpen.value = false
     streamBusy.value = false
     streamMessage.value = ''
   }
@@ -450,6 +491,15 @@ export function useVirtualDevicePlatformState() {
   )
 
   watch(
+    [waveformPanelOpen, waveformSignals],
+    ([open, signals]) => {
+      hardwareStore.setWaveformTrackedSignals(open ? signals : [])
+      void hardwareStore.setWaveformEnabled(open).catch(() => undefined)
+    },
+    { immediate: true },
+  )
+
+  watch(
     () => streamStatus.value.target_hz,
     (targetHz, previousTargetHz) => {
       rateInput.value = formatRate(targetHz)
@@ -508,7 +558,6 @@ export function useVirtualDevicePlatformState() {
     closeManualDialog,
     deleteSelectedDevices,
     galleryDropBlockInset,
-    galleryTitle,
     hasAnySynthesisSignals,
     hasCanvasDevices,
     hasSelectedSource,
@@ -533,6 +582,9 @@ export function useVirtualDevicePlatformState() {
     streamSignalOverflow,
     streamStatus,
     toggleGallery,
+    toggleWaveformPanel,
     toggleStream,
+    waveformPanelOpen,
+    waveformSignals,
   }
 }

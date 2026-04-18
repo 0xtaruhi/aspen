@@ -8,6 +8,7 @@ import {
   listenHardwareDataCatalog,
   listenHardwareDataStreamStatus,
   listenHardwareDeviceSnapshot,
+  listenHardwareWaveformBatchBinary,
   listenHardwareStateChanged,
 } from '@/lib/hardware-client'
 import { translate } from '@/lib/i18n'
@@ -20,6 +21,7 @@ import {
   onDeviceSnapshot,
   resetRuntimeViewState,
 } from './hardware-runtime-telemetry'
+import { onWaveformBatchBinary, resetWaveformState } from './hardware-runtime-waveform'
 import { refreshDataStreamStatus, syncState } from './hardware-runtime-sync'
 import {
   applyHardwareState,
@@ -37,6 +39,7 @@ let unlistenDataBatch: UnlistenFn | null = null
 let unlistenDataCatalog: UnlistenFn | null = null
 let unlistenDeviceSnapshot: UnlistenFn | null = null
 let unlistenDataStreamStatus: UnlistenFn | null = null
+let unlistenWaveformBatch: UnlistenFn | null = null
 let startPromise: Promise<void> | null = null
 
 function clearRuntimeListeners() {
@@ -60,6 +63,10 @@ function clearRuntimeListeners() {
     unlistenDeviceSnapshot()
     unlistenDeviceSnapshot = null
   }
+  if (unlistenWaveformBatch) {
+    unlistenWaveformBatch()
+    unlistenWaveformBatch = null
+  }
   if (unlistenHotplug) {
     unlistenHotplug()
     unlistenHotplug = null
@@ -81,6 +88,10 @@ async function registerRuntimeListeners() {
 
   unlistenDataBatch = await listenHardwareDataBatchBinary((batch) => {
     onDataBatchBinary(batch)
+  })
+
+  unlistenWaveformBatch = await listenHardwareWaveformBatchBinary((batch) => {
+    onWaveformBatchBinary(batch)
   })
 
   unlistenDeviceSnapshot = await listenHardwareDeviceSnapshot((snapshot) => {
@@ -121,6 +132,7 @@ export async function start() {
     } catch (err) {
       clearRuntimeListeners()
       resetRuntimeViewState()
+      resetWaveformState()
       if (isTauriUnavailable(err)) {
         isStarted.value = false
         return
@@ -148,6 +160,7 @@ export async function stop() {
   } finally {
     clearRuntimeListeners()
     resetRuntimeViewState()
+    resetWaveformState()
     isStarted.value = false
   }
 }

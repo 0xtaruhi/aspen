@@ -48,6 +48,8 @@ const DATA_DEFAULT_CLOCK_HIGH_DELAY: u16 = 4;
 const DATA_DEFAULT_CLOCK_LOW_DELAY: u16 = 4;
 const DATA_RATE_WINDOW: Duration = Duration::from_millis(1000);
 const DATA_STREAM_STATUS_CHANGED_EVENT: &str = "hardware:data_stream_status_changed";
+const WAVEFORM_EVENT_INTERVAL: Duration = Duration::from_millis(16);
+const WAVEFORM_MAX_SAMPLE_RATE_HZ: f64 = 60_000.0;
 
 struct HardwareDataStreamSession {
     stop_flag: Arc<AtomicBool>,
@@ -58,13 +60,16 @@ struct StreamDecodeBatch {
     sequence: u64,
     generated_at_ms: u64,
     dropped_samples: u64,
+    target_hz: f64,
     actual_hz: f64,
     transfer_rate_hz: f64,
+    waveform_enabled: bool,
     queue_fill: u16,
     queue_capacity: u16,
     batch_cycles: u16,
     words_per_cycle: usize,
     batch_words: usize,
+    write_buffer: Vec<u16>,
     read_buffer: Vec<u16>,
 }
 
@@ -122,6 +127,17 @@ struct PendingSignalBatchMeta {
     queue_fill: u16,
     queue_capacity: u16,
     batch_cycles: u32,
+}
+
+#[derive(Default)]
+struct PendingWaveformBatch {
+    sequence: u64,
+    generated_at_ms: u64,
+    actual_hz: f64,
+    words_per_cycle: usize,
+    batch_cycles: u32,
+    write_buffer: Vec<u16>,
+    read_buffer: Vec<u16>,
 }
 
 pub struct HardwareRuntime {
@@ -243,6 +259,15 @@ impl HardwareRuntime {
         })?;
 
         self.data_stream_status()
+    }
+
+    pub fn set_waveform_enabled(&self, enabled: bool) -> Result<(), String> {
+        let mut guard = self
+            .data_stream_config
+            .lock()
+            .map_err(|_| "failed to acquire data stream config mutex".to_string())?;
+        guard.waveform_enabled = enabled;
+        Ok(())
     }
 
     pub fn start_data_stream(self: &Arc<Self>, app: &AppHandle) -> Result<(), String> {

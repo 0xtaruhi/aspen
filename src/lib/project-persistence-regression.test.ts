@@ -64,6 +64,11 @@ function createProjectSnapshot(canvasDevices: CanvasDeviceSnapshot[]): ProjectSn
       synthesisCache: null,
       implementationCache: null,
       canvasDevices,
+      waveformView: {
+        version: 1,
+        signalOrder: [],
+        signalColorOverrides: {},
+      },
     },
     workspaceView: {
       activeFileId: 'top',

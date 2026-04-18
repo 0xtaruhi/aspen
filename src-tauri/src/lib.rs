@@ -44,6 +44,7 @@ pub fn run() {
             hardware_commands::stop_hardware_data_stream,
             hardware_commands::configure_hardware_data_stream,
             hardware_commands::set_hardware_data_stream_rate,
+            hardware_commands::set_hardware_waveform_enabled,
             hardware_commands::get_hardware_status,
             hardware_commands::program_bitstream,
             hardware_commands::generate_bitstream,

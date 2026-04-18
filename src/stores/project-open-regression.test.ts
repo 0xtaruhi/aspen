@@ -141,6 +141,11 @@ endmodule`
         report: implementationReport,
       },
       canvasDevices: [],
+      waveformView: {
+        version: 1,
+        signalOrder: [],
+        signalColorOverrides: {},
+      },
     },
     workspaceView: {
       activeFileId: 'top-file',
