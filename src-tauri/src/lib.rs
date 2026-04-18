@@ -50,6 +50,7 @@ pub fn run() {
             hardware_commands::run_fde_implementation,
             app_appearance::app_get_system_theme,
             app_appearance::app_set_window_appearance,
+            app_menu::app_set_menu_language,
             project_commands::read_project_file,
             project_commands::write_project_file,
             project_commands::write_project_bundle,
