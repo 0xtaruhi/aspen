@@ -485,20 +485,36 @@ export function useVirtualDevicePlatformState() {
 
   watch(
     [waveformPanelOpen, waveformSignals],
-    ([open, signals]) => {
+    ([open, signals], _previous, onCleanup) => {
       hardwareStore.setWaveformTrackedSignals(open ? signals : [])
-      void hardwareStore.setWaveformEnabled(open).catch((error) => {
-        waveformToggleErrorMessage.value = t('failedToToggleWaveformPanel', {
-          message: getErrorMessage(error),
-        })
-        console.error('Failed to update waveform panel state', error)
-        streamMessage.value = waveformToggleErrorMessage.value
+      let stale = false
+      onCleanup(() => {
+        stale = true
       })
 
-      if (streamMessage.value === waveformToggleErrorMessage.value) {
-        waveformToggleErrorMessage.value = ''
-        streamMessage.value = ''
-      }
+      void hardwareStore
+        .setWaveformEnabled(open)
+        .then(() => {
+          if (stale) {
+            return
+          }
+
+          if (streamMessage.value === waveformToggleErrorMessage.value) {
+            waveformToggleErrorMessage.value = ''
+            streamMessage.value = ''
+          }
+        })
+        .catch((error) => {
+          if (stale) {
+            return
+          }
+
+          waveformToggleErrorMessage.value = t('failedToToggleWaveformPanel', {
+            message: getErrorMessage(error),
+          })
+          console.error('Failed to update waveform panel state', error)
+          streamMessage.value = waveformToggleErrorMessage.value
+        })
     },
     { immediate: true },
   )

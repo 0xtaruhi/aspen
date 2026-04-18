@@ -120,9 +120,12 @@ describe('virtual device platform binding sanitation', () => {
     selectedDeviceIds?: string[]
     streamInputSignalOrder?: string[]
     streamOutputSignalOrder?: string[]
+    keepScope?: boolean
+    setWaveformEnabledImpl?: (enabled: boolean) => Promise<void>
   }) {
     const bindCanvasSignal = vi.fn(async () => undefined)
     const upsertCanvasDevice = vi.fn(async () => undefined)
+    const setWaveformEnabled = vi.fn(options.setWaveformEnabledImpl ?? (async () => undefined))
     const canvasDevices = ref<CanvasDeviceSnapshot[]>(
       options.canvasDevices ?? [createLedDevice('io_led')],
     )
@@ -165,7 +168,7 @@ describe('virtual device platform binding sanitation', () => {
         canvasDevices,
         dataStreamStatus: ref(createDataStreamStatus()),
         state: ref(createHardwareState()),
-        setWaveformEnabled: vi.fn(async () => undefined),
+        setWaveformEnabled,
         setWaveformTrackedSignals: vi.fn(),
         bindCanvasSignal,
         upsertCanvasDevice,
@@ -237,10 +240,16 @@ describe('virtual device platform binding sanitation', () => {
     }
     await Promise.resolve()
     await nextTick()
-    scope.stop()
+
+    const dispose = () => scope.stop()
+    if (!options.keepScope) {
+      dispose()
+    }
 
     return {
       bindCanvasSignal,
+      dispose,
+      setWaveformEnabled,
       state,
       upsertCanvasDevice,
     }
@@ -340,5 +349,56 @@ describe('virtual device platform binding sanitation', () => {
     })
 
     expect(state?.waveformSignals.value).toEqual(['clk'])
+  })
+
+  it('clears waveform toggle errors only after a later toggle succeeds', async () => {
+    let enableCallCount = 0
+    let resolvePendingToggle: () => void = () => undefined
+    const pendingToggle = new Promise<void>((resolve) => {
+      resolvePendingToggle = resolve
+    })
+
+    const { dispose, state } = await instantiateWithCatalog({
+      hasSignalSourceReport: true,
+      hasStaleSignalSourceReport: false,
+      keepScope: true,
+      workbenchSignals: ['led'],
+      allSignals: [
+        { name: 'clk', direction: 'input' },
+        { name: 'led', direction: 'output' },
+      ],
+      streamInputSignalOrder: ['clk'],
+      streamOutputSignalOrder: ['led'],
+      setWaveformEnabledImpl: async () => {
+        enableCallCount += 1
+
+        if (enableCallCount === 2) {
+          throw new Error('toggle failed')
+        }
+
+        if (enableCallCount === 3) {
+          return pendingToggle
+        }
+      },
+    })
+
+    expect(state).not.toBeNull()
+
+    state!.waveformPanelOpen.value = true
+    await nextTick()
+    await Promise.resolve()
+    expect(state!.streamMessage.value).toBe('failedToToggleWaveformPanel')
+
+    state!.waveformPanelOpen.value = false
+    await nextTick()
+    await Promise.resolve()
+    expect(state!.streamMessage.value).toBe('failedToToggleWaveformPanel')
+
+    resolvePendingToggle()
+    await Promise.resolve()
+    await nextTick()
+    expect(state!.streamMessage.value).toBe('')
+
+    dispose()
   })
 })
