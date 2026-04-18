@@ -6,8 +6,8 @@ use vlfd_rs::{HotplugEvent, HotplugEventKind, HotplugOptions, HotplugRegistratio
 use crate::hardware::{
     BitstreamGenerationResult, HardwareActionV1, HardwareDataStreamConfigV1,
     HardwareDataStreamStatusV1, HardwareEventReason, HardwareRuntime, HardwareStateV1,
-    HardwareStatus, ImplementationReportV1, ImplementationRequestV1, SynthesisReportV1,
-    SynthesisRequestV1,
+    HardwareStatus, HardwareWaveformBatchBinaryV1, ImplementationReportV1, ImplementationRequestV1,
+    SynthesisReportV1, SynthesisRequestV1,
 };
 
 #[derive(Default)]
@@ -41,6 +41,14 @@ pub fn hardware_get_data_stream_status(
 }
 
 #[tauri::command]
+pub fn hardware_get_waveform_snapshot(
+    runtime: tauri::State<'_, Arc<HardwareRuntime>>,
+    after_sequence: Option<u64>,
+) -> Result<Option<HardwareWaveformBatchBinaryV1>, String> {
+    runtime.waveform_snapshot(after_sequence)
+}
+
+#[tauri::command]
 pub fn start_hardware_data_stream(
     app: tauri::AppHandle,
     runtime: tauri::State<'_, Arc<HardwareRuntime>>,
@@ -69,6 +77,14 @@ pub fn set_hardware_data_stream_rate(
     rate_hz: f64,
 ) -> Result<HardwareDataStreamStatusV1, String> {
     runtime.set_data_stream_rate(rate_hz)
+}
+
+#[tauri::command]
+pub fn set_hardware_waveform_enabled(
+    runtime: tauri::State<'_, Arc<HardwareRuntime>>,
+    enabled: bool,
+) -> Result<(), String> {
+    runtime.set_waveform_enabled(enabled)
 }
 
 #[tauri::command]

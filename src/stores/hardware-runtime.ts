@@ -13,13 +13,32 @@ import {
   configureDataStream,
   disconnectView,
   setDataStreamRate,
+  setWaveformEnabled,
   startDataStream,
   stopDataStream,
 } from './hardware-runtime-stream'
+import {
+  clearWaveformSamples,
+  resetWaveformState,
+  setWaveformTrackedSignals,
+  waveformLastSequence,
+  waveformRevision,
+  waveformSampleRateHz,
+  waveformTrackedSignals,
+  waveformTracks,
+} from './hardware-runtime-waveform'
 
 export { dispatch, refreshDataStreamStatus, syncState }
 export { start, stop }
-export { configureDataStream, disconnectView, setDataStreamRate, startDataStream, stopDataStream }
+export {
+  configureDataStream,
+  disconnectView,
+  setDataStreamRate,
+  setWaveformEnabled,
+  startDataStream,
+  stopDataStream,
+}
+export { clearWaveformSamples, resetWaveformState, setWaveformTrackedSignals }
 export { isTauriUnavailable }
 
 export const hardwareRuntimeStore = {
@@ -27,6 +46,11 @@ export const hardwareRuntimeStore = {
   signalTelemetry,
   deviceTelemetry,
   dataStreamStatus,
+  waveformTrackedSignals,
+  waveformTracks,
+  waveformRevision,
+  waveformSampleRateHz,
+  waveformLastSequence,
   hotplugLog,
   isStarted,
   dispatch,
@@ -36,8 +60,12 @@ export const hardwareRuntimeStore = {
   refreshDataStreamStatus,
   configureDataStream,
   setDataStreamRate,
+  setWaveformEnabled,
   startDataStream,
   stopDataStream,
   disconnectView,
+  setWaveformTrackedSignals,
+  clearWaveformSamples,
+  resetWaveformState,
   isTauriUnavailable,
 }

@@ -10,5 +10,6 @@ pub use synthesis::run_yosys_synthesis;
 pub use types::{
     BitstreamGenerationResult, HardwareActionV1, HardwareDataStreamConfigV1,
     HardwareDataStreamStatusV1, HardwareEventReason, HardwareStateV1, HardwareStatus,
-    ImplementationReportV1, ImplementationRequestV1, SynthesisReportV1, SynthesisRequestV1,
+    HardwareWaveformBatchBinaryV1, ImplementationReportV1, ImplementationRequestV1,
+    SynthesisReportV1, SynthesisRequestV1,
 };

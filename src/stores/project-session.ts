@@ -33,6 +33,7 @@ import {
   type ProjectSynthesisCacheSnapshot,
 } from './project-model'
 import { projectCanvasStore } from './project-canvas'
+import { projectWaveformStore } from './project-waveform'
 import { findNodeInTree } from './project-tree'
 import { createProjectTemplateState, type ProjectTemplate } from './project-templates'
 
@@ -76,6 +77,7 @@ export interface ProjectSessionStoreLike {
   cachedContentSnapshotJson: string
   contentSnapshotCacheDirty: boolean
   cachedCanvasRevision: number
+  cachedWaveformRevision: number
   savedFileSignatures: FileSignatureMap
   toSnapshot(): ProjectSnapshot
 }
@@ -210,5 +212,6 @@ export function markProjectSessionSaved(
   store.cachedContentSnapshotJson = contentSnapshotJson
   store.contentSnapshotCacheDirty = false
   store.cachedCanvasRevision = projectCanvasStore.snapshotRevision.value
+  store.cachedWaveformRevision = projectWaveformStore.snapshotRevision.value
   store.savedFileSignatures = buildFileSignatureMap(store.files)
 }

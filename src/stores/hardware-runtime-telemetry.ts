@@ -7,6 +7,8 @@ import type {
 
 import { markRaw } from 'vue'
 
+import { trimSignalNames } from '@/lib/signal-names'
+
 import {
   dataStreamStatus,
   deviceTelemetry,
@@ -103,7 +105,7 @@ function scheduleTelemetryFlush() {
   }, 16)
 }
 
-function toSafeNumberFromU64(value: bigint): number {
+export function toSafeNumberFromU64(value: bigint): number {
   const maxSafe = BigInt(Number.MAX_SAFE_INTEGER)
   if (value > maxSafe) {
     return Number.MAX_SAFE_INTEGER
@@ -253,7 +255,7 @@ export function applyDataStreamStatus(status: HardwareDataStreamStatusV1) {
 }
 
 export function configuredSignalOrder(signalNames: readonly string[]) {
-  return signalNames.map((signal) => signal.trim())
+  return trimSignalNames(signalNames)
 }
 
 export function clearStoppedDataStreamTelemetry() {

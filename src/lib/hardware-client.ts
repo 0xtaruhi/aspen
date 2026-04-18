@@ -342,6 +342,11 @@ export interface HardwareDataBatchBinaryV1 {
   payload: number[]
 }
 
+export interface HardwareWaveformBatchBinaryV1 {
+  version: 1
+  payload: number[]
+}
+
 export interface HardwareDataSignalCatalogEntryV1 {
   signal_id: number
   signal: string
@@ -404,6 +409,7 @@ export interface HardwareDataStreamConfigV1 {
   target_hz: number
   input_signal_order: string[]
   output_signal_order: string[]
+  waveform_enabled: boolean
   words_per_cycle: number
   min_batch_cycles: number
   max_wait_us: number
@@ -518,6 +524,14 @@ export async function hardwareGetDataStreamStatus(): Promise<HardwareDataStreamS
   return invoke<HardwareDataStreamStatusV1>('hardware_get_data_stream_status')
 }
 
+export async function hardwareGetWaveformSnapshot(
+  afterSequence?: number,
+): Promise<HardwareWaveformBatchBinaryV1 | null> {
+  return invoke<HardwareWaveformBatchBinaryV1 | null>('hardware_get_waveform_snapshot', {
+    afterSequence,
+  })
+}
+
 export async function configureHardwareDataStream(
   config: HardwareDataStreamConfigV1,
 ): Promise<HardwareDataStreamStatusV1> {
@@ -529,6 +543,12 @@ export async function setHardwareDataStreamRate(
 ): Promise<HardwareDataStreamStatusV1> {
   return invoke<HardwareDataStreamStatusV1>('set_hardware_data_stream_rate', {
     rateHz,
+  })
+}
+
+export async function setHardwareWaveformEnabled(enabled: boolean): Promise<void> {
+  await invoke('set_hardware_waveform_enabled', {
+    enabled,
   })
 }
 

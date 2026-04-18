@@ -8,6 +8,7 @@ import { resolveCurrentProjectPinConstraints } from '../lib/project-constraints'
 
 import { projectStore } from './project'
 import { projectCanvasStore } from './project-canvas'
+import { projectWaveformStore } from './project-waveform'
 
 describe('project save-state regression', () => {
   it('can return to an empty workspace without a default project', () => {
@@ -62,6 +63,47 @@ describe('project save-state regression', () => {
     projectStore.setActiveFile('1')
     expect(projectStore.hasUnsavedChanges).toBe(false)
     expect(toSnapshotSpy).not.toHaveBeenCalled()
+  })
+
+  it('tracks waveform view changes as project content and restores them from snapshots', () => {
+    projectStore.createNewProject('WaveformViewProject', 'blinky')
+
+    expect(projectStore.hasUnsavedChanges).toBe(false)
+
+    projectWaveformStore.setSignalColor('led', '#22c55e')
+    projectWaveformStore.setSignalOrder(['debug', 'led'])
+
+    expect(projectStore.hasUnsavedChanges).toBe(true)
+    expect(projectStore.toSnapshot().content.waveformView).toEqual({
+      version: 1,
+      signalOrder: ['debug', 'led'],
+      signalColorOverrides: {
+        led: '#22c55e',
+      },
+    })
+
+    projectStore.markSaved(null)
+
+    expect(projectStore.hasUnsavedChanges).toBe(false)
+
+    projectStore.loadFromSnapshot({
+      ...projectStore.toSnapshot(),
+      content: {
+        ...projectStore.toSnapshot().content,
+        waveformView: {
+          version: 1,
+          signalOrder: ['clk', 'led'],
+          signalColorOverrides: {
+            clk: '#f59e0b',
+          },
+        },
+      },
+    })
+
+    expect(projectWaveformStore.signalOrder.value).toEqual(['clk', 'led'])
+    expect(projectWaveformStore.signalColorOverrides.value).toEqual({
+      clk: '#f59e0b',
+    })
   })
 
   it('persists the project target device in snapshots', () => {

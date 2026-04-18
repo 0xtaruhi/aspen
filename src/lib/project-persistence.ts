@@ -7,7 +7,11 @@ import type {
   ProjectSynthesisCacheSnapshot,
 } from '@/stores/project'
 
-import { composeProjectSnapshot, splitProjectSnapshot } from '@/stores/project-model'
+import {
+  composeProjectSnapshot,
+  normalizeProjectWaveformViewSnapshot,
+  splitProjectSnapshot,
+} from '@/stores/project-model'
 import { buildLoadedProjectSession } from '@/stores/project-session'
 import { invoke } from '@tauri-apps/api/core'
 
@@ -227,6 +231,7 @@ async function hydrateProjectSnapshot(
     canvasDevices: Array.isArray(metadata.content.canvasDevices)
       ? metadata.content.canvasDevices
       : [],
+    waveformView: normalizeProjectWaveformViewSnapshot(metadata.content.waveformView),
   }
 
   return composeProjectSnapshot(contentSnapshot, {

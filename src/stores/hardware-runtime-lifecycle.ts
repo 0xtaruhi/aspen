@@ -20,6 +20,7 @@ import {
   onDeviceSnapshot,
   resetRuntimeViewState,
 } from './hardware-runtime-telemetry'
+import { resetWaveformState, stopWaveformPolling } from './hardware-runtime-waveform'
 import { refreshDataStreamStatus, syncState } from './hardware-runtime-sync'
 import {
   applyHardwareState,
@@ -120,7 +121,9 @@ export async function start() {
       isStarted.value = true
     } catch (err) {
       clearRuntimeListeners()
+      stopWaveformPolling()
       resetRuntimeViewState()
+      resetWaveformState()
       if (isTauriUnavailable(err)) {
         isStarted.value = false
         return
@@ -147,7 +150,9 @@ export async function stop() {
     await invoke('stop_hotplug_watch')
   } finally {
     clearRuntimeListeners()
+    stopWaveformPolling()
     resetRuntimeViewState()
+    resetWaveformState()
     isStarted.value = false
   }
 }

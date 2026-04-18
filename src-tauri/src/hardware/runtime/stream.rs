@@ -54,11 +54,17 @@ impl HardwareRuntime {
         let (free_buffer_tx, free_buffer_rx) = mpsc::sync_channel(STREAM_BUFFER_POOL_CAPACITY);
         let decode_stop_flag = Arc::clone(&stop_flag);
         let decode_app = app.clone();
+        let decode_runtime = Arc::clone(&self);
         let decode_buffer_tx = free_buffer_tx.clone();
         let decode_handle = match thread::Builder::new()
             .name("aspen-hardware-decode".to_string())
             .spawn(move || {
-                Self::run_decode_loop(decode_app, decode_stop_flag, decode_rx, decode_buffer_tx);
+                decode_runtime.run_decode_loop(
+                    decode_app,
+                    decode_stop_flag,
+                    decode_rx,
+                    decode_buffer_tx,
+                );
             }) {
             Ok(handle) => handle,
             Err(err) => {
@@ -124,6 +130,7 @@ impl HardwareRuntime {
         let mut signal_catalog = SignalCatalog::default();
         let mut pending_catalog_updates: Vec<HardwareDataSignalCatalogEntryV1> = Vec::new();
         let mut signal_ids_signature = 0_u64;
+        let mut waveform_config_generation = self.waveform_config_generation();
         let mut input_encoder_signature = 0_u64;
         let mut output_decoder_signature = 0_u64;
         let mut rate_window_samples = VecDeque::new();
@@ -140,6 +147,7 @@ impl HardwareRuntime {
                 Ok(guard) => guard.clone(),
                 Err(_) => break,
             };
+            let config_generation = self.waveform_config_generation();
 
             let input_signal_order =
                 Self::active_signal_order(&config.input_signal_order, config.words_per_cycle);
@@ -184,9 +192,14 @@ impl HardwareRuntime {
             }
 
             let next_signal_ids_signature = Self::signal_ids_signature(&signal_ids);
-            if signal_ids_signature != next_signal_ids_signature {
+            if signal_ids_signature != next_signal_ids_signature
+                || waveform_config_generation != config_generation
+            {
                 if decode_tx
-                    .send(StreamDecodeMessage::SignalIds(signal_ids.clone()))
+                    .send(StreamDecodeMessage::SignalIds(
+                        signal_ids.clone(),
+                        config_generation,
+                    ))
                     .is_err()
                 {
                     let _ = self.update_data_stream_status(|status| {
@@ -196,6 +209,7 @@ impl HardwareRuntime {
                     break;
                 }
                 signal_ids_signature = next_signal_ids_signature;
+                waveform_config_generation = config_generation;
             }
 
             let words_per_cycle = usize::from(config.words_per_cycle.max(1));
@@ -329,26 +343,31 @@ impl HardwareRuntime {
                 Self::expected_cycles_from_anchor(&schedule_anchor, transfer_finished_at);
             let mut decoded_batches = Vec::with_capacity(transfer_count);
 
-            for ((frame_cycles, frame_words), read_buffer) in batch_cycles
-                .iter()
-                .copied()
-                .zip(batch_words.iter().copied())
-                .zip(read_buffers.into_iter())
-            {
+            for (index, read_buffer) in read_buffers.into_iter().enumerate() {
+                let frame_cycles = batch_cycles[index];
+                let frame_words = batch_words[index];
                 completed_cycles = completed_cycles.saturating_add(frame_cycles as u64);
                 sequence = sequence.saturating_add(1);
                 let remaining_backlog = refreshed_expected_cycles.saturating_sub(completed_cycles);
                 decoded_batches.push(StreamDecodeBatch {
+                    config_generation,
                     sequence,
                     generated_at_ms,
                     dropped_samples,
+                    target_hz: config.target_hz,
                     actual_hz: 0.0,
                     transfer_rate_hz: 0.0,
+                    waveform_enabled: config.waveform_enabled,
                     queue_fill: remaining_backlog.min(u64::from(u16::MAX)) as u16,
                     queue_capacity: queue_capacity.min(usize::from(u16::MAX)) as u16,
                     batch_cycles: frame_cycles.min(usize::from(u16::MAX)) as u16,
                     words_per_cycle,
                     batch_words: frame_words,
+                    write_buffer: if config.waveform_enabled {
+                        write_buffers[index][..frame_words].to_vec()
+                    } else {
+                        Vec::new()
+                    },
                     read_buffer,
                 });
             }
@@ -418,6 +437,7 @@ impl HardwareRuntime {
     }
 
     fn run_decode_loop(
+        self: Arc<Self>,
         app: AppHandle,
         stop_flag: Arc<AtomicBool>,
         decode_rx: Receiver<StreamDecodeMessage>,
@@ -428,6 +448,8 @@ impl HardwareRuntime {
         let mut pending_signal_updates: HashMap<u16, HardwareDataAggregate> = HashMap::new();
         let mut pending_signal_meta = PendingSignalBatchMeta::default();
         let mut last_signal_publish_at = Instant::now();
+        let mut waveform_generation = self.waveform_config_generation();
+        let mut pending_waveform = PendingWaveformBatch::default();
         let mut output_decoders: Vec<Box<dyn OutputDeviceDecoder>> = Vec::new();
         let mut device_snapshot_interval = DEVICE_SNAPSHOT_INTERVAL;
         let mut last_device_snapshot_at = Instant::now();
@@ -435,12 +457,15 @@ impl HardwareRuntime {
 
         loop {
             match decode_rx.recv_timeout(DEVICE_SNAPSHOT_INTERVAL) {
-                Ok(StreamDecodeMessage::SignalIds(next_signal_ids)) => {
+                Ok(StreamDecodeMessage::SignalIds(next_signal_ids, next_generation)) => {
                     signal_ids = next_signal_ids;
+                    waveform_generation = next_generation;
                     last_latest_by_signal.clear();
                     pending_signal_updates.clear();
                     pending_signal_meta = PendingSignalBatchMeta::default();
+                    pending_waveform = PendingWaveformBatch::default();
                     last_signal_publish_at = Instant::now();
+                    let _ = self.clear_waveform_snapshot();
                 }
                 Ok(StreamDecodeMessage::DeviceSnapshotInterval(next_interval)) => {
                     device_snapshot_interval = next_interval;
@@ -478,6 +503,62 @@ impl HardwareRuntime {
                             &mut output_decoders,
                         );
                         output_dirty = true;
+                    }
+
+                    if batch.config_generation != waveform_generation {
+                        waveform_generation = batch.config_generation;
+                        pending_waveform = PendingWaveformBatch::default();
+                    }
+
+                    if batch.config_generation != self.waveform_config_generation() {
+                        let _ = self.clear_waveform_snapshot();
+                    } else if batch.waveform_enabled
+                        && batch.batch_words > 0
+                        && (!batch.write_buffer.is_empty() || !batch.read_buffer.is_empty())
+                    {
+                        let waveform_rate_hz = if batch.actual_hz > 0.0 {
+                            batch.actual_hz
+                        } else {
+                            batch.target_hz
+                        };
+
+                        if pending_waveform.words_per_cycle > 0
+                            && pending_waveform.words_per_cycle != batch.words_per_cycle
+                        {
+                            pending_waveform = PendingWaveformBatch::default();
+                            let _ = self.clear_waveform_snapshot();
+                        }
+
+                        let sampled_cycles = Self::append_waveform_samples(
+                            &mut pending_waveform.write_buffer,
+                            &mut pending_waveform.read_buffer,
+                            &batch.write_buffer[..batch.batch_words],
+                            &batch.read_buffer[..batch.batch_words],
+                            batch.words_per_cycle,
+                        );
+
+                        if sampled_cycles > 0 {
+                            pending_waveform.sequence = batch.sequence;
+                            pending_waveform.generated_at_ms = batch.generated_at_ms;
+                            pending_waveform.actual_hz = waveform_rate_hz;
+                            pending_waveform.words_per_cycle = batch.words_per_cycle;
+                            Self::trim_waveform_buffers_to_tail(
+                                &mut pending_waveform.write_buffer,
+                                &mut pending_waveform.read_buffer,
+                                batch.words_per_cycle,
+                                WAVEFORM_MAX_EXACT_BATCH_CYCLES,
+                            );
+                            pending_waveform.batch_cycles = (pending_waveform.write_buffer.len()
+                                / batch.words_per_cycle)
+                                .min(usize::from(u16::MAX))
+                                as u32;
+                            let _ = self.publish_waveform_snapshot(&pending_waveform);
+                        }
+                    } else if !pending_waveform.write_buffer.is_empty()
+                        || !pending_waveform.read_buffer.is_empty()
+                    {
+                        pending_waveform = PendingWaveformBatch::default();
+                        let _ = self.clear_waveform_snapshot();
                     }
 
                     if last_signal_publish_at.elapsed() >= SIGNAL_TELEMETRY_INTERVAL {
@@ -614,6 +695,86 @@ impl HardwareRuntime {
         }
 
         Ok(())
+    }
+
+    pub(super) fn append_waveform_samples(
+        pending_write_buffer: &mut Vec<u16>,
+        pending_read_buffer: &mut Vec<u16>,
+        write_buffer: &[u16],
+        read_buffer: &[u16],
+        words_per_cycle: usize,
+    ) -> usize {
+        if words_per_cycle == 0 {
+            return 0;
+        }
+
+        let mut sampled_cycles = 0usize;
+        for (write_cycle, read_cycle) in write_buffer
+            .chunks_exact(words_per_cycle)
+            .zip(read_buffer.chunks_exact(words_per_cycle))
+        {
+            pending_write_buffer.extend_from_slice(write_cycle);
+            pending_read_buffer.extend_from_slice(read_cycle);
+            sampled_cycles = sampled_cycles.saturating_add(1);
+        }
+
+        sampled_cycles
+    }
+
+    pub(super) fn trim_waveform_buffers_to_tail(
+        pending_write_buffer: &mut Vec<u16>,
+        pending_read_buffer: &mut Vec<u16>,
+        words_per_cycle: usize,
+        max_cycles: usize,
+    ) -> bool {
+        if words_per_cycle == 0 || max_cycles == 0 {
+            return false;
+        }
+
+        let max_words = words_per_cycle.saturating_mul(max_cycles);
+        if pending_write_buffer.len() <= max_words || pending_read_buffer.len() <= max_words {
+            return false;
+        }
+
+        let drop_words = pending_write_buffer.len().saturating_sub(max_words);
+        *pending_write_buffer = pending_write_buffer.split_off(drop_words);
+        *pending_read_buffer = pending_read_buffer.split_off(drop_words);
+        true
+    }
+
+    fn publish_waveform_snapshot(
+        &self,
+        pending_waveform: &PendingWaveformBatch,
+    ) -> Result<(), String> {
+        if pending_waveform.write_buffer.is_empty()
+            || pending_waveform.read_buffer.is_empty()
+            || pending_waveform.words_per_cycle == 0
+            || pending_waveform.batch_cycles == 0
+        {
+            return self.clear_waveform_snapshot();
+        }
+
+        let payload = Self::encode_binary_waveform_batch(
+            pending_waveform.sequence,
+            pending_waveform.generated_at_ms,
+            pending_waveform.actual_hz,
+            pending_waveform.words_per_cycle.min(usize::from(u16::MAX)) as u16,
+            pending_waveform.batch_cycles.min(u32::from(u16::MAX)) as u16,
+            WAVEFORM_BATCH_FLAG_REPLACE_EXISTING,
+            &pending_waveform.write_buffer,
+            &pending_waveform.read_buffer,
+        );
+        if payload.is_empty() {
+            return self.clear_waveform_snapshot();
+        }
+
+        self.set_latest_waveform_batch(
+            pending_waveform.sequence,
+            crate::hardware::types::HardwareWaveformBatchBinaryV1 {
+                version: 1,
+                payload,
+            },
+        )
     }
 
     fn sleep_for_batch(

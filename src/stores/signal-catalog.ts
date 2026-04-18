@@ -102,11 +102,10 @@ const currentConstraintAssignments = computed(() => {
 })
 
 const streamInputSignalOrder = computed(() => {
-  return buildPhysicalSignalSlotOrder(
-    targetBoard.value,
-    currentConstraintAssignments.value,
-    'input',
-  )
+  return [
+    ...buildPhysicalSignalSlotOrder(targetBoard.value, currentConstraintAssignments.value, 'input'),
+    ...buildPhysicalSignalSlotOrder(targetBoard.value, currentConstraintAssignments.value, 'clock'),
+  ]
 })
 
 const streamOutputSignalOrder = computed(() => {

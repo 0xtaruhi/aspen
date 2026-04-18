@@ -205,6 +205,43 @@ impl HardwareRuntime {
         payload
     }
 
+    pub(super) fn encode_binary_waveform_batch(
+        sequence: u64,
+        generated_at_ms: u64,
+        actual_hz: f64,
+        words_per_cycle: u16,
+        batch_cycles: u16,
+        flags: u16,
+        write_buffer: &[u16],
+        read_buffer: &[u16],
+    ) -> Vec<u8> {
+        // Snapshot payloads must contain an exact tail for both channels. If the
+        // buffered words do not match the declared geometry, drop the payload.
+        let expected_words = usize::from(words_per_cycle).saturating_mul(usize::from(batch_cycles));
+        if write_buffer.len() != expected_words || read_buffer.len() != expected_words {
+            return Vec::new();
+        }
+
+        let mut payload = Vec::with_capacity(32 + (write_buffer.len() + read_buffer.len()) * 2);
+        payload.extend_from_slice(&sequence.to_le_bytes());
+        payload.extend_from_slice(&generated_at_ms.to_le_bytes());
+        payload.extend_from_slice(&actual_hz.to_le_bytes());
+        payload.extend_from_slice(&words_per_cycle.to_le_bytes());
+        payload.extend_from_slice(&batch_cycles.to_le_bytes());
+        payload.extend_from_slice(&2u16.to_le_bytes());
+        payload.extend_from_slice(&flags.to_le_bytes());
+
+        for word in write_buffer {
+            payload.extend_from_slice(&word.to_le_bytes());
+        }
+
+        for word in read_buffer {
+            payload.extend_from_slice(&word.to_le_bytes());
+        }
+
+        payload
+    }
+
     pub(super) fn emit_pending_signal_updates(
         app: &AppHandle,
         last_latest_by_signal: &mut HashMap<u16, bool>,

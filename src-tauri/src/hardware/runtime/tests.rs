@@ -7,7 +7,7 @@ use crate::hardware::types::{
     CanvasDeviceBindingSnapshot, CanvasDeviceConfigSnapshot, CanvasDeviceDataSnapshot,
     CanvasDeviceSnapshot, CanvasDeviceStateSnapshot, CanvasDeviceType, CanvasVgaColorMode,
     HardwareCanvasDeviceTelemetryEntry, HardwareCanvasDeviceTelemetryPayload,
-    HardwareDataStreamConfigV1, HardwareSignalAggregateByIdV1,
+    HardwareDataStreamConfigV1, HardwareSignalAggregateByIdV1, HardwareWaveformBatchBinaryV1,
 };
 
 use super::telemetry::BinaryBatchHeader;
@@ -190,6 +190,100 @@ fn binary_batch_header_carries_stream_rates() {
     assert_eq!(u16::from_le_bytes(payload[42..44].try_into().unwrap()), 64);
     assert_eq!(u16::from_le_bytes(payload[44..46].try_into().unwrap()), 16);
     assert_eq!(u16::from_le_bytes(payload[46..48].try_into().unwrap()), 1);
+}
+
+#[test]
+fn binary_waveform_batch_carries_raw_words() {
+    let payload = HardwareRuntime::encode_binary_waveform_batch(
+        12,
+        345,
+        2_500.0,
+        2,
+        3,
+        0,
+        &[0x1001, 0x1002, 0x1003, 0x1004, 0x1005, 0x1006],
+        &[0x0001, 0x0002, 0x0003, 0x0004, 0x0005, 0x0006],
+    );
+
+    assert_eq!(payload.len(), 32 + 24);
+    assert_eq!(u64::from_le_bytes(payload[0..8].try_into().unwrap()), 12);
+    assert_eq!(u64::from_le_bytes(payload[8..16].try_into().unwrap()), 345);
+    assert_eq!(
+        f64::from_le_bytes(payload[16..24].try_into().unwrap()),
+        2_500.0
+    );
+    assert_eq!(u16::from_le_bytes(payload[24..26].try_into().unwrap()), 2);
+    assert_eq!(u16::from_le_bytes(payload[26..28].try_into().unwrap()), 3);
+    assert_eq!(u16::from_le_bytes(payload[28..30].try_into().unwrap()), 2);
+    assert_eq!(u16::from_le_bytes(payload[30..32].try_into().unwrap()), 0);
+    assert_eq!(
+        u16::from_le_bytes(payload[32..34].try_into().unwrap()),
+        0x1001
+    );
+    assert_eq!(
+        u16::from_le_bytes(payload[42..44].try_into().unwrap()),
+        0x1006
+    );
+    assert_eq!(
+        u16::from_le_bytes(payload[44..46].try_into().unwrap()),
+        0x0001
+    );
+    assert_eq!(
+        u16::from_le_bytes(payload[54..56].try_into().unwrap()),
+        0x0006
+    );
+}
+
+#[test]
+fn binary_waveform_batch_rejects_mismatched_buffer_lengths() {
+    let payload = HardwareRuntime::encode_binary_waveform_batch(
+        12,
+        345,
+        2_500.0,
+        2,
+        3,
+        0,
+        &[0x1001, 0x1002],
+        &[0x0001, 0x0002, 0x0003, 0x0004, 0x0005, 0x0006],
+    );
+
+    assert!(payload.is_empty());
+}
+
+#[test]
+fn append_waveform_samples_preserves_contiguous_cycles() {
+    let mut pending_write = Vec::new();
+    let mut pending_read = Vec::new();
+    let sampled_cycles = HardwareRuntime::append_waveform_samples(
+        &mut pending_write,
+        &mut pending_read,
+        &[0x1001, 0x1002, 0x1003, 0x1004, 0x1005, 0x1006],
+        &[0x0001, 0x0002, 0x0003, 0x0004, 0x0005, 0x0006],
+        2,
+    );
+
+    assert_eq!(sampled_cycles, 3);
+    assert_eq!(
+        pending_write,
+        vec![0x1001, 0x1002, 0x1003, 0x1004, 0x1005, 0x1006]
+    );
+    assert_eq!(
+        pending_read,
+        vec![0x0001, 0x0002, 0x0003, 0x0004, 0x0005, 0x0006]
+    );
+}
+
+#[test]
+fn trim_waveform_buffers_to_tail_keeps_latest_contiguous_cycles() {
+    let mut pending_write = vec![0x1001, 0x1002, 0x1003, 0x1004, 0x1005, 0x1006];
+    let mut pending_read = vec![0x0001, 0x0002, 0x0003, 0x0004, 0x0005, 0x0006];
+
+    let trimmed =
+        HardwareRuntime::trim_waveform_buffers_to_tail(&mut pending_write, &mut pending_read, 2, 2);
+
+    assert!(trimmed);
+    assert_eq!(pending_write, vec![0x1003, 0x1004, 0x1005, 0x1006]);
+    assert_eq!(pending_read, vec![0x0003, 0x0004, 0x0005, 0x0006]);
 }
 
 #[test]
@@ -410,6 +504,58 @@ fn configure_data_stream_propagates_vericomm_clock_delays() {
             .vericomm_clock_low_delay,
         13
     );
+}
+
+#[test]
+fn set_waveform_enabled_updates_stream_config() {
+    let runtime = HardwareRuntime::default();
+    runtime
+        .set_latest_waveform_batch(
+            7,
+            HardwareWaveformBatchBinaryV1 {
+                version: 1,
+                payload: vec![1, 2, 3],
+            },
+        )
+        .expect("waveform snapshot update should succeed");
+
+    runtime
+        .set_waveform_enabled(true)
+        .expect("waveform flag update should succeed");
+
+    assert!(runtime.data_stream_config.lock().unwrap().waveform_enabled);
+    assert!(runtime
+        .waveform_snapshot(None)
+        .expect("waveform snapshot lookup should succeed")
+        .is_none());
+}
+
+#[test]
+fn waveform_snapshot_returns_none_when_sequence_is_unchanged() {
+    let runtime = HardwareRuntime::default();
+    let batch = HardwareWaveformBatchBinaryV1 {
+        version: 1,
+        payload: vec![9, 8, 7],
+    };
+
+    runtime
+        .set_latest_waveform_batch(12, batch.clone())
+        .expect("waveform snapshot update should succeed");
+
+    let latest = runtime
+        .waveform_snapshot(None)
+        .expect("waveform snapshot lookup should succeed");
+    assert_eq!(latest.unwrap().payload, batch.payload);
+
+    assert!(runtime
+        .waveform_snapshot(Some(12))
+        .expect("waveform snapshot lookup should succeed")
+        .is_none());
+
+    let restarted_stream_snapshot = runtime
+        .waveform_snapshot(Some(999))
+        .expect("waveform snapshot lookup should succeed");
+    assert_eq!(restarted_stream_snapshot.unwrap().payload, batch.payload);
 }
 
 #[test]

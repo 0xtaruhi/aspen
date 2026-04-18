@@ -79,6 +79,32 @@ function createLedDevice(signal: string): CanvasDeviceSnapshot {
   }
 }
 
+function createDipSwitchDevice(signals: string[]): CanvasDeviceSnapshot {
+  return {
+    id: 'dip-1',
+    type: 'dip_switch_bank',
+    x: 20,
+    y: 20,
+    label: 'DIP',
+    state: {
+      is_on: false,
+      color: null,
+      binding: {
+        kind: 'slots',
+        signals,
+      },
+      config: {
+        kind: 'dip_switch_bank',
+        width: Math.max(1, signals.length),
+      },
+      data: {
+        kind: 'bitset',
+        bits: Array.from({ length: signals.length }, () => false),
+      },
+    },
+  }
+}
+
 describe('virtual device platform binding sanitation', () => {
   beforeEach(() => {
     vi.resetModules()
@@ -89,10 +115,20 @@ describe('virtual device platform binding sanitation', () => {
     hasSignalSourceReport: boolean
     hasStaleSignalSourceReport: boolean
     workbenchSignals: string[]
+    allSignals?: Array<{ name: string; direction: 'input' | 'output' | 'inout' }>
+    canvasDevices?: CanvasDeviceSnapshot[]
+    selectedDeviceIds?: string[]
+    streamInputSignalOrder?: string[]
+    streamOutputSignalOrder?: string[]
+    keepScope?: boolean
+    setWaveformEnabledImpl?: (enabled: boolean) => Promise<void>
   }) {
     const bindCanvasSignal = vi.fn(async () => undefined)
     const upsertCanvasDevice = vi.fn(async () => undefined)
-    const canvasDevices = ref<CanvasDeviceSnapshot[]>([createLedDevice('io_led')])
+    const setWaveformEnabled = vi.fn(options.setWaveformEnabledImpl ?? (async () => undefined))
+    const canvasDevices = ref<CanvasDeviceSnapshot[]>(
+      options.canvasDevices ?? [createLedDevice('io_led')],
+    )
 
     vi.doMock('@/lib/canvas-devices', async () => {
       const actual =
@@ -132,6 +168,8 @@ describe('virtual device platform binding sanitation', () => {
         canvasDevices,
         dataStreamStatus: ref(createDataStreamStatus()),
         state: ref(createHardwareState()),
+        setWaveformEnabled,
+        setWaveformTrackedSignals: vi.fn(),
         bindCanvasSignal,
         upsertCanvasDevice,
         setDataStreamRate: vi.fn(async () => undefined),
@@ -163,37 +201,56 @@ describe('virtual device platform binding sanitation', () => {
       },
     }))
 
+    const signalEntries = (
+      options.allSignals ??
+      options.workbenchSignals.map((name) => ({
+        name,
+        direction: 'output' as const,
+      }))
+    ).map(({ name, direction }) => ({
+      name,
+      bitName: name,
+      assignedPin: null,
+      assignedPinRole: null,
+      boardFunction: null,
+      bindingLabel: name,
+      direction,
+      width: '',
+    }))
+
     vi.doMock('@/stores/signal-catalog', () => ({
       signalCatalogStore: {
+        signals: ref(signalEntries),
         workbenchSignals: ref(
-          options.workbenchSignals.map((name) => ({
-            name,
-            bitName: name,
-            assignedPin: null,
-            assignedPinRole: null,
-            boardFunction: null,
-            bindingLabel: name,
-            direction: 'output',
-            width: '',
-          })),
+          signalEntries.filter((signal) => options.workbenchSignals.includes(signal.name)),
         ),
         hasSignalSourceReport: ref(options.hasSignalSourceReport),
         hasStaleSignalSourceReport: ref(options.hasStaleSignalSourceReport),
+        streamInputSignalOrder: ref(options.streamInputSignalOrder ?? []),
+        streamOutputSignalOrder: ref(options.streamOutputSignalOrder ?? []),
       },
     }))
 
     const { useVirtualDevicePlatformState } = await import('./use-virtual-device-platform-state')
 
     const scope = effectScope()
-    scope.run(() => {
-      useVirtualDevicePlatformState()
-    })
+    const state = scope.run(() => useVirtualDevicePlatformState()) ?? null
+    if (state && options.selectedDeviceIds) {
+      state.selectedDeviceIds.value = [...options.selectedDeviceIds]
+    }
     await Promise.resolve()
     await nextTick()
-    scope.stop()
+
+    const dispose = () => scope.stop()
+    if (!options.keepScope) {
+      dispose()
+    }
 
     return {
       bindCanvasSignal,
+      dispose,
+      setWaveformEnabled,
+      state,
       upsertCanvasDevice,
     }
   }
@@ -218,5 +275,165 @@ describe('virtual device platform binding sanitation', () => {
 
     expect(bindCanvasSignal).not.toHaveBeenCalled()
     expect(upsertCanvasDevice).not.toHaveBeenCalled()
+  })
+
+  it('includes clock-like input signals in default waveform candidates', async () => {
+    const { state } = await instantiateWithCatalog({
+      hasSignalSourceReport: true,
+      hasStaleSignalSourceReport: false,
+      workbenchSignals: ['led'],
+      allSignals: [
+        { name: 'clk', direction: 'input' },
+        { name: 'led', direction: 'output' },
+      ],
+      streamInputSignalOrder: ['clk'],
+      streamOutputSignalOrder: ['led'],
+    })
+
+    expect(state?.waveformSignals.value).toEqual(['clk', 'led'])
+  })
+
+  it('keeps clock-like input signals visible when a single-signal device is selected', async () => {
+    const selectedDevice = createLedDevice('led')
+    const { state } = await instantiateWithCatalog({
+      hasSignalSourceReport: true,
+      hasStaleSignalSourceReport: false,
+      workbenchSignals: ['led'],
+      allSignals: [
+        { name: 'clk', direction: 'input' },
+        { name: 'led', direction: 'output' },
+      ],
+      canvasDevices: [selectedDevice],
+      selectedDeviceIds: [selectedDevice.id],
+      streamInputSignalOrder: ['clk'],
+      streamOutputSignalOrder: ['led'],
+    })
+
+    expect(state?.waveformSignals.value).toEqual(['clk', 'led'])
+  })
+
+  it('keeps clock-like input signals in the waveform list when a device is selected', async () => {
+    const selectedDevice = createDipSwitchDevice(['sig_a', 'sig_b'])
+    const { state } = await instantiateWithCatalog({
+      hasSignalSourceReport: true,
+      hasStaleSignalSourceReport: false,
+      workbenchSignals: ['sig_a', 'sig_b'],
+      allSignals: [
+        { name: 'clk', direction: 'input' },
+        { name: 'sig_a', direction: 'output' },
+        { name: 'sig_b', direction: 'output' },
+      ],
+      canvasDevices: [selectedDevice],
+      selectedDeviceIds: [selectedDevice.id],
+      streamInputSignalOrder: ['clk'],
+      streamOutputSignalOrder: ['sig_a', 'sig_b'],
+    })
+
+    expect(state?.waveformSignals.value).toEqual(['clk', 'sig_a', 'sig_b'])
+  })
+
+  it('shows only clock-like input signals when the selected device has no bound ports', async () => {
+    const selectedDevice = createLedDevice('')
+    const { state } = await instantiateWithCatalog({
+      hasSignalSourceReport: true,
+      hasStaleSignalSourceReport: false,
+      workbenchSignals: ['led'],
+      allSignals: [
+        { name: 'clk', direction: 'input' },
+        { name: 'led', direction: 'output' },
+      ],
+      canvasDevices: [selectedDevice],
+      selectedDeviceIds: [selectedDevice.id],
+      streamInputSignalOrder: ['clk'],
+      streamOutputSignalOrder: ['led'],
+    })
+
+    expect(state?.waveformSignals.value).toEqual(['clk'])
+  })
+
+  it('clears waveform toggle errors only after a later toggle succeeds', async () => {
+    let enableCallCount = 0
+    let resolvePendingToggle: () => void = () => undefined
+    const pendingToggle = new Promise<void>((resolve) => {
+      resolvePendingToggle = resolve
+    })
+
+    const { dispose, state } = await instantiateWithCatalog({
+      hasSignalSourceReport: true,
+      hasStaleSignalSourceReport: false,
+      keepScope: true,
+      workbenchSignals: ['led'],
+      allSignals: [
+        { name: 'clk', direction: 'input' },
+        { name: 'led', direction: 'output' },
+      ],
+      streamInputSignalOrder: ['clk'],
+      streamOutputSignalOrder: ['led'],
+      setWaveformEnabledImpl: async () => {
+        enableCallCount += 1
+
+        if (enableCallCount === 2) {
+          throw new Error('toggle failed')
+        }
+
+        if (enableCallCount === 3) {
+          return pendingToggle
+        }
+      },
+    })
+
+    expect(state).not.toBeNull()
+
+    state!.waveformPanelOpen.value = true
+    await nextTick()
+    await Promise.resolve()
+    expect(state!.streamMessage.value).toBe('failedToToggleWaveformPanel')
+
+    state!.waveformPanelOpen.value = false
+    await nextTick()
+    await Promise.resolve()
+    expect(state!.streamMessage.value).toBe('failedToToggleWaveformPanel')
+
+    resolvePendingToggle()
+    await Promise.resolve()
+    await nextTick()
+    expect(state!.streamMessage.value).toBe('')
+
+    dispose()
+  })
+
+  it('does not toggle waveform runtime again when only the visible signal set changes', async () => {
+    const firstDevice = createLedDevice('sig_a')
+    const secondDevice = createLedDevice('sig_b')
+    const { dispose, setWaveformEnabled, state } = await instantiateWithCatalog({
+      hasSignalSourceReport: true,
+      hasStaleSignalSourceReport: false,
+      keepScope: true,
+      workbenchSignals: ['sig_a', 'sig_b'],
+      allSignals: [
+        { name: 'clk', direction: 'input' },
+        { name: 'sig_a', direction: 'output' },
+        { name: 'sig_b', direction: 'output' },
+      ],
+      canvasDevices: [firstDevice, secondDevice],
+      selectedDeviceIds: [firstDevice.id],
+      streamInputSignalOrder: ['clk'],
+      streamOutputSignalOrder: ['sig_a', 'sig_b'],
+    })
+
+    expect(state).not.toBeNull()
+    expect(setWaveformEnabled).toHaveBeenCalledTimes(1)
+
+    state!.waveformPanelOpen.value = true
+    await nextTick()
+    await Promise.resolve()
+    expect(setWaveformEnabled).toHaveBeenCalledTimes(2)
+
+    state!.selectedDeviceIds.value = [secondDevice.id]
+    await nextTick()
+    await Promise.resolve()
+    expect(setWaveformEnabled).toHaveBeenCalledTimes(2)
+
+    dispose()
   })
 })

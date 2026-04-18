@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Hand, LayoutGrid, Play, ScanSearch, Square, Trash2 } from 'lucide-vue-next'
+import { Activity, Hand, LayoutGrid, Play, ScanSearch, Square, Trash2 } from 'lucide-vue-next'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -9,9 +9,7 @@ import { useI18n } from '@/lib/i18n'
 import type { CanvasInteractionMode } from './types'
 
 const props = defineProps<{
-  showGallery: boolean
   interactionMode: CanvasInteractionMode
-  galleryTitle: string
   streamRunning: boolean
   configuredSignalCount: number
   visibleSignalCount: number
@@ -23,6 +21,7 @@ const props = defineProps<{
   rateInput: string | number
   canApplySettings: boolean
   canToggleStream: boolean
+  waveformPanelOpen: boolean
 }>()
 
 const emit = defineEmits<{
@@ -33,6 +32,7 @@ const emit = defineEmits<{
   (e: 'clearCanvas'): void
   (e: 'applySettings'): void
   (e: 'toggleStream'): void
+  (e: 'toggleWaveformPanel'): void
 }>()
 
 const { t } = useI18n()
@@ -45,7 +45,6 @@ const { t } = useI18n()
         type="button"
         size="icon"
         variant="outline"
-        :title="props.galleryTitle"
         :aria-label="t('toggleComponentGallery')"
         @pointerdown.stop
         @click.stop="emit('toggleGallery')"
@@ -56,7 +55,6 @@ const { t } = useI18n()
         type="button"
         size="icon"
         :variant="props.interactionMode === 'pan' ? 'default' : 'outline'"
-        :title="t('canvasPanTool')"
         :aria-label="t('canvasPanTool')"
         :aria-pressed="props.interactionMode === 'pan'"
         @click="emit('update:interactionMode', 'pan')"
@@ -67,7 +65,6 @@ const { t } = useI18n()
         type="button"
         size="icon"
         :variant="props.interactionMode === 'select' ? 'default' : 'outline'"
-        :title="t('canvasSelectTool')"
         :aria-label="t('canvasSelectTool')"
         :aria-pressed="props.interactionMode === 'select'"
         @click="emit('update:interactionMode', 'select')"
@@ -82,6 +79,16 @@ const { t } = useI18n()
     </Badge>
     <Badge variant="outline">{{ props.actualHzLabel }}</Badge>
     <div class="ml-auto flex items-center gap-2">
+      <Button
+        type="button"
+        size="icon"
+        :variant="props.waveformPanelOpen ? 'default' : 'outline'"
+        :aria-label="t('toggleWaveformPanel')"
+        :aria-pressed="props.waveformPanelOpen"
+        @click="emit('toggleWaveformPanel')"
+      >
+        <Activity class="h-4 w-4" />
+      </Button>
       <Button
         v-if="props.selectedDeviceCount > 0"
         type="button"
