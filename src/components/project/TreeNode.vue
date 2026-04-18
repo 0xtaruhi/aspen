@@ -71,10 +71,16 @@ function selectNode() {
   projectStore.setSelectedNode(props.node.id)
 }
 
+function getFolderNode() {
+  const node = projectStore.findNode(props.node.id)
+  return node?.type === 'folder' ? node : null
+}
+
 function toggleFolder() {
-  if (props.node.type === 'folder') {
+  const folderNode = getFolderNode()
+  if (folderNode) {
     selectNode()
-    props.node.isOpen = !props.node.isOpen
+    folderNode.isOpen = !folderNode.isOpen
   }
 }
 
@@ -90,8 +96,9 @@ function handlePrimaryAction() {
     return
   }
 
-  if (props.node.type === 'folder') {
-    props.node.isOpen = !props.node.isOpen
+  const folderNode = getFolderNode()
+  if (folderNode) {
+    folderNode.isOpen = !folderNode.isOpen
     return
   }
 
@@ -258,8 +265,9 @@ function handlePointerMove(event: PointerEvent) {
   }
 
   const mode = resolveDropMode(event)
-  if (mode === 'inside' && props.node.type === 'folder' && !props.node.isOpen) {
-    props.node.isOpen = true
+  const folderNode = getFolderNode()
+  if (mode === 'inside' && folderNode && !folderNode.isOpen) {
+    folderNode.isOpen = true
   }
   emit('pointer-move-node', props.node.id, mode)
 }
