@@ -102,6 +102,22 @@ describe('hardware runtime waveform', () => {
     expect(waveformStore.waveformLastSequence.value).toBe(7)
   })
 
+  it('advances the last sequence even when no tracked signals are active', async () => {
+    const waveformStore = await loadWaveformStore()
+
+    waveformStore.onWaveformBatchBinary(
+      createWaveformBatch({
+        sequence: 8n,
+        generatedAtMs: 180n,
+        actualHz: 2_000,
+        wordsPerCycle: 1,
+        outputCycles: [[0b1]],
+      }),
+    )
+
+    expect(waveformStore.waveformLastSequence.value).toBe(8)
+  })
+
   it('maps tracked signals to the correct bit slot across multiple words', async () => {
     const outputSignalOrder = Array.from({ length: 17 }, (_, index) =>
       index === 16 ? 'sig_q' : `unused_${index}`,
@@ -126,6 +142,25 @@ describe('hardware runtime waveform', () => {
     const track = waveformStore.waveformTracks.value.sig_q
 
     expect(readTrackSamples(track)).toEqual([1, 0])
+  })
+
+  it('advances the last sequence when tracked signals do not map to the current slot order', async () => {
+    const waveformStore = await loadWaveformStore()
+
+    waveformStore.setWaveformSignalOrder(['sig_a'])
+    waveformStore.setWaveformTrackedSignals(['sig_b'])
+    waveformStore.onWaveformBatchBinary(
+      createWaveformBatch({
+        sequence: 10n,
+        generatedAtMs: 260n,
+        actualHz: 1_000,
+        wordsPerCycle: 1,
+        outputCycles: [[0b1]],
+      }),
+    )
+
+    expect(waveformStore.waveformLastSequence.value).toBe(10)
+    expect(readTrackSamples(waveformStore.waveformTracks.value.sig_b)).toEqual([])
   })
 
   it('reads input signals from the write buffer in bidirectional waveform batches', async () => {

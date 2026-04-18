@@ -215,6 +215,13 @@ impl HardwareRuntime {
         write_buffer: &[u16],
         read_buffer: &[u16],
     ) -> Vec<u8> {
+        // Snapshot payloads must contain an exact tail for both channels. If the
+        // buffered words do not match the declared geometry, drop the payload.
+        let expected_words = usize::from(words_per_cycle).saturating_mul(usize::from(batch_cycles));
+        if write_buffer.len() != expected_words || read_buffer.len() != expected_words {
+            return Vec::new();
+        }
+
         let mut payload = Vec::with_capacity(32 + (write_buffer.len() + read_buffer.len()) * 2);
         payload.extend_from_slice(&sequence.to_le_bytes());
         payload.extend_from_slice(&generated_at_ms.to_le_bytes());

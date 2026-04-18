@@ -39,6 +39,7 @@ export function useVirtualDevicePlatformState() {
   const waveformPanelOpen = ref(false)
   const streamBusy = ref(false)
   const streamMessage = ref('')
+  const waveformToggleErrorMessage = ref('')
   const rateInput = ref<string | number>('1000')
   const displayActualHz = ref(0)
   const displayActualHzSamples: number[] = []
@@ -486,7 +487,18 @@ export function useVirtualDevicePlatformState() {
     [waveformPanelOpen, waveformSignals],
     ([open, signals]) => {
       hardwareStore.setWaveformTrackedSignals(open ? signals : [])
-      void hardwareStore.setWaveformEnabled(open).catch(() => undefined)
+      void hardwareStore.setWaveformEnabled(open).catch((error) => {
+        waveformToggleErrorMessage.value = t('failedToToggleWaveformPanel', {
+          message: getErrorMessage(error),
+        })
+        console.error('Failed to update waveform panel state', error)
+        streamMessage.value = waveformToggleErrorMessage.value
+      })
+
+      if (streamMessage.value === waveformToggleErrorMessage.value) {
+        waveformToggleErrorMessage.value = ''
+        streamMessage.value = ''
+      }
     },
     { immediate: true },
   )

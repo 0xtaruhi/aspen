@@ -299,6 +299,7 @@
   "failedRefreshStreamStatus": "刷新流状态失败：{message}",
   "failedToStartStream": "启动数据流失败：{message}",
   "failedToStopStream": "停止数据流失败：{message}",
+  "failedToToggleWaveformPanel": "更新波形面板失败：{message}",
   "failedToUpdateSignalMap": "更新信号映射失败：{message}",
   "hardwareRuntimeUnavailable": "硬件运行时不可用：{message}",
   "workbenchRequiresSynthesisDescription": "请先运行综合，加载用于 Workbench 绑定和实时 IO 的权威顶层端口目录。",

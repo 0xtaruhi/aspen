@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex,
     },
     thread,
@@ -57,6 +57,7 @@ struct HardwareDataStreamSession {
 }
 
 struct StreamDecodeBatch {
+    config_generation: u64,
     sequence: u64,
     generated_at_ms: u64,
     dropped_samples: u64,
@@ -74,7 +75,7 @@ struct StreamDecodeBatch {
 }
 
 enum StreamDecodeMessage {
-    SignalIds(Vec<u16>),
+    SignalIds(Vec<u16>, u64),
     DeviceSnapshotInterval(Duration),
     OutputDecoders(Vec<Box<dyn OutputDeviceDecoder>>),
     Batch(StreamDecodeBatch),
@@ -150,6 +151,7 @@ pub struct HardwareRuntime {
     state: Mutex<HardwareStateV1>,
     data_stream: Mutex<Option<HardwareDataStreamSession>>,
     data_stream_config: Arc<Mutex<HardwareDataStreamConfigV1>>,
+    waveform_config_generation: AtomicU64,
     data_stream_status: Mutex<HardwareDataStreamStatusV1>,
     latest_waveform_batch: Mutex<Option<LatestWaveformBatch>>,
     app_handle: Mutex<Option<AppHandle>>,
@@ -161,6 +163,7 @@ impl Default for HardwareRuntime {
             state: Mutex::new(HardwareStateV1::default()),
             data_stream: Mutex::new(None),
             data_stream_config: Arc::new(Mutex::new(HardwareDataStreamConfigV1::default())),
+            waveform_config_generation: AtomicU64::new(1),
             data_stream_status: Mutex::new(HardwareDataStreamStatusV1 {
                 running: false,
                 target_hz: DATA_DEFAULT_TARGET_HZ,
@@ -250,6 +253,16 @@ impl HardwareRuntime {
         Ok(())
     }
 
+    pub fn waveform_config_generation(&self) -> u64 {
+        self.waveform_config_generation.load(Ordering::Relaxed)
+    }
+
+    fn invalidate_waveform_snapshot(&self) -> Result<(), String> {
+        self.waveform_config_generation
+            .fetch_add(1, Ordering::Relaxed);
+        self.clear_waveform_snapshot()
+    }
+
     pub fn configure_data_stream(
         &self,
         config: HardwareDataStreamConfigV1,
@@ -264,7 +277,7 @@ impl HardwareRuntime {
             *guard = config.clone();
         }
 
-        self.clear_waveform_snapshot()?;
+        self.invalidate_waveform_snapshot()?;
 
         self.update_data_stream_status(|status| {
             status.target_hz = config.target_hz;
@@ -321,7 +334,7 @@ impl HardwareRuntime {
             guard.waveform_enabled = enabled;
         }
 
-        self.clear_waveform_snapshot()
+        self.invalidate_waveform_snapshot()
     }
 
     pub fn start_data_stream(self: &Arc<Self>, app: &AppHandle) -> Result<(), String> {
@@ -350,7 +363,7 @@ impl HardwareRuntime {
             let _ = session.handle.join();
         }
 
-        self.clear_waveform_snapshot()?;
+        self.invalidate_waveform_snapshot()?;
 
         {
             let mut guard = self
@@ -419,7 +432,7 @@ impl HardwareRuntime {
             let _ = session.handle.join();
         }
 
-        self.clear_waveform_snapshot()?;
+        self.invalidate_waveform_snapshot()?;
 
         self.update_data_stream_status(|status| {
             status.running = false;
@@ -445,7 +458,7 @@ impl HardwareRuntime {
             state.last_error = Some("Device disconnected".to_string());
             state.op_id = None;
         })?;
-        self.clear_waveform_snapshot()?;
+        self.invalidate_waveform_snapshot()?;
         Ok(state)
     }
 

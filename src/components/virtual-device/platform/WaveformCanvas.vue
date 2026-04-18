@@ -5,7 +5,7 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { isLikelyClockPort } from '@/lib/project-constraints'
 
-import { getAlignedWaveformTrackSample } from './waveform-helpers'
+import { clamp, getAlignedWaveformTrackSample, getWaveformPixelStep } from './waveform-helpers'
 
 type WaveformCanvasMetrics = {
   followLatest: boolean
@@ -63,10 +63,6 @@ let pointerSession: {
   startSamplesPerPixel: number
   cursorTarget: 'a' | 'b'
 } | null = null
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max)
-}
 
 function getLaneHeight() {
   return props.signals.length * LANE_HEIGHT + TOP_PAD + BOTTOM_PAD
@@ -431,8 +427,10 @@ function drawSignalLane(
 
   let previousY = lowY
   let hasPath = false
+  const pixelStep = getWaveformPixelStep(viewport.samplesPerPixel, window.devicePixelRatio || 1)
 
-  for (let x = 0; x < viewport.innerWidth; x += 1) {
+  for (let x = 0; x < viewport.innerWidth; x += pixelStep) {
+    const pixelWidth = Math.min(pixelStep, viewport.innerWidth - x)
     const rangeStart = Math.floor(viewport.startSample + x * viewport.samplesPerPixel)
     if (rangeStart >= viewport.maxTrackLength) {
       break
@@ -442,21 +440,16 @@ function drawSignalLane(
       viewport.maxTrackLength,
       Math.max(
         rangeStart + 1,
-        Math.ceil(viewport.startSample + (x + 1) * viewport.samplesPerPixel),
+        Math.ceil(viewport.startSample + (x + pixelWidth) * viewport.samplesPerPixel),
       ),
     )
 
-    const first = getAlignedWaveformTrackSample(signal, track, rangeStart, viewport.maxTrackLength)
+    const first = getAlignedWaveformTrackSample(track, rangeStart, viewport.maxTrackLength)
     let last = first
     let changed = false
 
     for (let sampleIndex = rangeStart + 1; sampleIndex < rangeEnd; sampleIndex += 1) {
-      const value = getAlignedWaveformTrackSample(
-        signal,
-        track,
-        sampleIndex,
-        viewport.maxTrackLength,
-      )
+      const value = getAlignedWaveformTrackSample(track, sampleIndex, viewport.maxTrackLength)
       if (value !== last) {
         changed = true
       }
@@ -477,9 +470,10 @@ function drawSignalLane(
     }
 
     if (last) {
-      context.fillRect(x, highY, 1, lowY - highY)
+      context.fillRect(x, highY, pixelWidth, lowY - highY)
     }
 
+    context.lineTo(x + pixelWidth, currentY)
     previousY = currentY
   }
 

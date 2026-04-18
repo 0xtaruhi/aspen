@@ -95,16 +95,20 @@ export async function configureDataStream(
 }
 
 export async function setWaveformEnabled(enabled: boolean) {
-  waveformEnabled = enabled
+  const previousEnabled = waveformEnabled
   try {
     await setHardwareWaveformEnabled(enabled)
+    waveformEnabled = enabled
     syncWaveformPolling()
   } catch (err) {
     if (isTauriUnavailable(err)) {
+      waveformEnabled = enabled
       stopWaveformPolling()
       return
     }
 
+    waveformEnabled = previousEnabled
+    syncWaveformPolling()
     throw err
   }
 }

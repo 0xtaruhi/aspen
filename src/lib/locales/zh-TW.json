@@ -299,6 +299,7 @@
   "failedRefreshStreamStatus": "更新資料流狀態失敗：{message}",
   "failedToStartStream": "啟動資料流失敗：{message}",
   "failedToStopStream": "停止資料流失敗：{message}",
+  "failedToToggleWaveformPanel": "更新波形面板失敗：{message}",
   "failedToUpdateSignalMap": "更新訊號對映失敗：{message}",
   "hardwareRuntimeUnavailable": "硬體執行時不可用：{message}",
   "workbenchRequiresSynthesisDescription": "請先執行綜合，載入供 Workbench 綁定與即時 I/O 使用的頂層埠清單。",

@@ -17,7 +17,7 @@ import { hardwareStore } from '@/stores/hardware'
 import { projectWaveformStore } from '@/stores/project-waveform'
 
 import WaveformCanvas from './WaveformCanvas.vue'
-import { orderWaveformSignals } from './waveform-helpers'
+import { clamp, orderWaveformSignals } from './waveform-helpers'
 
 type WaveformCanvasHandle = {
   clearCursors: () => void
@@ -122,10 +122,6 @@ const cursorDeltaLabel = computed(() => {
 
   return formatWaveformSpan(Math.abs(cursorASample - cursorBSample))
 })
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max)
-}
 
 function getMaxPanelHeight() {
   if (typeof window === 'undefined') {
@@ -285,6 +281,8 @@ function startResize(event: PointerEvent) {
 
   window.addEventListener('pointermove', handleResizeMove)
   window.addEventListener('pointerup', stopResize, { once: true })
+  window.addEventListener('pointercancel', stopResize, { once: true })
+  window.addEventListener('pointerleave', stopResize, { once: true })
 }
 
 function handleResizeMove(event: PointerEvent) {
@@ -302,6 +300,9 @@ function handleResizeMove(event: PointerEvent) {
 function stopResize() {
   resizeSession = null
   window.removeEventListener('pointermove', handleResizeMove)
+  window.removeEventListener('pointerup', stopResize)
+  window.removeEventListener('pointercancel', stopResize)
+  window.removeEventListener('pointerleave', stopResize)
 }
 
 function startSignalListResize(event: PointerEvent) {
@@ -312,6 +313,8 @@ function startSignalListResize(event: PointerEvent) {
 
   window.addEventListener('pointermove', handleSignalListResizeMove)
   window.addEventListener('pointerup', stopSignalListResize, { once: true })
+  window.addEventListener('pointercancel', stopSignalListResize, { once: true })
+  window.addEventListener('pointerleave', stopSignalListResize, { once: true })
 }
 
 function handleSignalListResizeMove(event: PointerEvent) {
@@ -329,6 +332,9 @@ function handleSignalListResizeMove(event: PointerEvent) {
 function stopSignalListResize() {
   signalListResizeSession = null
   window.removeEventListener('pointermove', handleSignalListResizeMove)
+  window.removeEventListener('pointerup', stopSignalListResize)
+  window.removeEventListener('pointercancel', stopSignalListResize)
+  window.removeEventListener('pointerleave', stopSignalListResize)
 }
 
 onBeforeUnmount(() => {

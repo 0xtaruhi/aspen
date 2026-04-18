@@ -235,6 +235,22 @@ fn binary_waveform_batch_carries_raw_words() {
 }
 
 #[test]
+fn binary_waveform_batch_rejects_mismatched_buffer_lengths() {
+    let payload = HardwareRuntime::encode_binary_waveform_batch(
+        12,
+        345,
+        2_500.0,
+        2,
+        3,
+        0,
+        &[0x1001, 0x1002],
+        &[0x0001, 0x0002, 0x0003, 0x0004, 0x0005, 0x0006],
+    );
+
+    assert!(payload.is_empty());
+}
+
+#[test]
 fn append_waveform_samples_preserves_contiguous_cycles() {
     let mut pending_write = Vec::new();
     let mut pending_read = Vec::new();

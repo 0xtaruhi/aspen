@@ -1,8 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 
 import { projectWaveformStore } from './project-waveform'
 
 describe('project waveform store', () => {
+  beforeEach(() => {
+    projectWaveformStore.resetState()
+  })
+
   it('normalizes persisted colors and order', () => {
     projectWaveformStore.setSnapshot({
       version: 1,

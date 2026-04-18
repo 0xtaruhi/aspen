@@ -2,17 +2,26 @@ import { describe, expect, it } from 'vitest'
 
 import type { WaveformTrackBuffer } from '@/stores/hardware-runtime-waveform'
 
-import { getAlignedWaveformTrackSample, orderWaveformSignals } from './waveform-helpers'
+import {
+  getAlignedWaveformTrackSample,
+  getWaveformPixelStep,
+  orderWaveformSignals,
+} from './waveform-helpers'
 
-function createTrack(samples: number[]): WaveformTrackBuffer {
-  const buffer = new Uint8Array(16)
-  buffer.set(samples)
+function createTrack(samples: number[], bufferSize = 16): WaveformTrackBuffer {
+  const buffer = new Uint8Array(bufferSize)
+  const tailSamples = samples.slice(-bufferSize)
+  const writeIndex = samples.length % buffer.length
+
+  tailSamples.forEach((sample, index) => {
+    buffer[(writeIndex - tailSamples.length + index + buffer.length) % buffer.length] = sample ?? 0
+  })
 
   return {
     signal: 'test',
     samples: buffer,
-    writeIndex: samples.length % buffer.length,
-    length: samples.length,
+    writeIndex,
+    length: Math.min(samples.length, buffer.length),
     sequence: 1,
     updatedAtMs: 0,
   }
@@ -20,20 +29,27 @@ function createTrack(samples: number[]): WaveformTrackBuffer {
 
 describe('waveform helpers', () => {
   it('returns stored samples for non-clock signals', () => {
-    const track = createTrack([1, 0, 1])
+    const track = createTrack([1, 0, 1, 0, 1, 1, 0], 4)
 
-    expect(getAlignedWaveformTrackSample('led', track, 0, 3)).toBe(1)
-    expect(getAlignedWaveformTrackSample('led', track, 1, 3)).toBe(0)
-    expect(getAlignedWaveformTrackSample('led', track, 2, 3)).toBe(1)
+    expect(getAlignedWaveformTrackSample(track, 0, 4)).toBe(0)
+    expect(getAlignedWaveformTrackSample(track, 1, 4)).toBe(1)
+    expect(getAlignedWaveformTrackSample(track, 2, 4)).toBe(1)
+    expect(getAlignedWaveformTrackSample(track, 3, 4)).toBe(0)
   })
 
   it('returns stored samples unchanged for clock-like signals', () => {
-    const track = createTrack([0, 0, 0, 0])
+    const track = createTrack([1, 0, 1, 0, 1, 0], 4)
 
-    expect(getAlignedWaveformTrackSample('clk', track, 0, 4)).toBe(0)
-    expect(getAlignedWaveformTrackSample('clk', track, 1, 4)).toBe(0)
-    expect(getAlignedWaveformTrackSample('clk', track, 2, 4)).toBe(0)
-    expect(getAlignedWaveformTrackSample('clk', track, 3, 4)).toBe(0)
+    expect(getAlignedWaveformTrackSample(track, 0, 4)).toBe(1)
+    expect(getAlignedWaveformTrackSample(track, 1, 4)).toBe(0)
+    expect(getAlignedWaveformTrackSample(track, 2, 4)).toBe(1)
+    expect(getAlignedWaveformTrackSample(track, 3, 4)).toBe(0)
+  })
+
+  it('increases pixel step on denser waveforms', () => {
+    expect(getWaveformPixelStep(1, 1)).toBe(1)
+    expect(getWaveformPixelStep(6, 2)).toBe(3)
+    expect(getWaveformPixelStep(40, 2)).toBe(8)
   })
 
   it('puts clock-like signals first by default', () => {

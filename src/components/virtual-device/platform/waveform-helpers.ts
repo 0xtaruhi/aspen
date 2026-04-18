@@ -1,6 +1,10 @@
 import { isLikelyClockPort } from '@/lib/project-constraints'
 import type { WaveformTrackBuffer } from '@/stores/hardware-runtime-waveform'
 
+export function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
+}
+
 export function getWaveformTrackSample(track: WaveformTrackBuffer, logicalIndex: number) {
   if (logicalIndex < 0 || logicalIndex >= track.length) {
     return 0
@@ -12,8 +16,11 @@ export function getWaveformTrackSample(track: WaveformTrackBuffer, logicalIndex:
   return track.samples[sampleIndex] ?? 0
 }
 
+export function getWaveformPixelStep(samplesPerPixel: number, devicePixelRatio: number) {
+  return clamp(Math.floor(Math.max(samplesPerPixel, devicePixelRatio) / 2), 1, 8)
+}
+
 export function getAlignedWaveformTrackSample(
-  _signal: string,
   track: WaveformTrackBuffer,
   globalSampleIndex: number,
   maxTrackLength: number,

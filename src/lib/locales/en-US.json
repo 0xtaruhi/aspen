@@ -299,6 +299,7 @@
   "failedRefreshStreamStatus": "Failed to refresh stream status: {message}",
   "failedToStartStream": "Failed to start stream: {message}",
   "failedToStopStream": "Failed to stop stream: {message}",
+  "failedToToggleWaveformPanel": "Failed to update waveform panel: {message}",
   "failedToUpdateSignalMap": "Failed to update signal map: {message}",
   "hardwareRuntimeUnavailable": "Hardware runtime unavailable: {message}",
   "workbenchRequiresSynthesisDescription": "Run Synthesis first to load the authoritative top-level port catalog for Workbench bindings and live IO.",

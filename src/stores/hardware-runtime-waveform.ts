@@ -5,6 +5,8 @@ import { normalizeUniqueSignalNames, trimSignalNames } from '@/lib/signal-names'
 import { markRaw, ref, shallowRef } from 'vue'
 
 import { isTauriUnavailable } from './hardware-runtime-errors'
+import { dataStreamStatus } from './hardware-runtime-state'
+import { toSafeNumberFromU64 } from './hardware-runtime-telemetry'
 
 export type WaveformTrackBuffer = {
   signal: string
@@ -23,6 +25,8 @@ const WAVEFORM_ACTIVE_POLL_INTERVAL_MS = 33
 const WAVEFORM_IDLE_POLL_INTERVAL_MS = 100
 const WAVEFORM_ERROR_RETRY_INTERVAL_MS = 250
 const WAVEFORM_MAX_ERROR_RETRY_INTERVAL_MS = 1_000
+const WAVEFORM_POLL_ERROR_THRESHOLD = 3
+const WAVEFORM_POLL_ERROR_PREFIX = 'Waveform polling failed: '
 
 export const waveformTrackedSignals = ref<string[]>([])
 export const waveformTracks = shallowRef<Record<string, WaveformTrackBuffer>>({})
@@ -135,6 +139,17 @@ function clearWaveformPollTimer() {
   }
 }
 
+function clearWaveformPollError() {
+  if (dataStreamStatus.value.last_error?.startsWith(WAVEFORM_POLL_ERROR_PREFIX)) {
+    dataStreamStatus.value.last_error = null
+  }
+}
+
+function setWaveformPollError(error: unknown) {
+  const detail = error instanceof Error ? error.message : String(error)
+  dataStreamStatus.value.last_error = `${WAVEFORM_POLL_ERROR_PREFIX}${detail}`
+}
+
 function scheduleWaveformPoll(delayMs = WAVEFORM_ACTIVE_POLL_INTERVAL_MS) {
   if (!waveformPollingEnabled || waveformPollInFlight || waveformPollTimer !== null) {
     return
@@ -159,11 +174,13 @@ async function pollWaveformSnapshot(generation: number) {
     const batch = await hardwareGetWaveformSnapshot(waveformLastSequence.value || undefined)
     if (!waveformPollingEnabled || generation !== waveformPollGeneration || !batch) {
       waveformPollErrorCount = 0
+      clearWaveformPollError()
       return
     }
 
     onWaveformBatchBinary(batch)
     waveformPollErrorCount = 0
+    clearWaveformPollError()
     nextDelayMs = WAVEFORM_ACTIVE_POLL_INTERVAL_MS
   } catch (err) {
     waveformPollErrorCount += 1
@@ -173,14 +190,16 @@ async function pollWaveformSnapshot(generation: number) {
     if (isTauriUnavailable(err)) {
       nextDelayMs = WAVEFORM_MAX_ERROR_RETRY_INTERVAL_MS
     }
+
+    if (waveformPollErrorCount >= WAVEFORM_POLL_ERROR_THRESHOLD) {
+      setWaveformPollError(err)
+    }
   } finally {
     waveformPollInFlight = false
 
-    if (!waveformPollingEnabled) {
-      return
+    if (waveformPollingEnabled) {
+      scheduleWaveformPoll(generation === waveformPollGeneration ? nextDelayMs : 0)
     }
-
-    scheduleWaveformPoll(generation === waveformPollGeneration ? nextDelayMs : 0)
   }
 }
 
@@ -188,6 +207,7 @@ export function startWaveformPolling() {
   waveformPollingEnabled = true
   waveformPollGeneration += 1
   waveformPollErrorCount = 0
+  clearWaveformPollError()
   clearWaveformPollTimer()
   scheduleWaveformPoll(0)
 }
@@ -196,6 +216,7 @@ export function stopWaveformPolling() {
   waveformPollingEnabled = false
   waveformPollGeneration += 1
   waveformPollErrorCount = 0
+  clearWaveformPollError()
   clearWaveformPollTimer()
 }
 
@@ -232,6 +253,7 @@ export function resetWaveformState() {
   waveformLastSequence.value = 0
   waveformInputSignalOrder.value = []
   waveformOutputSignalOrder.value = []
+  clearWaveformPollError()
 }
 
 export function clearWaveformSamples() {
@@ -241,13 +263,10 @@ export function clearWaveformSamples() {
   waveformRevision.value += 1
   waveformSampleRateHz.value = 0
   waveformLastSequence.value = 0
+  clearWaveformPollError()
 }
 
 export function onWaveformBatchBinary(batch: HardwareWaveformBatchBinaryV1) {
-  if (waveformTrackedSignals.value.length === 0) {
-    return
-  }
-
   const bytes = new Uint8Array(batch.payload)
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   if (view.byteLength < LEGACY_WAVEFORM_HEADER_BYTES) {
@@ -255,9 +274,9 @@ export function onWaveformBatchBinary(batch: HardwareWaveformBatchBinaryV1) {
   }
 
   let offset = 0
-  const sequence = Number(view.getBigUint64(offset, true))
+  const sequence = toSafeNumberFromU64(view.getBigUint64(offset, true))
   offset += 8
-  const generatedAtMs = Number(view.getBigUint64(offset, true))
+  const generatedAtMs = toSafeNumberFromU64(view.getBigUint64(offset, true))
   offset += 8
   const actualHz = view.getFloat64(offset, true)
   offset += 8
@@ -265,6 +284,11 @@ export function onWaveformBatchBinary(batch: HardwareWaveformBatchBinaryV1) {
   offset += 2
   const batchCycles = view.getUint16(offset, true)
   offset += 2
+  waveformLastSequence.value = sequence
+
+  if (waveformTrackedSignals.value.length === 0) {
+    return
+  }
 
   if (wordsPerCycle <= 0 || batchCycles <= 0) {
     return
@@ -330,6 +354,5 @@ export function onWaveformBatchBinary(batch: HardwareWaveformBatchBinaryV1) {
   }
 
   waveformSampleRateHz.value = actualHz > 0 ? actualHz : waveformSampleRateHz.value
-  waveformLastSequence.value = sequence
   waveformRevision.value += 1
 }

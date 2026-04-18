@@ -105,7 +105,7 @@ function scheduleTelemetryFlush() {
   }, 16)
 }
 
-function toSafeNumberFromU64(value: bigint): number {
+export function toSafeNumberFromU64(value: bigint): number {
   const maxSafe = BigInt(Number.MAX_SAFE_INTEGER)
   if (value > maxSafe) {
     return Number.MAX_SAFE_INTEGER
