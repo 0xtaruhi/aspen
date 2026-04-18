@@ -1,11 +1,14 @@
+import type { ThemeMode } from '@/lib/theme'
+
 import { reactive } from 'vue'
 
+import { syncNativeMenuLanguage } from '@/lib/native-language'
+import { setThemeMode } from '@/lib/theme'
 import {
   applyThemeAccentColor,
   DEFAULT_THEME_ACCENT,
   normalizeThemeAccentColor,
-} from '../lib/theme-accent'
-import { setThemeMode, type ThemeMode } from '../lib/theme'
+} from '@/lib/theme-accent'
 
 export type AppLanguage = 'en-US' | 'zh-CN' | 'zh-TW'
 
@@ -158,11 +161,13 @@ const state = reactive<SettingsState>({
 applyLanguage(state.language)
 setThemeMode(state.themeMode)
 applyThemeAccentColor(state.themeAccent)
+void syncNativeMenuLanguage(state.language)
 
 export const settingsStore = {
   state,
 
   update(patch: Partial<SettingsState>) {
+    const previousLanguage = state.language
     Object.assign(state, patch)
     state.themeMode = normalizeThemeMode(state.themeMode)
     state.themeAccent = normalizeThemeAccentColor(state.themeAccent)
@@ -171,6 +176,9 @@ export const settingsStore = {
     setThemeMode(state.themeMode)
     applyThemeAccentColor(state.themeAccent)
     writeStoredSettings(state)
+    if (previousLanguage !== state.language) {
+      void syncNativeMenuLanguage(state.language)
+    }
   },
 
   setLanguage(language: AppLanguage) {

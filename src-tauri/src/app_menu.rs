@@ -217,29 +217,29 @@ fn detect_menu_language() -> MenuLanguage {
         .unwrap_or(MenuLanguage::English)
 }
 
-pub fn menu_action_for_id(menu_id: &str) -> Option<&'static str> {
-    match menu_id {
-        MENU_ACTION_NEW_PROJECT => Some("new-project"),
-        MENU_ACTION_OPEN_PROJECT => Some("open-project"),
-        MENU_ACTION_CLOSE_PROJECT => Some("close-project"),
-        MENU_ACTION_SAVE_PROJECT => Some("save-project"),
-        MENU_ACTION_SAVE_PROJECT_AS => Some("save-project-as"),
-        MENU_ACTION_OPEN_SETTINGS => Some("open-settings"),
-        _ => None,
-    }
-}
-
-pub fn build_app_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
+fn app_display_name<R: Runtime>(app: &AppHandle<R>) -> String {
     let package_info = app.package_info();
     let config = app.config();
-    let app_name = package_info.name.clone();
-    let strings = MenuStrings::for_language(detect_menu_language());
+    config
+        .product_name
+        .clone()
+        .unwrap_or_else(|| package_info.name.clone())
+}
+
+fn build_app_menu_for_language<R: Runtime>(
+    app: &AppHandle<R>,
+    language: MenuLanguage,
+) -> tauri::Result<Menu<R>> {
+    let package_info = app.package_info();
+    let config = app.config();
+    let app_name = app_display_name(app);
+    let strings = MenuStrings::for_language(language);
     let about_label = strings.about_label(&app_name);
     let hide_label = strings.hide_label(&app_name);
     let quit_label = strings.quit_label(&app_name);
 
     let about_metadata = AboutMetadata {
-        name: Some(package_info.name.clone()),
+        name: Some(app_name.clone()),
         version: Some(package_info.version.to_string()),
         copyright: config.bundle.copyright.clone(),
         authors: config
@@ -366,6 +366,48 @@ pub fn build_app_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> 
     )
 }
 
+pub fn menu_action_for_id(menu_id: &str) -> Option<&'static str> {
+    match menu_id {
+        MENU_ACTION_NEW_PROJECT => Some("new-project"),
+        MENU_ACTION_OPEN_PROJECT => Some("open-project"),
+        MENU_ACTION_CLOSE_PROJECT => Some("close-project"),
+        MENU_ACTION_SAVE_PROJECT => Some("save-project"),
+        MENU_ACTION_SAVE_PROJECT_AS => Some("save-project-as"),
+        MENU_ACTION_OPEN_SETTINGS => Some("open-settings"),
+        _ => None,
+    }
+}
+
+pub fn build_app_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
+    build_app_menu_for_language(app, detect_menu_language())
+}
+
+pub fn set_app_menu_language<R: Runtime>(
+    app: &AppHandle<R>,
+    locale_identifier: Option<&str>,
+) -> tauri::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        let language = locale_identifier
+            .map(menu_language_for_locale_identifier)
+            .unwrap_or_else(detect_menu_language);
+        let menu = build_app_menu_for_language(app, language)?;
+        let _ = app.set_menu(menu)?;
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, locale_identifier);
+        Ok(())
+    }
+}
+
+#[tauri::command]
+pub fn app_set_menu_language(app: AppHandle, language: String) -> Result<(), String> {
+    set_app_menu_language(&app, Some(language.as_str())).map_err(|err| err.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{menu_action_for_id, menu_language_for_locale_identifier, MenuLanguage};
@@ -421,5 +463,21 @@ mod tests {
             Some("close-project")
         );
         assert_eq!(menu_action_for_id("menu.unknown"), None);
+    }
+
+    #[test]
+    fn maps_frontend_language_codes_to_supported_menu_languages() {
+        assert_eq!(
+            menu_language_for_locale_identifier("zh-CN"),
+            MenuLanguage::SimplifiedChinese
+        );
+        assert_eq!(
+            menu_language_for_locale_identifier("zh-TW"),
+            MenuLanguage::TraditionalChinese
+        );
+        assert_eq!(
+            menu_language_for_locale_identifier("en-US"),
+            MenuLanguage::English
+        );
     }
 }
