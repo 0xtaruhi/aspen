@@ -1,7 +1,10 @@
 import type { HardwareWaveformBatchBinaryV1 } from '@/lib/hardware-client'
+import { hardwareGetWaveformSnapshot } from '@/lib/hardware-client'
 import { normalizeUniqueSignalNames, trimSignalNames } from '@/lib/signal-names'
 
 import { markRaw, ref, shallowRef } from 'vue'
+
+import { isTauriUnavailable } from './hardware-runtime-errors'
 
 export type WaveformTrackBuffer = {
   signal: string
@@ -15,6 +18,11 @@ export type WaveformTrackBuffer = {
 const WAVEFORM_TRACK_CAPACITY = 262_144
 const LEGACY_WAVEFORM_HEADER_BYTES = 28
 const BIDIRECTIONAL_WAVEFORM_HEADER_BYTES = 32
+const WAVEFORM_FLAG_REPLACE_EXISTING = 0x0001
+const WAVEFORM_ACTIVE_POLL_INTERVAL_MS = 33
+const WAVEFORM_IDLE_POLL_INTERVAL_MS = 100
+const WAVEFORM_ERROR_RETRY_INTERVAL_MS = 250
+const WAVEFORM_MAX_ERROR_RETRY_INTERVAL_MS = 1_000
 
 export const waveformTrackedSignals = ref<string[]>([])
 export const waveformTracks = shallowRef<Record<string, WaveformTrackBuffer>>({})
@@ -23,6 +31,11 @@ export const waveformSampleRateHz = ref(0)
 export const waveformLastSequence = ref(0)
 const waveformInputSignalOrder = ref<string[]>([])
 const waveformOutputSignalOrder = ref<string[]>([])
+let waveformPollingEnabled = false
+let waveformPollGeneration = 0
+let waveformPollInFlight = false
+let waveformPollTimer: ReturnType<typeof setTimeout> | null = null
+let waveformPollErrorCount = 0
 
 type WaveformTrackedSlot = {
   signal: string
@@ -53,6 +66,13 @@ function appendSignalSample(
   track.length = Math.min(track.length + 1, track.samples.length)
   track.sequence = sequence
   track.updatedAtMs = updatedAtMs
+}
+
+function resetTrackSamples(track: WaveformTrackBuffer) {
+  track.writeIndex = 0
+  track.length = 0
+  track.sequence = 0
+  track.updatedAtMs = 0
 }
 
 function buildTrackedSlots(wordsPerCycle: number) {
@@ -108,6 +128,77 @@ function trackedSignalSlotMapFromOrder(signalOrder: readonly string[], wordsPerC
   return slotBySignal
 }
 
+function clearWaveformPollTimer() {
+  if (waveformPollTimer !== null) {
+    clearTimeout(waveformPollTimer)
+    waveformPollTimer = null
+  }
+}
+
+function scheduleWaveformPoll(delayMs = WAVEFORM_ACTIVE_POLL_INTERVAL_MS) {
+  if (!waveformPollingEnabled || waveformPollInFlight || waveformPollTimer !== null) {
+    return
+  }
+
+  waveformPollTimer = setTimeout(() => {
+    waveformPollTimer = null
+    void pollWaveformSnapshot(waveformPollGeneration)
+  }, delayMs)
+}
+
+async function pollWaveformSnapshot(generation: number) {
+  if (!waveformPollingEnabled || waveformPollInFlight || generation !== waveformPollGeneration) {
+    return
+  }
+
+  waveformPollInFlight = true
+
+  let nextDelayMs = WAVEFORM_IDLE_POLL_INTERVAL_MS
+
+  try {
+    const batch = await hardwareGetWaveformSnapshot(waveformLastSequence.value || undefined)
+    if (!waveformPollingEnabled || generation !== waveformPollGeneration || !batch) {
+      waveformPollErrorCount = 0
+      return
+    }
+
+    onWaveformBatchBinary(batch)
+    waveformPollErrorCount = 0
+    nextDelayMs = WAVEFORM_ACTIVE_POLL_INTERVAL_MS
+  } catch (err) {
+    waveformPollErrorCount += 1
+    const retryDelay = WAVEFORM_ERROR_RETRY_INTERVAL_MS * 2 ** (waveformPollErrorCount - 1)
+    nextDelayMs = Math.min(retryDelay, WAVEFORM_MAX_ERROR_RETRY_INTERVAL_MS)
+
+    if (isTauriUnavailable(err)) {
+      nextDelayMs = WAVEFORM_MAX_ERROR_RETRY_INTERVAL_MS
+    }
+  } finally {
+    waveformPollInFlight = false
+
+    if (!waveformPollingEnabled) {
+      return
+    }
+
+    scheduleWaveformPoll(generation === waveformPollGeneration ? nextDelayMs : 0)
+  }
+}
+
+export function startWaveformPolling() {
+  waveformPollingEnabled = true
+  waveformPollGeneration += 1
+  waveformPollErrorCount = 0
+  clearWaveformPollTimer()
+  scheduleWaveformPoll(0)
+}
+
+export function stopWaveformPolling() {
+  waveformPollingEnabled = false
+  waveformPollGeneration += 1
+  waveformPollErrorCount = 0
+  clearWaveformPollTimer()
+}
+
 export function setWaveformSignalOrder(signalOrder: readonly string[]) {
   waveformInputSignalOrder.value = []
   waveformOutputSignalOrder.value = trimSignalNames(signalOrder)
@@ -145,11 +236,7 @@ export function resetWaveformState() {
 
 export function clearWaveformSamples() {
   for (const track of Object.values(waveformTracks.value)) {
-    track.samples.fill(0)
-    track.writeIndex = 0
-    track.length = 0
-    track.sequence = 0
-    track.updatedAtMs = 0
+    resetTrackSamples(track)
   }
   waveformRevision.value += 1
   waveformSampleRateHz.value = 0
@@ -185,11 +272,13 @@ export function onWaveformBatchBinary(batch: HardwareWaveformBatchBinaryV1) {
 
   let inputBufferOffset: number | null = null
   let outputBufferOffset = LEGACY_WAVEFORM_HEADER_BYTES
+  let waveformFlags = 0
   const expectedWordsPerBuffer = wordsPerCycle * batchCycles
 
   if (view.byteLength >= BIDIRECTIONAL_WAVEFORM_HEADER_BYTES) {
     const bufferCount = view.getUint16(offset, true)
     offset += 2
+    waveformFlags = view.getUint16(offset, true)
     offset += 2
 
     const expectedBytes =
@@ -209,6 +298,12 @@ export function onWaveformBatchBinary(batch: HardwareWaveformBatchBinaryV1) {
 
   if (trackedSlots.length === 0) {
     return
+  }
+
+  if ((waveformFlags & WAVEFORM_FLAG_REPLACE_EXISTING) !== 0) {
+    for (const track of Object.values(waveformTracks.value)) {
+      resetTrackSamples(track)
+    }
   }
 
   for (let cycle = 0; cycle < batchCycles; cycle += 1) {

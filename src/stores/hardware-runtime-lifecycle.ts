@@ -8,7 +8,6 @@ import {
   listenHardwareDataCatalog,
   listenHardwareDataStreamStatus,
   listenHardwareDeviceSnapshot,
-  listenHardwareWaveformBatchBinary,
   listenHardwareStateChanged,
 } from '@/lib/hardware-client'
 import { translate } from '@/lib/i18n'
@@ -21,7 +20,7 @@ import {
   onDeviceSnapshot,
   resetRuntimeViewState,
 } from './hardware-runtime-telemetry'
-import { onWaveformBatchBinary, resetWaveformState } from './hardware-runtime-waveform'
+import { resetWaveformState, stopWaveformPolling } from './hardware-runtime-waveform'
 import { refreshDataStreamStatus, syncState } from './hardware-runtime-sync'
 import {
   applyHardwareState,
@@ -39,7 +38,6 @@ let unlistenDataBatch: UnlistenFn | null = null
 let unlistenDataCatalog: UnlistenFn | null = null
 let unlistenDeviceSnapshot: UnlistenFn | null = null
 let unlistenDataStreamStatus: UnlistenFn | null = null
-let unlistenWaveformBatch: UnlistenFn | null = null
 let startPromise: Promise<void> | null = null
 
 function clearRuntimeListeners() {
@@ -63,10 +61,6 @@ function clearRuntimeListeners() {
     unlistenDeviceSnapshot()
     unlistenDeviceSnapshot = null
   }
-  if (unlistenWaveformBatch) {
-    unlistenWaveformBatch()
-    unlistenWaveformBatch = null
-  }
   if (unlistenHotplug) {
     unlistenHotplug()
     unlistenHotplug = null
@@ -88,10 +82,6 @@ async function registerRuntimeListeners() {
 
   unlistenDataBatch = await listenHardwareDataBatchBinary((batch) => {
     onDataBatchBinary(batch)
-  })
-
-  unlistenWaveformBatch = await listenHardwareWaveformBatchBinary((batch) => {
-    onWaveformBatchBinary(batch)
   })
 
   unlistenDeviceSnapshot = await listenHardwareDeviceSnapshot((snapshot) => {
@@ -131,6 +121,7 @@ export async function start() {
       isStarted.value = true
     } catch (err) {
       clearRuntimeListeners()
+      stopWaveformPolling()
       resetRuntimeViewState()
       resetWaveformState()
       if (isTauriUnavailable(err)) {
@@ -159,6 +150,7 @@ export async function stop() {
     await invoke('stop_hotplug_watch')
   } finally {
     clearRuntimeListeners()
+    stopWaveformPolling()
     resetRuntimeViewState()
     resetWaveformState()
     isStarted.value = false

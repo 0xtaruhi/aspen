@@ -326,7 +326,7 @@
   "waveformCursorA": "A",
   "waveformCursorB": "B",
   "waveformCursorDelta": "A-B",
-  "waveformSamplesSuffix": "samples",
+  "waveformSamplesSuffix": "cycles",
   "clearCanvas": "Clear Canvas",
   "clearCanvasTitle": "Clear Canvas",
   "clearCanvasConfirm": "Are you sure you want to remove all devices from the Workbench canvas?",

@@ -326,7 +326,7 @@
   "waveformCursorA": "A",
   "waveformCursorB": "B",
   "waveformCursorDelta": "A-B",
-  "waveformSamplesSuffix": "个采样",
+  "waveformSamplesSuffix": "个周期",
   "clearCanvas": "清空画布",
   "clearCanvasTitle": "清空画布",
   "clearCanvasConfirm": "确定要移除 Workbench 画布上的所有器件吗？",

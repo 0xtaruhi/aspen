@@ -79,6 +79,32 @@ function createLedDevice(signal: string): CanvasDeviceSnapshot {
   }
 }
 
+function createDipSwitchDevice(signals: string[]): CanvasDeviceSnapshot {
+  return {
+    id: 'dip-1',
+    type: 'dip_switch_bank',
+    x: 20,
+    y: 20,
+    label: 'DIP',
+    state: {
+      is_on: false,
+      color: null,
+      binding: {
+        kind: 'slots',
+        signals,
+      },
+      config: {
+        kind: 'dip_switch_bank',
+        width: Math.max(1, signals.length),
+      },
+      data: {
+        kind: 'bitset',
+        bits: Array.from({ length: signals.length }, () => false),
+      },
+    },
+  }
+}
+
 describe('virtual device platform binding sanitation', () => {
   beforeEach(() => {
     vi.resetModules()
@@ -90,12 +116,16 @@ describe('virtual device platform binding sanitation', () => {
     hasStaleSignalSourceReport: boolean
     workbenchSignals: string[]
     allSignals?: Array<{ name: string; direction: 'input' | 'output' | 'inout' }>
+    canvasDevices?: CanvasDeviceSnapshot[]
+    selectedDeviceIds?: string[]
     streamInputSignalOrder?: string[]
     streamOutputSignalOrder?: string[]
   }) {
     const bindCanvasSignal = vi.fn(async () => undefined)
     const upsertCanvasDevice = vi.fn(async () => undefined)
-    const canvasDevices = ref<CanvasDeviceSnapshot[]>([createLedDevice('io_led')])
+    const canvasDevices = ref<CanvasDeviceSnapshot[]>(
+      options.canvasDevices ?? [createLedDevice('io_led')],
+    )
 
     vi.doMock('@/lib/canvas-devices', async () => {
       const actual =
@@ -202,6 +232,9 @@ describe('virtual device platform binding sanitation', () => {
 
     const scope = effectScope()
     const state = scope.run(() => useVirtualDevicePlatformState()) ?? null
+    if (state && options.selectedDeviceIds) {
+      state.selectedDeviceIds.value = [...options.selectedDeviceIds]
+    }
     await Promise.resolve()
     await nextTick()
     scope.stop()
@@ -249,5 +282,63 @@ describe('virtual device platform binding sanitation', () => {
     })
 
     expect(state?.waveformSignals.value).toEqual(['clk', 'led'])
+  })
+
+  it('keeps clock-like input signals visible when a single-signal device is selected', async () => {
+    const selectedDevice = createLedDevice('led')
+    const { state } = await instantiateWithCatalog({
+      hasSignalSourceReport: true,
+      hasStaleSignalSourceReport: false,
+      workbenchSignals: ['led'],
+      allSignals: [
+        { name: 'clk', direction: 'input' },
+        { name: 'led', direction: 'output' },
+      ],
+      canvasDevices: [selectedDevice],
+      selectedDeviceIds: [selectedDevice.id],
+      streamInputSignalOrder: ['clk'],
+      streamOutputSignalOrder: ['led'],
+    })
+
+    expect(state?.waveformSignals.value).toEqual(['clk', 'led'])
+  })
+
+  it('keeps clock-like input signals in the waveform list when a device is selected', async () => {
+    const selectedDevice = createDipSwitchDevice(['sig_a', 'sig_b'])
+    const { state } = await instantiateWithCatalog({
+      hasSignalSourceReport: true,
+      hasStaleSignalSourceReport: false,
+      workbenchSignals: ['sig_a', 'sig_b'],
+      allSignals: [
+        { name: 'clk', direction: 'input' },
+        { name: 'sig_a', direction: 'output' },
+        { name: 'sig_b', direction: 'output' },
+      ],
+      canvasDevices: [selectedDevice],
+      selectedDeviceIds: [selectedDevice.id],
+      streamInputSignalOrder: ['clk'],
+      streamOutputSignalOrder: ['sig_a', 'sig_b'],
+    })
+
+    expect(state?.waveformSignals.value).toEqual(['clk', 'sig_a', 'sig_b'])
+  })
+
+  it('shows only clock-like input signals when the selected device has no bound ports', async () => {
+    const selectedDevice = createLedDevice('')
+    const { state } = await instantiateWithCatalog({
+      hasSignalSourceReport: true,
+      hasStaleSignalSourceReport: false,
+      workbenchSignals: ['led'],
+      allSignals: [
+        { name: 'clk', direction: 'input' },
+        { name: 'led', direction: 'output' },
+      ],
+      canvasDevices: [selectedDevice],
+      selectedDeviceIds: [selectedDevice.id],
+      streamInputSignalOrder: ['clk'],
+      streamOutputSignalOrder: ['led'],
+    })
+
+    expect(state?.waveformSignals.value).toEqual(['clk'])
   })
 })

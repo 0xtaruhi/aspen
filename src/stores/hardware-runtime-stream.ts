@@ -23,9 +23,22 @@ import {
   dataStreamStatus,
   resetRuntimeState,
 } from './hardware-runtime-state'
-import { setWaveformSignalOrders } from './hardware-runtime-waveform'
+import {
+  setWaveformSignalOrders,
+  startWaveformPolling,
+  stopWaveformPolling,
+} from './hardware-runtime-waveform'
 
 let waveformEnabled = false
+
+function syncWaveformPolling() {
+  if (waveformEnabled && dataStreamStatus.value.running) {
+    startWaveformPolling()
+    return
+  }
+
+  stopWaveformPolling()
+}
 
 export async function configureDataStream(
   inputSignalOrder: readonly string[],
@@ -85,10 +98,14 @@ export async function setWaveformEnabled(enabled: boolean) {
   waveformEnabled = enabled
   try {
     await setHardwareWaveformEnabled(enabled)
+    syncWaveformPolling()
   } catch (err) {
-    if (!isTauriUnavailable(err)) {
-      throw err
+    if (isTauriUnavailable(err)) {
+      stopWaveformPolling()
+      return
     }
+
+    throw err
   }
 }
 
@@ -118,6 +135,7 @@ export async function startDataStream() {
       running: true,
       last_error: null,
     })
+    syncWaveformPolling()
     return
   } catch (err) {
     if (isTauriUnavailable(err)) {
@@ -126,6 +144,7 @@ export async function startDataStream() {
         running: true,
         last_error: null,
       })
+      stopWaveformPolling()
       return
     }
     throw err
@@ -152,12 +171,15 @@ export async function stopDataStream() {
     last_batch_cycles: 0,
     last_error: null,
   })
+  syncWaveformPolling()
 }
 
 export async function disconnectView() {
   if (dataStreamStatus.value.running) {
     await stopDataStream()
   }
+
+  stopWaveformPolling()
 
   // Keep the global runtime and event listeners alive; this only clears the
   // current UI-facing session state so the user can reconnect/probe explicitly.

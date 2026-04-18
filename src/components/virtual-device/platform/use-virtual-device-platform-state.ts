@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getCanvasDeviceBoundSignal, getCanvasDeviceBoundSignals } from '@/lib/canvas-devices'
 import { confirmAction } from '@/lib/confirm-action'
 import { useI18n } from '@/lib/i18n'
+import { isLikelyClockPort } from '@/lib/project-constraints'
 import { normalizeUniqueSignalNames } from '@/lib/signal-names'
 import { designContextStore } from '@/stores/design-context'
 import { hardwareStore } from '@/stores/hardware'
@@ -123,16 +124,23 @@ export function useVirtualDevicePlatformState() {
     return canvasDevices.value.find((device) => device.id === manualDeviceId.value) ?? null
   })
   const waveformSignals = computed(() => {
+    const clockSignals = signalCatalogStore.streamInputSignalOrder.value.filter((signal) => {
+      return allSignalNameSet.value.has(signal) && isLikelyClockPort(signal)
+    })
     const selectedSignals = selectedDeviceIds.value.flatMap((deviceId) => {
       const device = canvasDevices.value.find((entry) => entry.id === deviceId)
-      return device ? getCanvasDeviceBoundSignals(device) : []
+      if (!device) {
+        return []
+      }
+
+      return [getCanvasDeviceBoundSignal(device), ...getCanvasDeviceBoundSignals(device)]
     })
     const uniqueSelectedSignals = normalizeUniqueSignalNames(
       selectedSignals.filter((signal): signal is string => Boolean(signal)),
     ).filter((signal) => allSignalNameSet.value.has(signal))
 
-    if (uniqueSelectedSignals.length > 0) {
-      return uniqueSelectedSignals
+    if (selectedDeviceIds.value.length > 0) {
+      return normalizeUniqueSignalNames([...clockSignals, ...uniqueSelectedSignals])
     }
 
     return streamObservableSignals.value

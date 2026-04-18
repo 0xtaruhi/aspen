@@ -14,7 +14,7 @@ use super::driver;
 use super::types::{
     HardwareActionV1, HardwareArtifactSnapshot, HardwareDataStreamConfigV1,
     HardwareDataStreamStatusV1, HardwareEventReason, HardwareEventV1, HardwarePhase,
-    HardwareStateV1,
+    HardwareStateV1, HardwareWaveformBatchBinaryV1,
 };
 
 mod canvas;
@@ -48,8 +48,8 @@ const DATA_DEFAULT_CLOCK_HIGH_DELAY: u16 = 4;
 const DATA_DEFAULT_CLOCK_LOW_DELAY: u16 = 4;
 const DATA_RATE_WINDOW: Duration = Duration::from_millis(1000);
 const DATA_STREAM_STATUS_CHANGED_EVENT: &str = "hardware:data_stream_status_changed";
-const WAVEFORM_EVENT_INTERVAL: Duration = Duration::from_millis(16);
-const WAVEFORM_MAX_SAMPLE_RATE_HZ: f64 = 60_000.0;
+const WAVEFORM_MAX_EXACT_BATCH_CYCLES: usize = 32_768;
+const WAVEFORM_BATCH_FLAG_REPLACE_EXISTING: u16 = 0x0001;
 
 struct HardwareDataStreamSession {
     stop_flag: Arc<AtomicBool>,
@@ -140,11 +140,18 @@ struct PendingWaveformBatch {
     read_buffer: Vec<u16>,
 }
 
+#[derive(Clone)]
+struct LatestWaveformBatch {
+    sequence: u64,
+    batch: HardwareWaveformBatchBinaryV1,
+}
+
 pub struct HardwareRuntime {
     state: Mutex<HardwareStateV1>,
     data_stream: Mutex<Option<HardwareDataStreamSession>>,
     data_stream_config: Arc<Mutex<HardwareDataStreamConfigV1>>,
     data_stream_status: Mutex<HardwareDataStreamStatusV1>,
+    latest_waveform_batch: Mutex<Option<LatestWaveformBatch>>,
     app_handle: Mutex<Option<AppHandle>>,
 }
 
@@ -173,6 +180,7 @@ impl Default for HardwareRuntime {
                 configured_signal_count: 0,
                 last_error: None,
             }),
+            latest_waveform_batch: Mutex::new(None),
             app_handle: Mutex::new(None),
         }
     }
@@ -201,6 +209,47 @@ impl HardwareRuntime {
             .map(|status| status.clone())
     }
 
+    pub fn waveform_snapshot(
+        &self,
+        after_sequence: Option<u64>,
+    ) -> Result<Option<HardwareWaveformBatchBinaryV1>, String> {
+        let latest = self
+            .latest_waveform_batch
+            .lock()
+            .map_err(|_| "failed to acquire waveform snapshot mutex".to_string())?;
+        let Some(latest) = latest.as_ref() else {
+            return Ok(None);
+        };
+
+        if after_sequence.is_some_and(|sequence| sequence == latest.sequence) {
+            return Ok(None);
+        }
+
+        Ok(Some(latest.batch.clone()))
+    }
+
+    pub fn set_latest_waveform_batch(
+        &self,
+        sequence: u64,
+        batch: HardwareWaveformBatchBinaryV1,
+    ) -> Result<(), String> {
+        let mut latest = self
+            .latest_waveform_batch
+            .lock()
+            .map_err(|_| "failed to acquire waveform snapshot mutex".to_string())?;
+        *latest = Some(LatestWaveformBatch { sequence, batch });
+        Ok(())
+    }
+
+    pub fn clear_waveform_snapshot(&self) -> Result<(), String> {
+        let mut latest = self
+            .latest_waveform_batch
+            .lock()
+            .map_err(|_| "failed to acquire waveform snapshot mutex".to_string())?;
+        *latest = None;
+        Ok(())
+    }
+
     pub fn configure_data_stream(
         &self,
         config: HardwareDataStreamConfigV1,
@@ -214,6 +263,8 @@ impl HardwareRuntime {
                 .map_err(|_| "failed to acquire data stream config mutex".to_string())?;
             *guard = config.clone();
         }
+
+        self.clear_waveform_snapshot()?;
 
         self.update_data_stream_status(|status| {
             status.target_hz = config.target_hz;
@@ -262,12 +313,15 @@ impl HardwareRuntime {
     }
 
     pub fn set_waveform_enabled(&self, enabled: bool) -> Result<(), String> {
-        let mut guard = self
-            .data_stream_config
-            .lock()
-            .map_err(|_| "failed to acquire data stream config mutex".to_string())?;
-        guard.waveform_enabled = enabled;
-        Ok(())
+        {
+            let mut guard = self
+                .data_stream_config
+                .lock()
+                .map_err(|_| "failed to acquire data stream config mutex".to_string())?;
+            guard.waveform_enabled = enabled;
+        }
+
+        self.clear_waveform_snapshot()
     }
 
     pub fn start_data_stream(self: &Arc<Self>, app: &AppHandle) -> Result<(), String> {
@@ -295,6 +349,8 @@ impl HardwareRuntime {
         if let Some(session) = stale_session {
             let _ = session.handle.join();
         }
+
+        self.clear_waveform_snapshot()?;
 
         {
             let mut guard = self
@@ -363,6 +419,8 @@ impl HardwareRuntime {
             let _ = session.handle.join();
         }
 
+        self.clear_waveform_snapshot()?;
+
         self.update_data_stream_status(|status| {
             status.running = false;
             status.actual_hz = 0.0;
@@ -381,12 +439,14 @@ impl HardwareRuntime {
         app: &AppHandle,
         reason: HardwareEventReason,
     ) -> Result<HardwareStateV1, String> {
-        self.apply_state_update(app, reason, |state| {
+        let state = self.apply_state_update(app, reason, |state| {
             state.phase = HardwarePhase::DeviceDisconnected;
             state.device = None;
             state.last_error = Some("Device disconnected".to_string());
             state.op_id = None;
-        })
+        })?;
+        self.clear_waveform_snapshot()?;
+        Ok(state)
     }
 
     pub async fn dispatch(

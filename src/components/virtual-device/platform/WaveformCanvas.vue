@@ -3,6 +3,10 @@ import type { WaveformTrackBuffer } from '@/stores/hardware-runtime-waveform'
 
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
+import { isLikelyClockPort } from '@/lib/project-constraints'
+
+import { getAlignedWaveformTrackSample } from './waveform-helpers'
+
 type WaveformCanvasMetrics = {
   followLatest: boolean
   windowSamples: number
@@ -80,26 +84,6 @@ function getMaxTrackLength() {
   return props.signals.reduce((maxLength, signal) => {
     return Math.max(maxLength, getTrackLength(signal))
   }, 0)
-}
-
-function getTrackSample(track: WaveformTrackBuffer, logicalIndex: number) {
-  if (logicalIndex < 0 || logicalIndex >= track.length) {
-    return 0
-  }
-
-  const oldestIndex =
-    (track.writeIndex - track.length + track.samples.length) % track.samples.length
-  const sampleIndex = (oldestIndex + logicalIndex) % track.samples.length
-  return track.samples[sampleIndex] ?? 0
-}
-
-function getAlignedTrackSample(
-  track: WaveformTrackBuffer,
-  globalSampleIndex: number,
-  maxTrackLength: number,
-) {
-  const localIndex = globalSampleIndex - (maxTrackLength - track.length)
-  return getTrackSample(track, localIndex)
 }
 
 function getViewport(innerWidth = getInnerWidth()) {
@@ -374,6 +358,7 @@ function drawSignalLane(
   viewport: ReturnType<typeof getViewport>,
 ) {
   const track = props.tracks[signal]
+  const isClockSignal = isLikelyClockPort(signal)
   const trackStroke = props.signalColors[signal] ?? TRACK_STROKE
   const laneTop = TOP_PAD + laneIndex * LANE_HEIGHT
   const laneBottom = laneTop + LANE_HEIGHT
@@ -394,6 +379,48 @@ function drawSignalLane(
   context.stroke()
 
   if (!track || track.length === 0 || viewport.maxTrackLength === 0) {
+    return
+  }
+
+  if (isClockSignal) {
+    context.strokeStyle = trackStroke
+    context.lineWidth = 1.5
+    context.beginPath()
+
+    const visibleCycleStart = Math.max(0, Math.floor(viewport.startSample))
+    const visibleCycleEnd = Math.min(viewport.maxTrackLength, Math.ceil(viewport.endSample))
+    let hasPath = false
+
+    for (let cycleIndex = visibleCycleStart; cycleIndex < visibleCycleEnd; cycleIndex += 1) {
+      const cycleStartX = (cycleIndex - viewport.startSample) / viewport.samplesPerPixel
+      const cycleEndX = (cycleIndex + 1 - viewport.startSample) / viewport.samplesPerPixel
+      const cycleMidX = cycleStartX + (cycleEndX - cycleStartX) * 0.5
+
+      if (cycleEndX <= 0 || cycleStartX >= viewport.innerWidth) {
+        continue
+      }
+
+      const clampedStartX = clamp(cycleStartX, 0, viewport.innerWidth)
+      const clampedMidX = clamp(cycleMidX, clampedStartX, viewport.innerWidth)
+      const clampedEndX = clamp(cycleEndX, clampedMidX, viewport.innerWidth)
+
+      if (!hasPath) {
+        context.moveTo(clampedStartX, lowY)
+        hasPath = true
+      } else {
+        context.lineTo(clampedStartX, lowY)
+      }
+
+      context.lineTo(clampedStartX, highY)
+      context.lineTo(clampedMidX, highY)
+      context.lineTo(clampedMidX, lowY)
+      context.lineTo(clampedEndX, lowY)
+    }
+
+    if (hasPath) {
+      context.stroke()
+    }
+
     return
   }
 
@@ -419,12 +446,17 @@ function drawSignalLane(
       ),
     )
 
-    const first = getAlignedTrackSample(track, rangeStart, viewport.maxTrackLength)
+    const first = getAlignedWaveformTrackSample(signal, track, rangeStart, viewport.maxTrackLength)
     let last = first
     let changed = false
 
     for (let sampleIndex = rangeStart + 1; sampleIndex < rangeEnd; sampleIndex += 1) {
-      const value = getAlignedTrackSample(track, sampleIndex, viewport.maxTrackLength)
+      const value = getAlignedWaveformTrackSample(
+        signal,
+        track,
+        sampleIndex,
+        viewport.maxTrackLength,
+      )
       if (value !== last) {
         changed = true
       }

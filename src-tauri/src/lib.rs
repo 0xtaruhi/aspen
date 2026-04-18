@@ -40,6 +40,7 @@ pub fn run() {
             hardware_commands::hardware_get_state,
             hardware_commands::hardware_dispatch,
             hardware_commands::hardware_get_data_stream_status,
+            hardware_commands::hardware_get_waveform_snapshot,
             hardware_commands::start_hardware_data_stream,
             hardware_commands::stop_hardware_data_stream,
             hardware_commands::configure_hardware_data_stream,

@@ -6,8 +6,8 @@ use vlfd_rs::{HotplugEvent, HotplugEventKind, HotplugOptions, HotplugRegistratio
 use crate::hardware::{
     BitstreamGenerationResult, HardwareActionV1, HardwareDataStreamConfigV1,
     HardwareDataStreamStatusV1, HardwareEventReason, HardwareRuntime, HardwareStateV1,
-    HardwareStatus, ImplementationReportV1, ImplementationRequestV1, SynthesisReportV1,
-    SynthesisRequestV1,
+    HardwareStatus, HardwareWaveformBatchBinaryV1, ImplementationReportV1, ImplementationRequestV1,
+    SynthesisReportV1, SynthesisRequestV1,
 };
 
 #[derive(Default)]
@@ -38,6 +38,14 @@ pub fn hardware_get_data_stream_status(
     runtime: tauri::State<'_, Arc<HardwareRuntime>>,
 ) -> Result<HardwareDataStreamStatusV1, String> {
     runtime.data_stream_status()
+}
+
+#[tauri::command]
+pub fn hardware_get_waveform_snapshot(
+    runtime: tauri::State<'_, Arc<HardwareRuntime>>,
+    after_sequence: Option<u64>,
+) -> Result<Option<HardwareWaveformBatchBinaryV1>, String> {
+    runtime.waveform_snapshot(after_sequence)
 }
 
 #[tauri::command]

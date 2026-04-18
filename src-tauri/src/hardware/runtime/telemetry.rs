@@ -211,6 +211,7 @@ impl HardwareRuntime {
         actual_hz: f64,
         words_per_cycle: u16,
         batch_cycles: u16,
+        flags: u16,
         write_buffer: &[u16],
         read_buffer: &[u16],
     ) -> Vec<u8> {
@@ -221,7 +222,7 @@ impl HardwareRuntime {
         payload.extend_from_slice(&words_per_cycle.to_le_bytes());
         payload.extend_from_slice(&batch_cycles.to_le_bytes());
         payload.extend_from_slice(&2u16.to_le_bytes());
-        payload.extend_from_slice(&0u16.to_le_bytes());
+        payload.extend_from_slice(&flags.to_le_bytes());
 
         for word in write_buffer {
             payload.extend_from_slice(&word.to_le_bytes());
@@ -277,34 +278,5 @@ impl HardwareRuntime {
             },
         );
         *pending_meta = PendingSignalBatchMeta::default();
-    }
-
-    pub(super) fn emit_waveform_batch(
-        app: &AppHandle,
-        sequence: u64,
-        generated_at_ms: u64,
-        actual_hz: f64,
-        words_per_cycle: usize,
-        batch_cycles: u16,
-        write_buffer: &[u16],
-        read_buffer: &[u16],
-    ) {
-        let payload = Self::encode_binary_waveform_batch(
-            sequence,
-            generated_at_ms,
-            actual_hz,
-            words_per_cycle.min(usize::from(u16::MAX)) as u16,
-            batch_cycles,
-            write_buffer,
-            read_buffer,
-        );
-
-        let _ = app.emit(
-            "hardware:waveform_batch_bin",
-            crate::hardware::types::HardwareWaveformBatchBinaryV1 {
-                version: 1,
-                payload,
-            },
-        );
     }
 }

@@ -524,6 +524,14 @@ export async function hardwareGetDataStreamStatus(): Promise<HardwareDataStreamS
   return invoke<HardwareDataStreamStatusV1>('hardware_get_data_stream_status')
 }
 
+export async function hardwareGetWaveformSnapshot(
+  afterSequence?: number,
+): Promise<HardwareWaveformBatchBinaryV1 | null> {
+  return invoke<HardwareWaveformBatchBinaryV1 | null>('hardware_get_waveform_snapshot', {
+    afterSequence,
+  })
+}
+
 export async function configureHardwareDataStream(
   config: HardwareDataStreamConfigV1,
 ): Promise<HardwareDataStreamStatusV1> {
@@ -572,14 +580,6 @@ export async function listenHardwareDataBatchBinary(
   callback: (batch: HardwareDataBatchBinaryV1) => void,
 ): Promise<UnlistenFn> {
   return listen<HardwareDataBatchBinaryV1>('hardware:data_batch_bin', (event) => {
-    callback(event.payload)
-  })
-}
-
-export async function listenHardwareWaveformBatchBinary(
-  callback: (batch: HardwareWaveformBatchBinaryV1) => void,
-): Promise<UnlistenFn> {
-  return listen<HardwareWaveformBatchBinaryV1>('hardware:waveform_batch_bin', (event) => {
     callback(event.payload)
   })
 }

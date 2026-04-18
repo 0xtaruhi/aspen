@@ -7,6 +7,7 @@ function createWaveformBatch(options: {
   generatedAtMs: bigint
   actualHz: number
   wordsPerCycle: number
+  flags?: number
   inputCycles?: number[][]
   outputCycles: number[][]
 }): HardwareWaveformBatchBinaryV1 {
@@ -32,7 +33,7 @@ function createWaveformBatch(options: {
   if (hasInputBuffer) {
     view.setUint16(offset, bufferCount, true)
     offset += 2
-    view.setUint16(offset, 0, true)
+    view.setUint16(offset, options.flags ?? 0, true)
     offset += 2
   }
 
@@ -147,6 +148,38 @@ describe('hardware runtime waveform', () => {
     expect(readTrackSamples(waveformStore.waveformTracks.value.sig_out)).toEqual([0, 1, 1])
     expect(waveformStore.waveformSampleRateHz.value).toBe(4_000)
     expect(waveformStore.waveformLastSequence.value).toBe(11)
+  })
+
+  it('replaces buffered samples when a batch is marked as truncated exact tail data', async () => {
+    const waveformStore = await loadWaveformStore()
+
+    waveformStore.setWaveformSignalOrders(['clk'], ['sig_out'])
+    waveformStore.setWaveformTrackedSignals(['clk', 'sig_out'])
+    waveformStore.onWaveformBatchBinary(
+      createWaveformBatch({
+        sequence: 12n,
+        generatedAtMs: 400n,
+        actualHz: 2_000,
+        wordsPerCycle: 1,
+        inputCycles: [[0b1], [0b0]],
+        outputCycles: [[0b0], [0b1]],
+      }),
+    )
+    waveformStore.onWaveformBatchBinary(
+      createWaveformBatch({
+        sequence: 13n,
+        generatedAtMs: 416n,
+        actualHz: 2_000,
+        wordsPerCycle: 1,
+        flags: 0x0001,
+        inputCycles: [[0b0], [0b1], [0b0]],
+        outputCycles: [[0b1], [0b1], [0b0]],
+      }),
+    )
+
+    expect(readTrackSamples(waveformStore.waveformTracks.value.clk)).toEqual([0, 1, 0])
+    expect(readTrackSamples(waveformStore.waveformTracks.value.sig_out)).toEqual([1, 1, 0])
+    expect(waveformStore.waveformLastSequence.value).toBe(13)
   })
 
   it('clears buffered waveform samples and metadata without dropping tracked signals', async () => {

@@ -17,6 +17,7 @@ import { hardwareStore } from '@/stores/hardware'
 import { projectWaveformStore } from '@/stores/project-waveform'
 
 import WaveformCanvas from './WaveformCanvas.vue'
+import { orderWaveformSignals } from './waveform-helpers'
 
 type WaveformCanvasHandle = {
   clearCursors: () => void
@@ -97,20 +98,7 @@ const waveformRevision = computed(() => hardwareStore.waveformRevision.value)
 const waveformSampleRateHz = computed(() => hardwareStore.waveformSampleRateHz.value)
 const visibleSignals = computed(() => normalizeUniqueSignalNames(props.signals))
 const orderedSignals = computed(() => {
-  const visibleSignalSet = new Set(visibleSignals.value)
-  const ordered = projectWaveformStore.signalOrder.value.filter((signal) =>
-    visibleSignalSet.has(signal),
-  )
-
-  for (const signal of visibleSignals.value) {
-    if (ordered.includes(signal)) {
-      continue
-    }
-
-    ordered.push(signal)
-  }
-
-  return ordered
+  return orderWaveformSignals(visibleSignals.value, projectWaveformStore.signalOrder.value)
 })
 const waveformContentHeight = computed(() => {
   return orderedSignals.value.length * SIGNAL_LANE_HEIGHT + SIGNAL_LIST_VERTICAL_PADDING
