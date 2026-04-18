@@ -7,6 +7,8 @@ import type {
 
 import { markRaw } from 'vue'
 
+import { trimSignalNames } from '@/lib/signal-names'
+
 import {
   dataStreamStatus,
   deviceTelemetry,
@@ -253,7 +255,7 @@ export function applyDataStreamStatus(status: HardwareDataStreamStatusV1) {
 }
 
 export function configuredSignalOrder(signalNames: readonly string[]) {
-  return signalNames.map((signal) => signal.trim())
+  return trimSignalNames(signalNames)
 }
 
 export function clearStoppedDataStreamTelemetry() {

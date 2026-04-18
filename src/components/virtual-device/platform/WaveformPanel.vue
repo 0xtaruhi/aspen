@@ -12,6 +12,7 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import { useI18n } from '@/lib/i18n'
+import { equalStringArrays, normalizeUniqueSignalNames } from '@/lib/signal-names'
 import { hardwareStore } from '@/stores/hardware'
 import { projectWaveformStore } from '@/stores/project-waveform'
 
@@ -94,7 +95,7 @@ let signalListResizeSession: {
 const waveformTracks = computed(() => hardwareStore.waveformTracks.value)
 const waveformRevision = computed(() => hardwareStore.waveformRevision.value)
 const waveformSampleRateHz = computed(() => hardwareStore.waveformSampleRateHz.value)
-const visibleSignals = computed(() => normalizeSignalList(props.signals))
+const visibleSignals = computed(() => normalizeUniqueSignalNames(props.signals))
 const orderedSignals = computed(() => {
   const visibleSignalSet = new Set(visibleSignals.value)
   const ordered = projectWaveformStore.signalOrder.value.filter((signal) =>
@@ -136,23 +137,6 @@ const cursorDeltaLabel = computed(() => {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
-}
-
-function normalizeSignalList(signals: readonly string[]) {
-  const seen = new Set<string>()
-  const normalized: string[] = []
-
-  for (const signal of signals) {
-    const nextSignal = signal.trim()
-    if (!nextSignal || seen.has(nextSignal)) {
-      continue
-    }
-
-    seen.add(nextSignal)
-    normalized.push(nextSignal)
-  }
-
-  return normalized
 }
 
 function getMaxPanelHeight() {
@@ -238,7 +222,7 @@ function resetSignalColor(signal: string) {
 
 function persistVisibleSignalOrder(nextVisibleSignals: readonly string[]) {
   const visibleSignalSet = new Set(visibleSignals.value)
-  const fullSignalOrder = normalizeSignalList([
+  const fullSignalOrder = normalizeUniqueSignalNames([
     ...projectWaveformStore.signalOrder.value,
     ...visibleSignals.value,
   ])
@@ -282,7 +266,7 @@ function moveSignal(signal: string, action: WaveformSignalMoveAction) {
       break
   }
 
-  if (JSON.stringify(nextOrder) === JSON.stringify(currentOrder)) {
+  if (equalStringArrays(nextOrder, currentOrder)) {
     return
   }
 

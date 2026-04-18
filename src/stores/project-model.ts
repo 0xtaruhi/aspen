@@ -25,6 +25,7 @@ import {
   type ImplementationSettingsSnapshot,
 } from '../lib/implementation-settings'
 import { parseVerilogPorts, type VerilogPort } from '../lib/verilog-parser'
+import { normalizeUniqueSignalNames, trimSignalName } from '../lib/signal-names'
 
 export type ProjectNode = {
   id: string
@@ -113,30 +114,13 @@ export function emptyProjectWaveformViewSnapshot(): ProjectWaveformViewSnapshot 
   }
 }
 
-function normalizeWaveformSignalOrder(signalOrder: readonly string[]) {
-  const seen = new Set<string>()
-  const normalized: string[] = []
-
-  for (const signal of signalOrder) {
-    const nextSignal = signal.trim()
-    if (!nextSignal || seen.has(nextSignal)) {
-      continue
-    }
-
-    seen.add(nextSignal)
-    normalized.push(nextSignal)
-  }
-
-  return normalized
-}
-
 function normalizeWaveformColorOverrides(
   signalColorOverrides: Record<string, unknown>,
 ): Record<string, string> {
   const normalized: Record<string, string> = {}
 
   for (const [signal, color] of Object.entries(signalColorOverrides)) {
-    const nextSignal = signal.trim()
+    const nextSignal = trimSignalName(signal)
     const nextColor = typeof color === 'string' ? color.trim() : ''
     if (!nextSignal || !nextColor) {
       continue
@@ -166,9 +150,7 @@ export function normalizeProjectWaveformViewSnapshot(value: unknown): ProjectWav
   return {
     version: 1,
     signalOrder: Array.isArray(value.signalOrder)
-      ? normalizeWaveformSignalOrder(
-          value.signalOrder.filter((signal) => typeof signal === 'string'),
-        )
+      ? normalizeUniqueSignalNames(value.signalOrder.filter((signal) => typeof signal === 'string'))
       : [],
     signalColorOverrides: isRecord(value.signalColorOverrides)
       ? normalizeWaveformColorOverrides(value.signalColorOverrides)

@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getCanvasDeviceBoundSignal, getCanvasDeviceBoundSignals } from '@/lib/canvas-devices'
 import { confirmAction } from '@/lib/confirm-action'
 import { useI18n } from '@/lib/i18n'
+import { normalizeUniqueSignalNames } from '@/lib/signal-names'
 import { designContextStore } from '@/stores/design-context'
 import { hardwareStore } from '@/stores/hardware'
 import { HARDWARE_STREAM_CLOCK_DELAY, hardwareWorkbenchStore } from '@/stores/hardware-workbench'
@@ -24,23 +25,6 @@ import {
 const DISPLAY_ACTUAL_HZ_INTERVAL_MS = 250
 const DISPLAY_ACTUAL_HZ_SAMPLE_WINDOW = 5
 const DISPLAY_ACTUAL_HZ_CONFIRMATION_SAMPLES = 3
-
-function normalizeSignalOrder(signals: readonly string[]) {
-  const seen = new Set<string>()
-  const normalized: string[] = []
-
-  for (const signal of signals) {
-    const nextSignal = signal.trim()
-    if (!nextSignal || seen.has(nextSignal)) {
-      continue
-    }
-
-    seen.add(nextSignal)
-    normalized.push(nextSignal)
-  }
-
-  return normalized
-}
 
 export function useVirtualDevicePlatformState() {
   const showGallery = ref(false)
@@ -66,7 +50,7 @@ export function useVirtualDevicePlatformState() {
   const hasStaleSynthesisSignals = signalCatalogStore.hasStaleSignalSourceReport
   const hasSelectedSource = computed(() => Boolean(designContextStore.selectedSource.value))
   const streamObservableSignals = computed(() => {
-    return normalizeSignalOrder([
+    return normalizeUniqueSignalNames([
       ...signalCatalogStore.streamInputSignalOrder.value,
       ...signalCatalogStore.streamOutputSignalOrder.value,
     ])
@@ -143,9 +127,9 @@ export function useVirtualDevicePlatformState() {
       const device = canvasDevices.value.find((entry) => entry.id === deviceId)
       return device ? getCanvasDeviceBoundSignals(device) : []
     })
-    const uniqueSelectedSignals = [
-      ...new Set(selectedSignals.map((signal) => signal?.trim() ?? '')),
-    ].filter((signal) => Boolean(signal) && allSignalNameSet.value.has(signal))
+    const uniqueSelectedSignals = normalizeUniqueSignalNames(
+      selectedSignals.filter((signal): signal is string => Boolean(signal)),
+    ).filter((signal) => allSignalNameSet.value.has(signal))
 
     if (uniqueSelectedSignals.length > 0) {
       return uniqueSelectedSignals

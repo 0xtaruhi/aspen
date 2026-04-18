@@ -1,5 +1,7 @@
 import { ref } from 'vue'
 
+import { equalStringArrays, equalStringRecords, trimSignalName } from '@/lib/signal-names'
+
 import {
   cloneProjectWaveformViewSnapshot,
   emptyProjectWaveformViewSnapshot,
@@ -40,11 +42,9 @@ function setSignalOrder(nextSignalOrder: readonly string[]) {
     signalColorOverrides: signalColorOverrides.value,
   })
 
-  const currentSnapshot = toSnapshot()
   if (
-    JSON.stringify(nextSnapshot.signalOrder) === JSON.stringify(currentSnapshot.signalOrder) &&
-    JSON.stringify(nextSnapshot.signalColorOverrides) ===
-      JSON.stringify(currentSnapshot.signalColorOverrides)
+    equalStringArrays(nextSnapshot.signalOrder, signalOrder.value) &&
+    equalStringRecords(nextSnapshot.signalColorOverrides, signalColorOverrides.value)
   ) {
     return
   }
@@ -53,7 +53,7 @@ function setSignalOrder(nextSignalOrder: readonly string[]) {
 }
 
 function setSignalColor(signal: string, color: string) {
-  const trimmedSignal = signal.trim()
+  const trimmedSignal = trimSignalName(signal)
   const trimmedColor = color.trim()
   if (!trimmedSignal || !trimmedColor) {
     return
@@ -76,7 +76,7 @@ function setSignalColor(signal: string, color: string) {
 }
 
 function resetSignalColor(signal: string) {
-  const trimmedSignal = signal.trim()
+  const trimmedSignal = trimSignalName(signal)
   if (!trimmedSignal || !(trimmedSignal in signalColorOverrides.value)) {
     return
   }

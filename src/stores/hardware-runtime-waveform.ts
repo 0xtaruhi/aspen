@@ -1,4 +1,5 @@
 import type { HardwareWaveformBatchBinaryV1 } from '@/lib/hardware-client'
+import { normalizeUniqueSignalNames, trimSignalNames } from '@/lib/signal-names'
 
 import { markRaw, ref, shallowRef } from 'vue'
 
@@ -28,26 +29,6 @@ type WaveformTrackedSlot = {
   source: 'input' | 'output'
   wordIndex: number
   bitMask: number
-}
-
-function normalizeSignals(signals: readonly string[]) {
-  const seen = new Set<string>()
-  const normalized: string[] = []
-
-  for (const signal of signals) {
-    const nextSignal = signal.trim()
-    if (!nextSignal || seen.has(nextSignal)) {
-      continue
-    }
-    seen.add(nextSignal)
-    normalized.push(nextSignal)
-  }
-
-  return normalized
-}
-
-function sanitizeSignalOrder(signalOrder: readonly string[]) {
-  return signalOrder.map((signal) => signal.trim())
 }
 
 function createTrack(signal: string): WaveformTrackBuffer {
@@ -129,19 +110,19 @@ function trackedSignalSlotMapFromOrder(signalOrder: readonly string[], wordsPerC
 
 export function setWaveformSignalOrder(signalOrder: readonly string[]) {
   waveformInputSignalOrder.value = []
-  waveformOutputSignalOrder.value = sanitizeSignalOrder(signalOrder)
+  waveformOutputSignalOrder.value = trimSignalNames(signalOrder)
 }
 
 export function setWaveformSignalOrders(
   inputSignalOrder: readonly string[],
   outputSignalOrder: readonly string[],
 ) {
-  waveformInputSignalOrder.value = sanitizeSignalOrder(inputSignalOrder)
-  waveformOutputSignalOrder.value = sanitizeSignalOrder(outputSignalOrder)
+  waveformInputSignalOrder.value = trimSignalNames(inputSignalOrder)
+  waveformOutputSignalOrder.value = trimSignalNames(outputSignalOrder)
 }
 
 export function setWaveformTrackedSignals(signals: readonly string[]) {
-  const normalized = normalizeSignals(signals)
+  const normalized = normalizeUniqueSignalNames(signals)
   waveformTrackedSignals.value = normalized
 
   const nextTracks: Record<string, WaveformTrackBuffer> = {}
