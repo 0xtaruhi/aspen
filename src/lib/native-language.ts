@@ -1,4 +1,4 @@
-import { invoke, isTauri } from '@tauri-apps/api/core'
+import * as tauriCore from '@tauri-apps/api/core'
 
 export type NativeLanguage = 'en-US' | 'zh-CN' | 'zh-TW'
 
@@ -6,8 +6,24 @@ let lastSyncedLanguage: NativeLanguage | null = null
 let desiredLanguage: NativeLanguage | null = null
 let syncInFlight: Promise<void> | null = null
 
+function canSyncNativeMenuLanguage() {
+  try {
+    return typeof tauriCore.invoke === 'function' && typeof tauriCore.isTauri === 'function'
+  } catch {
+    return false
+  }
+}
+
 export async function syncNativeMenuLanguage(language: NativeLanguage) {
-  if (!isTauri()) {
+  if (!canSyncNativeMenuLanguage()) {
+    return
+  }
+
+  try {
+    if (!tauriCore.isTauri()) {
+      return
+    }
+  } catch {
     return
   }
 
@@ -23,7 +39,7 @@ export async function syncNativeMenuLanguage(language: NativeLanguage) {
         const languageToSync: NativeLanguage = desiredLanguage
 
         try {
-          await invoke('app_set_menu_language', { language: languageToSync })
+          await tauriCore.invoke('app_set_menu_language', { language: languageToSync })
           if (desiredLanguage === languageToSync) {
             lastSyncedLanguage = languageToSync
           }
