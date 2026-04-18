@@ -1,3 +1,5 @@
+import type { CanvasInteractionMode } from './types'
+
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { getCanvasDeviceBoundSignal, getCanvasDeviceBoundSignals } from '@/lib/canvas-devices'
@@ -11,8 +13,6 @@ import { HARDWARE_STREAM_CLOCK_DELAY, hardwareWorkbenchStore } from '@/stores/ha
 import { projectStore } from '@/stores/project'
 import { signalCatalogStore } from '@/stores/signal-catalog'
 import { settingsStore } from '@/stores/settings'
-
-import type { CanvasInteractionMode } from './types'
 
 import {
   computeStreamScheduleLagMs,
@@ -140,32 +140,11 @@ export function useVirtualDevicePlatformState() {
       selectedSignals.filter((signal): signal is string => Boolean(signal)),
     ).filter((signal) => allSignalNameSet.value.has(signal))
 
-    // Compute the derived signal order (clockSignals then selected signals, or all observable signals)
-    const derivedSignals =
-      selectedDeviceIds.value.length > 0
-        ? normalizeUniqueSignalNames([...clockSignals, ...uniqueSelectedSignals])
-        : streamObservableSignals.value
-
-    // Get existing tracked signal order from waveformTracks
-    const existingTrackedSignals = hardwareStore.waveformTrackedSignals.value
-
-    // If there are no existing tracked signals, fall back to the derived ordering
-    if (existingTrackedSignals.length === 0) {
-      return derivedSignals
+    if (selectedDeviceIds.value.length > 0) {
+      return normalizeUniqueSignalNames([...clockSignals, ...uniqueSelectedSignals])
     }
 
-    // Preserve existing order by filtering to signals still present in allSignalNameSet
-    const preservedSignals = existingTrackedSignals.filter((signal) =>
-      allSignalNameSet.value.has(signal),
-    )
-
-    // Create a set of preserved signals for fast lookup
-    const preservedSignalSet = new Set(preservedSignals)
-
-    // Append any missing signals from the derived set
-    const missingSignals = derivedSignals.filter((signal) => !preservedSignalSet.has(signal))
-
-    return normalizeUniqueSignalNames([...preservedSignals, ...missingSignals])
+    return streamObservableSignals.value
   })
   function toggleGallery() {
     showGallery.value = !showGallery.value
@@ -509,7 +488,6 @@ export function useVirtualDevicePlatformState() {
     ([open, signals], previous, onCleanup) => {
       hardwareStore.setWaveformTrackedSignals(open ? signals : [])
 
-      // Only call setWaveformEnabled when waveformPanelOpen actually changes
       const previousOpen = previous?.[0]
       if (previousOpen === open) {
         return

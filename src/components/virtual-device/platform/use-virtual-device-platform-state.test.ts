@@ -401,4 +401,39 @@ describe('virtual device platform binding sanitation', () => {
 
     dispose()
   })
+
+  it('does not toggle waveform runtime again when only the visible signal set changes', async () => {
+    const firstDevice = createLedDevice('sig_a')
+    const secondDevice = createLedDevice('sig_b')
+    const { dispose, setWaveformEnabled, state } = await instantiateWithCatalog({
+      hasSignalSourceReport: true,
+      hasStaleSignalSourceReport: false,
+      keepScope: true,
+      workbenchSignals: ['sig_a', 'sig_b'],
+      allSignals: [
+        { name: 'clk', direction: 'input' },
+        { name: 'sig_a', direction: 'output' },
+        { name: 'sig_b', direction: 'output' },
+      ],
+      canvasDevices: [firstDevice, secondDevice],
+      selectedDeviceIds: [firstDevice.id],
+      streamInputSignalOrder: ['clk'],
+      streamOutputSignalOrder: ['sig_a', 'sig_b'],
+    })
+
+    expect(state).not.toBeNull()
+    expect(setWaveformEnabled).toHaveBeenCalledTimes(1)
+
+    state!.waveformPanelOpen.value = true
+    await nextTick()
+    await Promise.resolve()
+    expect(setWaveformEnabled).toHaveBeenCalledTimes(2)
+
+    state!.selectedDeviceIds.value = [secondDevice.id]
+    await nextTick()
+    await Promise.resolve()
+    expect(setWaveformEnabled).toHaveBeenCalledTimes(2)
+
+    dispose()
+  })
 })
