@@ -1,22 +1,25 @@
 #[cfg(target_os = "macos")]
 use objc2_foundation::NSLocale;
-#[cfg(not(target_os = "macos"))]
-use std::env;
-use tauri::{
-    menu::{
-        AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID,
-        WINDOW_SUBMENU_ID,
-    },
-    AppHandle, Runtime,
+#[cfg(target_os = "macos")]
+use tauri::menu::{
+    AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID, WINDOW_SUBMENU_ID,
 };
+use tauri::{AppHandle, Runtime};
 
+#[cfg(any(target_os = "macos", test))]
 pub const MENU_ACTION_NEW_PROJECT: &str = "menu.new-project";
+#[cfg(any(target_os = "macos", test))]
 pub const MENU_ACTION_OPEN_PROJECT: &str = "menu.open-project";
+#[cfg(any(target_os = "macos", test))]
 pub const MENU_ACTION_CLOSE_PROJECT: &str = "menu.close-project";
+#[cfg(any(target_os = "macos", test))]
 pub const MENU_ACTION_SAVE_PROJECT: &str = "menu.save-project";
+#[cfg(any(target_os = "macos", test))]
 pub const MENU_ACTION_SAVE_PROJECT_AS: &str = "menu.save-project-as";
+#[cfg(any(target_os = "macos", test))]
 pub const MENU_ACTION_OPEN_SETTINGS: &str = "menu.open-settings";
 
+#[cfg(any(target_os = "macos", test))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum MenuLanguage {
     English,
@@ -24,6 +27,7 @@ enum MenuLanguage {
     TraditionalChinese,
 }
 
+#[cfg(target_os = "macos")]
 struct MenuStrings {
     file: &'static str,
     edit: &'static str,
@@ -54,6 +58,7 @@ struct MenuStrings {
     quit_prefix: &'static str,
 }
 
+#[cfg(target_os = "macos")]
 impl MenuStrings {
     fn for_language(language: MenuLanguage) -> Self {
         match language {
@@ -160,6 +165,7 @@ impl MenuStrings {
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn menu_language_for_locale_identifier(locale_identifier: &str) -> MenuLanguage {
     let normalized = locale_identifier
         .trim()
@@ -196,20 +202,7 @@ fn preferred_locale_identifier() -> Option<String> {
         })
 }
 
-#[cfg(not(target_os = "macos"))]
-fn preferred_locale_identifier() -> Option<String> {
-    ["LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"]
-        .into_iter()
-        .find_map(|key| {
-            let value = env::var(key).ok()?;
-            value
-                .split(':')
-                .map(str::trim)
-                .find(|value| !value.is_empty() && *value != "C" && *value != "POSIX")
-                .map(str::to_string)
-        })
-}
-
+#[cfg(target_os = "macos")]
 fn detect_menu_language() -> MenuLanguage {
     preferred_locale_identifier()
         .as_deref()
@@ -217,6 +210,7 @@ fn detect_menu_language() -> MenuLanguage {
         .unwrap_or(MenuLanguage::English)
 }
 
+#[cfg(target_os = "macos")]
 fn app_display_name<R: Runtime>(app: &AppHandle<R>) -> String {
     let package_info = app.package_info();
     let config = app.config();
@@ -226,6 +220,7 @@ fn app_display_name<R: Runtime>(app: &AppHandle<R>) -> String {
         .unwrap_or_else(|| package_info.name.clone())
 }
 
+#[cfg(target_os = "macos")]
 fn build_app_menu_for_language<R: Runtime>(
     app: &AppHandle<R>,
     language: MenuLanguage,
@@ -366,6 +361,7 @@ fn build_app_menu_for_language<R: Runtime>(
     )
 }
 
+#[cfg(any(target_os = "macos", test))]
 pub fn menu_action_for_id(menu_id: &str) -> Option<&'static str> {
     match menu_id {
         MENU_ACTION_NEW_PROJECT => Some("new-project"),
@@ -378,6 +374,7 @@ pub fn menu_action_for_id(menu_id: &str) -> Option<&'static str> {
     }
 }
 
+#[cfg(target_os = "macos")]
 pub fn build_app_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     build_app_menu_for_language(app, detect_menu_language())
 }
