@@ -7,6 +7,7 @@ mod project_commands;
 
 use std::sync::Arc;
 
+#[cfg(target_os = "macos")]
 use tauri::Emitter;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
