@@ -122,9 +122,10 @@ describe('virtual device platform binding sanitation', () => {
     streamOutputSignalOrder?: string[]
     projectWaveformSignalOrder?: string[]
     keepScope?: boolean
+    bindCanvasSignalImpl?: (deviceId: string, signal: string | null) => Promise<void>
     setWaveformEnabledImpl?: (enabled: boolean) => Promise<void>
   }) {
-    const bindCanvasSignal = vi.fn(async () => undefined)
+    const bindCanvasSignal = vi.fn(options.bindCanvasSignalImpl ?? (async () => undefined))
     const upsertCanvasDevice = vi.fn(async () => undefined)
     const setWaveformEnabled = vi.fn(options.setWaveformEnabledImpl ?? (async () => undefined))
     const canvasDevices = ref<CanvasDeviceSnapshot[]>(
@@ -282,6 +283,20 @@ describe('virtual device platform binding sanitation', () => {
 
     expect(bindCanvasSignal).not.toHaveBeenCalled()
     expect(upsertCanvasDevice).not.toHaveBeenCalled()
+  })
+
+  it('surfaces binding sanitation failures in streamMessage', async () => {
+    const { state } = await instantiateWithCatalog({
+      hasSignalSourceReport: true,
+      hasStaleSignalSourceReport: false,
+      workbenchSignals: [],
+      canvasDevices: [createLedDevice('io_led')],
+      bindCanvasSignalImpl: async () => {
+        throw new Error('sanitize failed')
+      },
+    })
+
+    expect(state?.streamMessage.value).toBe('failedToSanitizeVirtualDeviceBindings')
   })
 
   it('includes clock-like input signals in default waveform candidates', async () => {

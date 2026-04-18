@@ -3,6 +3,7 @@ import type { CanvasInteractionMode } from './types'
 import { computed, ref, watch } from 'vue'
 
 import { getCanvasDeviceBoundSignal, getCanvasDeviceBoundSignals } from '@/lib/canvas-devices'
+import { useI18n } from '@/lib/i18n'
 import { normalizeUniqueSignalNames } from '@/lib/signal-names'
 import { designContextStore } from '@/stores/design-context'
 import { hardwareStore } from '@/stores/hardware'
@@ -16,6 +17,7 @@ import { useVirtualDevicePlatformStream } from './use-virtual-device-platform-st
 import { useVirtualDevicePlatformWaveform } from './use-virtual-device-platform-waveform'
 
 export function useVirtualDevicePlatformState() {
+  const { t } = useI18n()
   const showGallery = ref(false)
   const canvasInteractionMode = ref<CanvasInteractionMode>('select')
   const streamBusy = ref(false)
@@ -170,6 +172,9 @@ export function useVirtualDevicePlatformState() {
       }
 
       void sanitizeUnsupportedBindings().catch((error) => {
+        streamMessage.value = t('failedToSanitizeVirtualDeviceBindings', {
+          message: getErrorMessage(error),
+        })
         console.error('Failed to sanitize unsupported virtual-device bindings', error)
       })
     },

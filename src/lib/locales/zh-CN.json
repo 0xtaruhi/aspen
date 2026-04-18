@@ -299,6 +299,7 @@
   "failedRefreshStreamStatus": "刷新流状态失败：{message}",
   "failedToStartStream": "启动数据流失败：{message}",
   "failedToStopStream": "停止数据流失败：{message}",
+  "failedToSanitizeVirtualDeviceBindings": "清理虚拟器件绑定失败：{message}",
   "failedToToggleWaveformPanel": "更新波形面板失败：{message}",
   "failedToUpdateSignalMap": "更新信号映射失败：{message}",
   "hardwareRuntimeUnavailable": "硬件运行时不可用：{message}",
