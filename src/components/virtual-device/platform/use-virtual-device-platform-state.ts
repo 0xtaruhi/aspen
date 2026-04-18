@@ -11,9 +11,11 @@ import { designContextStore } from '@/stores/design-context'
 import { hardwareStore } from '@/stores/hardware'
 import { HARDWARE_STREAM_CLOCK_DELAY, hardwareWorkbenchStore } from '@/stores/hardware-workbench'
 import { projectStore } from '@/stores/project'
+import { projectWaveformStore } from '@/stores/project-waveform'
 import { signalCatalogStore } from '@/stores/signal-catalog'
 import { settingsStore } from '@/stores/settings'
 
+import { orderWaveformSignals } from './waveform-helpers'
 import {
   computeStreamScheduleLagMs,
   formatActualHz,
@@ -140,11 +142,12 @@ export function useVirtualDevicePlatformState() {
       selectedSignals.filter((signal): signal is string => Boolean(signal)),
     ).filter((signal) => allSignalNameSet.value.has(signal))
 
-    if (selectedDeviceIds.value.length > 0) {
-      return normalizeUniqueSignalNames([...clockSignals, ...uniqueSelectedSignals])
-    }
+    const derivedSignals =
+      selectedDeviceIds.value.length > 0
+        ? normalizeUniqueSignalNames([...clockSignals, ...uniqueSelectedSignals])
+        : streamObservableSignals.value
 
-    return streamObservableSignals.value
+    return orderWaveformSignals(derivedSignals, projectWaveformStore.signalOrder.value)
   })
   function toggleGallery() {
     showGallery.value = !showGallery.value
