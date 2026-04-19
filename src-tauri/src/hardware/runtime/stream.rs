@@ -315,7 +315,7 @@ impl HardwareRuntime {
 
             let can_submit = !decode_state_changed || pending_transfers.is_empty();
             let mut unscheduled_cycles = due_cycles;
-            while can_submit && unscheduled_cycles > 0 {
+            while can_submit && unscheduled_cycles > 0 && !stop_flag.load(Ordering::Relaxed) {
                 let frame_cycles = if pending_transfers.is_empty() {
                     (unscheduled_cycles as usize).min(queue_capacity)
                 } else if unscheduled_cycles < queue_capacity as u64 {
@@ -393,9 +393,21 @@ impl HardwareRuntime {
                 unscheduled_cycles = unscheduled_cycles.saturating_sub(frame_cycles as u64);
             }
 
+            if stop_flag.load(Ordering::Relaxed) {
+                break;
+            }
+
             let Some(mut pending_transfer) = pending_transfers.pop_front() else {
                 continue;
             };
+
+            // Honor stop requests before starting another blocking USB receive.
+            // Any in-flight transfers will be cancelled when the rolling window
+            // is dropped during stream shutdown.
+            if stop_flag.load(Ordering::Relaxed) {
+                pending_transfers.push_front(pending_transfer);
+                break;
+            }
 
             let Some(window) = transfer_window.as_mut() else {
                 free_write_buffers.push(pending_transfer.write_buffer);
@@ -509,9 +521,9 @@ impl HardwareRuntime {
             }
         }
 
+        drop(transfer_window);
         let _ = decode_tx.send(StreamDecodeMessage::Shutdown);
         drop(decode_tx);
-        drop(transfer_window);
         let _ = io.finish();
         let _ = board.close();
         let _ = decode_handle.join();
