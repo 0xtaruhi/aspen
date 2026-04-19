@@ -133,7 +133,7 @@ Aspen uses a protected `main` branch:
 
 - Aspen bundles its Yosys toolchain with `pnpm prepare:yosys-bundle`.
 - Implementation is provided by `fde = "1.0"` from crates.io.
-- USB communication is provided by `vlfd-rs = "2"`.
+- USB communication is provided by `vlfd-rs = "3"`.
 
 ### Self-updates
 

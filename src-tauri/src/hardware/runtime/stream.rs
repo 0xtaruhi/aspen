@@ -11,7 +11,7 @@ use std::{
 };
 
 use tauri::{AppHandle, Emitter};
-use vlfd_rs::{Board, IoConfig};
+use vlfd_rs::{Board, IoConfig, IoTransferWindow};
 
 use crate::hardware::types::{
     HardwareDataSignalCatalogEntryV1, HardwareDataSignalCatalogV1, HardwareDataStreamConfigV1,
@@ -33,6 +33,20 @@ struct StreamScheduleAnchor {
     recorded_at: Instant,
     completed_cycles: u64,
     target_hz: f64,
+}
+
+struct PendingStreamTransfer {
+    config_generation: u64,
+    target_hz: f64,
+    waveform_enabled: bool,
+    queue_capacity: usize,
+    words_per_cycle: usize,
+    min_batch_cycles: u16,
+    max_wait_us: u32,
+    frame_cycles: usize,
+    frame_words: usize,
+    write_buffer: Vec<u16>,
+    read_buffer: Vec<u16>,
 }
 
 impl HardwareRuntime {
@@ -122,9 +136,11 @@ impl HardwareRuntime {
         for _ in 0..STREAM_BUFFER_POOL_CAPACITY {
             let _ = free_buffer_tx.try_send(vec![0u16; fifo_words]);
         }
-        let mut write_buffers = vec![vec![0u16; fifo_words]; STREAM_USB_PIPELINE_WINDOW];
+        let mut transfer_window: Option<IoTransferWindow<'_, '_>> = None;
+        let mut free_write_buffers = vec![vec![0u16; fifo_words]; STREAM_USB_PIPELINE_WINDOW];
 
         let mut completed_cycles = 0_u64;
+        let mut in_flight_cycles = 0_u64;
         let mut sequence = 0_u64;
         let mut last_transfer_finished_at = Instant::now();
         let mut signal_catalog = SignalCatalog::default();
@@ -141,8 +157,9 @@ impl HardwareRuntime {
         };
         let dropped_samples = 0_u64;
         let mut input_encoders: Vec<Box<dyn InputDeviceEncoder>> = Vec::new();
+        let mut pending_transfers = VecDeque::with_capacity(STREAM_USB_PIPELINE_WINDOW);
 
-        while !stop_flag.load(Ordering::Relaxed) {
+        'stream: while !stop_flag.load(Ordering::Relaxed) {
             let config = match data_stream_config.lock() {
                 Ok(guard) => guard.clone(),
                 Err(_) => break,
@@ -191,27 +208,6 @@ impl HardwareRuntime {
                 );
             }
 
-            let next_signal_ids_signature = Self::signal_ids_signature(&signal_ids);
-            if signal_ids_signature != next_signal_ids_signature
-                || waveform_config_generation != config_generation
-            {
-                if decode_tx
-                    .send(StreamDecodeMessage::SignalIds(
-                        signal_ids.clone(),
-                        config_generation,
-                    ))
-                    .is_err()
-                {
-                    let _ = self.update_data_stream_status(|status| {
-                        status.running = false;
-                        status.last_error = Some("decode thread disconnected".to_string());
-                    });
-                    break;
-                }
-                signal_ids_signature = next_signal_ids_signature;
-                waveform_config_generation = config_generation;
-            }
-
             let words_per_cycle = usize::from(config.words_per_cycle.max(1));
             if words_per_cycle > fifo_words {
                 let _ = self.update_data_stream_status(|status| {
@@ -228,32 +224,6 @@ impl HardwareRuntime {
             let max_wait = Duration::from_micros(u64::from(config.max_wait_us));
             let effective_batch_cycles =
                 Self::effective_batch_cycles(target_hz, min_batch_cycles, queue_capacity, max_wait);
-            let expected_cycles = Self::expected_cycles_from_anchor(&schedule_anchor, loop_now);
-            let due_cycles = expected_cycles.saturating_sub(completed_cycles);
-
-            if due_cycles == 0 {
-                thread::sleep(DATA_IDLE_SLEEP);
-                continue;
-            }
-
-            let time_since_last_transfer = last_transfer_finished_at.elapsed();
-            if due_cycles < effective_batch_cycles as u64 && time_since_last_transfer < max_wait {
-                let sleep_for = Self::sleep_for_batch(
-                    target_hz,
-                    due_cycles,
-                    effective_batch_cycles,
-                    time_since_last_transfer,
-                    max_wait,
-                );
-                if !sleep_for.is_zero() {
-                    thread::sleep(sleep_for);
-                }
-                continue;
-            }
-
-            let max_window_cycles = queue_capacity.saturating_mul(STREAM_USB_PIPELINE_WINDOW);
-            let scheduled_cycles = due_cycles.min(max_window_cycles as u64).max(1) as usize;
-            let transfer_count = scheduled_cycles.div_ceil(queue_capacity);
             let state_snapshot = match self.snapshot() {
                 Ok(snapshot) => snapshot,
                 Err(_) => break,
@@ -264,9 +234,30 @@ impl HardwareRuntime {
                 input_encoders = Self::compile_input_encoders(&state_snapshot, &input_signal_order);
                 input_encoder_signature = next_input_encoder_signature;
             }
+            let next_signal_ids_signature = Self::signal_ids_signature(&signal_ids);
             let next_output_decoder_signature =
                 Self::output_decoder_signature(&state_snapshot, &output_signal_order);
-            if output_decoder_signature != next_output_decoder_signature {
+            let decode_state_changed = signal_ids_signature != next_signal_ids_signature
+                || waveform_config_generation != config_generation
+                || output_decoder_signature != next_output_decoder_signature;
+
+            if decode_state_changed && pending_transfers.is_empty() {
+                if decode_tx
+                    .send(StreamDecodeMessage::SignalIds(
+                        signal_ids.clone(),
+                        config_generation,
+                    ))
+                    .is_err()
+                {
+                    let _ = self.update_data_stream_status(|status| {
+                        status.running = false;
+                        status.last_error = Some("decode thread disconnected".to_string());
+                    });
+                    break;
+                }
+                signal_ids_signature = next_signal_ids_signature;
+                waveform_config_generation = config_generation;
+
                 let snapshot_interval = Self::device_snapshot_interval_for_state(&state_snapshot);
                 if decode_tx
                     .send(StreamDecodeMessage::DeviceSnapshotInterval(
@@ -295,14 +286,75 @@ impl HardwareRuntime {
                 output_decoder_signature = next_output_decoder_signature;
             }
 
-            let mut batch_cycles = Vec::with_capacity(transfer_count);
-            let mut batch_words = Vec::with_capacity(transfer_count);
-            let mut read_buffers = Vec::with_capacity(transfer_count);
-            let mut remaining_cycles = scheduled_cycles;
-            for write_buffer in write_buffers.iter_mut().take(transfer_count) {
-                let frame_cycles = remaining_cycles.min(queue_capacity);
-                remaining_cycles -= frame_cycles;
+            let expected_cycles = Self::expected_cycles_from_anchor(&schedule_anchor, loop_now);
+            let due_cycles =
+                expected_cycles.saturating_sub(completed_cycles.saturating_add(in_flight_cycles));
+
+            if due_cycles == 0 && pending_transfers.is_empty() {
+                thread::sleep(DATA_IDLE_SLEEP);
+                continue;
+            }
+
+            let time_since_last_transfer = last_transfer_finished_at.elapsed();
+            if pending_transfers.is_empty()
+                && due_cycles < effective_batch_cycles as u64
+                && time_since_last_transfer < max_wait
+            {
+                let sleep_for = Self::sleep_for_batch(
+                    target_hz,
+                    due_cycles,
+                    effective_batch_cycles,
+                    time_since_last_transfer,
+                    max_wait,
+                );
+                if !sleep_for.is_zero() {
+                    thread::sleep(sleep_for);
+                }
+                continue;
+            }
+
+            let can_submit = !decode_state_changed || pending_transfers.is_empty();
+            let mut unscheduled_cycles = due_cycles;
+            while can_submit && unscheduled_cycles > 0 {
+                let frame_cycles = if pending_transfers.is_empty() {
+                    (unscheduled_cycles as usize).min(queue_capacity)
+                } else if unscheduled_cycles < queue_capacity as u64 {
+                    break;
+                } else {
+                    queue_capacity
+                };
                 let frame_words = frame_cycles * words_per_cycle;
+
+                if pending_transfers.is_empty()
+                    && transfer_window
+                        .as_ref()
+                        .map(|window| window.words() != frame_words)
+                        .unwrap_or(true)
+                {
+                    transfer_window = None;
+                    match io.transfer_window(frame_words, STREAM_USB_PIPELINE_WINDOW) {
+                        Ok(window) => transfer_window = Some(window),
+                        Err(err) => {
+                            let _ = self.update_data_stream_status(|status| {
+                                status.running = false;
+                                status.last_error = Some(err.to_string());
+                            });
+                            break 'stream;
+                        }
+                    }
+                }
+
+                if transfer_window
+                    .as_ref()
+                    .map(|window| window.is_full())
+                    .unwrap_or(false)
+                {
+                    break;
+                }
+
+                let Some(mut write_buffer) = free_write_buffers.pop() else {
+                    break;
+                };
                 Self::fill_write_buffer(
                     &state_snapshot,
                     &input_encoders,
@@ -312,23 +364,55 @@ impl HardwareRuntime {
                 );
                 let mut read_buffer = Self::acquire_decode_buffer(&free_buffer_rx, fifo_words);
                 read_buffer[..frame_words].fill(0);
-                batch_cycles.push(frame_cycles);
-                batch_words.push(frame_words);
-                read_buffers.push(read_buffer);
+                let window = transfer_window
+                    .as_mut()
+                    .expect("stream window should be initialized before submit");
+                if let Err(err) = window.submit(&write_buffer[..frame_words]) {
+                    free_write_buffers.push(write_buffer);
+                    let _ = free_buffer_tx.try_send(read_buffer);
+                    let _ = self.update_data_stream_status(|status| {
+                        status.running = false;
+                        status.last_error = Some(err.to_string());
+                    });
+                    break 'stream;
+                }
+                pending_transfers.push_back(PendingStreamTransfer {
+                    config_generation,
+                    target_hz: config.target_hz,
+                    waveform_enabled: config.waveform_enabled,
+                    queue_capacity,
+                    words_per_cycle,
+                    min_batch_cycles: config.min_batch_cycles,
+                    max_wait_us: config.max_wait_us,
+                    frame_cycles,
+                    frame_words,
+                    write_buffer,
+                    read_buffer,
+                });
+                in_flight_cycles = in_flight_cycles.saturating_add(frame_cycles as u64);
+                unscheduled_cycles = unscheduled_cycles.saturating_sub(frame_cycles as u64);
             }
 
-            let tx_refs = write_buffers[..transfer_count]
-                .iter()
-                .zip(batch_words.iter().copied())
-                .map(|(buffer, words)| &buffer[..words])
-                .collect::<Vec<_>>();
-            let mut rx_refs = read_buffers
-                .iter_mut()
-                .zip(batch_words.iter().copied())
-                .map(|(buffer, words)| &mut buffer[..words])
-                .collect::<Vec<_>>();
+            let Some(mut pending_transfer) = pending_transfers.pop_front() else {
+                continue;
+            };
 
-            if let Err(err) = io.transfer_batch_into(&tx_refs, &mut rx_refs) {
+            let Some(window) = transfer_window.as_mut() else {
+                free_write_buffers.push(pending_transfer.write_buffer);
+                let _ = free_buffer_tx.try_send(pending_transfer.read_buffer);
+                let _ = self.update_data_stream_status(|status| {
+                    status.running = false;
+                    status.last_error =
+                        Some("stream window missing for pending transfer".to_string());
+                });
+                break;
+            };
+
+            if let Err(err) = window
+                .receive_into(&mut pending_transfer.read_buffer[..pending_transfer.frame_words])
+            {
+                free_write_buffers.push(pending_transfer.write_buffer);
+                let _ = free_buffer_tx.try_send(pending_transfer.read_buffer);
                 let _ = self.update_data_stream_status(|status| {
                     status.running = false;
                     status.last_error = Some(err.to_string());
@@ -341,38 +425,15 @@ impl HardwareRuntime {
             let generated_at_ms = Self::now_millis();
             let refreshed_expected_cycles =
                 Self::expected_cycles_from_anchor(&schedule_anchor, transfer_finished_at);
-            let mut decoded_batches = Vec::with_capacity(transfer_count);
+            in_flight_cycles =
+                in_flight_cycles.saturating_sub(pending_transfer.frame_cycles as u64);
+            completed_cycles =
+                completed_cycles.saturating_add(pending_transfer.frame_cycles as u64);
+            sequence = sequence.saturating_add(1);
 
-            for (index, read_buffer) in read_buffers.into_iter().enumerate() {
-                let frame_cycles = batch_cycles[index];
-                let frame_words = batch_words[index];
-                completed_cycles = completed_cycles.saturating_add(frame_cycles as u64);
-                sequence = sequence.saturating_add(1);
-                let remaining_backlog = refreshed_expected_cycles.saturating_sub(completed_cycles);
-                decoded_batches.push(StreamDecodeBatch {
-                    config_generation,
-                    sequence,
-                    generated_at_ms,
-                    dropped_samples,
-                    target_hz: config.target_hz,
-                    actual_hz: 0.0,
-                    transfer_rate_hz: 0.0,
-                    waveform_enabled: config.waveform_enabled,
-                    queue_fill: remaining_backlog.min(u64::from(u16::MAX)) as u16,
-                    queue_capacity: queue_capacity.min(usize::from(u16::MAX)) as u16,
-                    batch_cycles: frame_cycles.min(usize::from(u16::MAX)) as u16,
-                    words_per_cycle,
-                    batch_words: frame_words,
-                    write_buffer: if config.waveform_enabled {
-                        write_buffers[index][..frame_words].to_vec()
-                    } else {
-                        Vec::new()
-                    },
-                    read_buffer,
-                });
-            }
-
-            let remaining_backlog = refreshed_expected_cycles.saturating_sub(completed_cycles);
+            let delivered_or_in_flight_cycles = completed_cycles.saturating_add(in_flight_cycles);
+            let remaining_backlog =
+                refreshed_expected_cycles.saturating_sub(delivered_or_in_flight_cycles);
             let (actual_hz, transfer_rate_hz) = Self::windowed_stream_rates(
                 &mut rate_window_samples,
                 transfer_finished_at,
@@ -380,45 +441,60 @@ impl HardwareRuntime {
                 sequence,
             );
 
-            let mut decode_failed = false;
-            for batch_message in decoded_batches.into_iter().map(|mut batch_message| {
-                batch_message.actual_hz = actual_hz;
-                batch_message.transfer_rate_hz = transfer_rate_hz;
-                batch_message
-            }) {
-                match decode_tx.send(StreamDecodeMessage::Batch(batch_message)) {
-                    Ok(()) => {}
-                    Err(mpsc::SendError(StreamDecodeMessage::Batch(batch_message))) => {
-                        let _ = free_buffer_tx.try_send(batch_message.read_buffer);
-                        let _ = self.update_data_stream_status(|status| {
-                            status.running = false;
-                            status.last_error = Some("decode thread disconnected".to_string());
-                        });
-                        decode_failed = true;
-                        break;
-                    }
-                    Err(_) => {}
-                }
-            }
+            let write_buffer = pending_transfer.write_buffer;
+            let waveform_write_buffer = if pending_transfer.waveform_enabled {
+                write_buffer[..pending_transfer.frame_words].to_vec()
+            } else {
+                Vec::new()
+            };
+            free_write_buffers.push(write_buffer);
 
-            if decode_failed {
+            let batch_message = StreamDecodeBatch {
+                config_generation: pending_transfer.config_generation,
+                sequence,
+                generated_at_ms,
+                dropped_samples,
+                target_hz: pending_transfer.target_hz,
+                actual_hz,
+                transfer_rate_hz,
+                waveform_enabled: pending_transfer.waveform_enabled,
+                queue_fill: remaining_backlog.min(u64::from(u16::MAX)) as u16,
+                queue_capacity: pending_transfer.queue_capacity.min(usize::from(u16::MAX)) as u16,
+                batch_cycles: pending_transfer.frame_cycles.min(usize::from(u16::MAX)) as u16,
+                words_per_cycle: pending_transfer.words_per_cycle,
+                batch_words: pending_transfer.frame_words,
+                write_buffer: waveform_write_buffer,
+                read_buffer: pending_transfer.read_buffer,
+            };
+
+            if let Err(mpsc::SendError(StreamDecodeMessage::Batch(batch_message))) =
+                decode_tx.send(StreamDecodeMessage::Batch(batch_message))
+            {
+                let _ = free_buffer_tx.try_send(batch_message.read_buffer);
+                let _ = self.update_data_stream_status(|status| {
+                    status.running = false;
+                    status.last_error = Some("decode thread disconnected".to_string());
+                });
                 break;
             }
 
             let _ = self.update_data_stream_status(|status| {
                 status.running = true;
-                status.target_hz = config.target_hz;
+                status.target_hz = pending_transfer.target_hz;
                 status.actual_hz = actual_hz;
                 status.transfer_rate_hz = transfer_rate_hz;
                 status.sequence = sequence;
                 status.dropped_samples = dropped_samples;
                 status.queue_fill = remaining_backlog.min(u64::from(u16::MAX)) as u16;
-                status.queue_capacity = queue_capacity.min(usize::from(u16::MAX)) as u16;
+                status.queue_capacity =
+                    pending_transfer.queue_capacity.min(usize::from(u16::MAX)) as u16;
                 status.last_batch_at_ms = generated_at_ms;
-                status.last_batch_cycles = scheduled_cycles.min(usize::from(u16::MAX)) as u16;
-                status.words_per_cycle = config.words_per_cycle;
-                status.min_batch_cycles = config.min_batch_cycles;
-                status.max_wait_us = config.max_wait_us;
+                status.last_batch_cycles =
+                    pending_transfer.frame_cycles.min(usize::from(u16::MAX)) as u16;
+                status.words_per_cycle =
+                    pending_transfer.words_per_cycle.min(usize::from(u16::MAX)) as u16;
+                status.min_batch_cycles = pending_transfer.min_batch_cycles;
+                status.max_wait_us = pending_transfer.max_wait_us;
                 status.configured_signal_count = input_signal_order
                     .iter()
                     .chain(output_signal_order.iter())
@@ -427,10 +503,15 @@ impl HardwareRuntime {
                     .min(u16::MAX as usize) as u16;
                 status.last_error = None;
             });
+
+            if pending_transfers.is_empty() {
+                transfer_window = None;
+            }
         }
 
         let _ = decode_tx.send(StreamDecodeMessage::Shutdown);
         drop(decode_tx);
+        drop(transfer_window);
         let _ = io.finish();
         let _ = board.close();
         let _ = decode_handle.join();

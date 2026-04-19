@@ -205,6 +205,7 @@ impl HardwareRuntime {
         payload
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn encode_binary_waveform_batch(
         sequence: u64,
         generated_at_ms: u64,
