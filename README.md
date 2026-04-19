@@ -76,7 +76,7 @@ Official releases currently ship installer artifacts for:
 
 Prerequisites:
 
-- Node.js 20+
+- Node.js 24+
 - `pnpm` 10+
 - Rust stable
 

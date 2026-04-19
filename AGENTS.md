@@ -12,6 +12,7 @@ Follow repository facts first, then these conventions.
 - FPGA implementation/bitstream: Rust `fde` from crates.io (`fde = "1.0"`), invoked directly from the Tauri backend through staged function calls.
 - Runtime synthesis must use Aspen's bundled Yosys toolchain; do not fall back to a system `yosys` on `PATH`.
 - Runtime implementation must use Aspen's Cargo-linked Rust `fde` dependency; do not shell out to a system-installed `fde`.
+- Node.js baseline: 24+
 - Package manager: pnpm.
 - Type safety baseline: strict TypeScript (`strict: true`, unused checks on).
 - UI foundation: Tailwind CSS v4 + shadcn-vue/reka-ui patterns.
