@@ -41,6 +41,8 @@ struct PendingStreamTransfer {
     waveform_enabled: bool,
     queue_capacity: usize,
     words_per_cycle: usize,
+    min_batch_cycles: u16,
+    max_wait_us: u32,
     frame_cycles: usize,
     frame_words: usize,
     write_buffer: Vec<u16>,
@@ -350,9 +352,9 @@ impl HardwareRuntime {
                     break;
                 }
 
-                let mut write_buffer = free_write_buffers
-                    .pop()
-                    .expect("stream write buffer pool should match rolling window capacity");
+                let Some(mut write_buffer) = free_write_buffers.pop() else {
+                    break;
+                };
                 Self::fill_write_buffer(
                     &state_snapshot,
                     &input_encoders,
@@ -380,6 +382,8 @@ impl HardwareRuntime {
                     waveform_enabled: config.waveform_enabled,
                     queue_capacity,
                     words_per_cycle,
+                    min_batch_cycles: config.min_batch_cycles,
+                    max_wait_us: config.max_wait_us,
                     frame_cycles,
                     frame_words,
                     write_buffer,
@@ -427,7 +431,9 @@ impl HardwareRuntime {
                 completed_cycles.saturating_add(pending_transfer.frame_cycles as u64);
             sequence = sequence.saturating_add(1);
 
-            let remaining_backlog = refreshed_expected_cycles.saturating_sub(completed_cycles);
+            let delivered_or_in_flight_cycles = completed_cycles.saturating_add(in_flight_cycles);
+            let remaining_backlog =
+                refreshed_expected_cycles.saturating_sub(delivered_or_in_flight_cycles);
             let (actual_hz, transfer_rate_hz) = Self::windowed_stream_rates(
                 &mut rate_window_samples,
                 transfer_finished_at,
@@ -474,19 +480,21 @@ impl HardwareRuntime {
 
             let _ = self.update_data_stream_status(|status| {
                 status.running = true;
-                status.target_hz = config.target_hz;
+                status.target_hz = pending_transfer.target_hz;
                 status.actual_hz = actual_hz;
                 status.transfer_rate_hz = transfer_rate_hz;
                 status.sequence = sequence;
                 status.dropped_samples = dropped_samples;
                 status.queue_fill = remaining_backlog.min(u64::from(u16::MAX)) as u16;
-                status.queue_capacity = queue_capacity.min(usize::from(u16::MAX)) as u16;
+                status.queue_capacity =
+                    pending_transfer.queue_capacity.min(usize::from(u16::MAX)) as u16;
                 status.last_batch_at_ms = generated_at_ms;
                 status.last_batch_cycles =
                     pending_transfer.frame_cycles.min(usize::from(u16::MAX)) as u16;
-                status.words_per_cycle = config.words_per_cycle;
-                status.min_batch_cycles = config.min_batch_cycles;
-                status.max_wait_us = config.max_wait_us;
+                status.words_per_cycle =
+                    pending_transfer.words_per_cycle.min(usize::from(u16::MAX)) as u16;
+                status.min_batch_cycles = pending_transfer.min_batch_cycles;
+                status.max_wait_us = pending_transfer.max_wait_us;
                 status.configured_signal_count = input_signal_order
                     .iter()
                     .chain(output_signal_order.iter())
