@@ -521,9 +521,9 @@ impl HardwareRuntime {
             }
         }
 
+        drop(transfer_window);
         let _ = decode_tx.send(StreamDecodeMessage::Shutdown);
         drop(decode_tx);
-        drop(transfer_window);
         let _ = io.finish();
         let _ = board.close();
         let _ = decode_handle.join();
