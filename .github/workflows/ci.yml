@@ -170,7 +170,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -206,7 +206,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Cache bundled Yosys toolchain
         id: cache-yosys
@@ -247,7 +247,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Cache bundled Yosys toolchain
         id: cache-yosys
@@ -288,7 +288,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Cache bundled Yosys toolchain
         id: cache-yosys
@@ -399,7 +399,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
 
       - name: Install Linux desktop dependencies
@@ -503,7 +503,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -618,7 +618,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
