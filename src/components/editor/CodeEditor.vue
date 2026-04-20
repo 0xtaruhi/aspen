@@ -18,6 +18,7 @@ import { settingsStore } from '@/stores/settings'
 const props = defineProps<{
   value: string
   language?: EditorLanguage
+  model?: monaco.editor.ITextModel | null
 }>()
 
 const emit = defineEmits<{
@@ -38,7 +39,8 @@ onMounted(() => {
 
   ensureMonacoHdlSupport(monaco)
 
-  const model = monaco.editor.createModel(props.value, getEditorLanguage(props.language))
+  const model =
+    props.model ?? monaco.editor.createModel(props.value, getEditorLanguage(props.language))
 
   editor = monaco.editor.create(container.value, {
     model,
@@ -71,8 +73,22 @@ watch(
 watch(
   () => props.value,
   (val) => {
-    if (editor && val !== editor.getValue()) {
-      editor.setValue(val)
+    const model = editor?.getModel()
+    if (model && val !== model.getValue()) {
+      model.setValue(val)
+    }
+  },
+)
+
+watch(
+  () => props.model,
+  (model) => {
+    if (!editor) {
+      return
+    }
+
+    if (model && editor.getModel() !== model) {
+      editor.setModel(model)
     }
   },
 )
@@ -112,9 +128,7 @@ watch(
 )
 
 onUnmounted(() => {
-  const model = editor?.getModel()
   editor?.dispose()
-  model?.dispose()
 })
 </script>
 

@@ -29,3 +29,18 @@ export function resolveEditorLanguage(fileName?: string | null): EditorLanguage 
 
   return 'plaintext'
 }
+
+export function normalizeEditorPath(path?: string | null): string {
+  return (path ?? '')
+    .replace(/\\/g, '/')
+    .split('/')
+    .filter((segment) => segment.length > 0)
+    .join('/')
+}
+
+export function buildEditorFileUri(rootUri: string, relativePath: string): string {
+  const normalizedRoot = rootUri.replace(/\/+$/, '')
+  const normalizedPath = normalizeEditorPath(relativePath)
+
+  return normalizedPath ? `${normalizedRoot}/${normalizedPath}` : normalizedRoot
+}
