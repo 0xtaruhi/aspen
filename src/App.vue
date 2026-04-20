@@ -14,6 +14,7 @@ import {
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
+import { vWindowChrome } from '@/directives/window-chrome'
 import { useAppShell } from '@/lib/app-shell'
 import { useI18n } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
@@ -50,9 +51,10 @@ const {
       <AppSidebar />
       <SidebarInset class="relative flex h-full min-h-0 flex-col">
         <header
+          v-window-chrome
           class="app-shell-header app-navigation-glass flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear z-10 group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12"
         >
-          <div class="flex w-full items-center gap-2 px-4" data-tauri-drag-region>
+          <div class="flex w-full items-center gap-2 px-4">
             <div
               v-if="isMacDesktop"
               aria-hidden="true"
