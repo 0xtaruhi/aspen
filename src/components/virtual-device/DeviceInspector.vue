@@ -281,7 +281,13 @@ async function removeDevice() {
         <div class="mt-4 flex flex-wrap gap-2">
           <Badge variant="secondary">{{ capabilityLabel }}</Badge>
           <Badge variant="outline">{{ liveLevel ? t('high') : t('low') }}</Badge>
-          <Badge variant="outline">{{ t('pinsCount', { count: bindingSlots.length }) }}</Badge>
+          <Badge variant="outline">
+            {{
+              bindingSlots.length === 1
+                ? t('pinCountSingle')
+                : t('pinsCount', { count: bindingSlots.length })
+            }}
+          </Badge>
         </div>
 
         <Separator class="my-5" />

@@ -55,6 +55,8 @@ function commitDipWidth() {
       @blur="commitDipWidth"
       @keydown.enter.prevent="commitDipWidth"
     />
-    <p class="text-xs text-muted-foreground">{{ t('currentBits') }}: {{ currentBits }}</p>
+    <p class="text-xs text-muted-foreground">
+      {{ t('currentBitsValue', { bits: currentBits }) }}
+    </p>
   </section>
 </template>
