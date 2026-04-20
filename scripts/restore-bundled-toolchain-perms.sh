@@ -26,9 +26,11 @@ set_top_level_exec_bits() {
 }
 
 set_user_write_bits "$root/yosys"
+set_user_write_bits "$root/slang-server"
 set_user_write_bits "$root/fde"
 set_exec_bits "$root/yosys/bin"
 set_exec_bits "$root/yosys/libexec"
 set_top_level_exec_bits "$root/yosys/lib"
 set_top_level_exec_bits "$root/yosys/lib64"
+set_top_level_exec_bits "$root/slang-server"
 set_exec_bits "$root/fde/bin"

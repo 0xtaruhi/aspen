@@ -10,8 +10,10 @@ Follow repository facts first, then these conventions.
 - Desktop self-updates: Tauri updater against signed GitHub Releases metadata.
 - FPGA synthesis: Yosys, invoked from the Tauri backend for the Synthesis page.
 - FPGA implementation/bitstream: Rust `fde` from crates.io (`fde = "1.0"`), invoked directly from the Tauri backend through staged function calls.
+- HDL language services: bundled `slang-server` prebuilt binaries, invoked from the Tauri backend for Verilog/SystemVerilog editing features.
 - Runtime synthesis must use Aspen's bundled Yosys toolchain; do not fall back to a system `yosys` on `PATH`.
 - Runtime implementation must use Aspen's Cargo-linked Rust `fde` dependency; do not shell out to a system-installed `fde`.
+- Runtime HDL editor support should use Aspen's bundled `slang-server` when available; do not require a globally installed `slang-server` for normal development or packaged builds.
 - Node.js baseline: 24+
 - Package manager: pnpm.
 - Type safety baseline: strict TypeScript (`strict: true`, unused checks on).
@@ -56,6 +58,8 @@ Follow repository facts first, then these conventions.
 - Tauri dev app: `pnpm tauri dev`
 - Frontend preview: `pnpm preview`
 - Download, prune, and bundle the official OSS CAD Suite into `src-tauri/vendor/yosys`: `pnpm prepare:yosys-bundle`
+- Download and bundle the official `slang-server` release into `src-tauri/vendor/slang-server`: `pnpm prepare:slang-server-bundle`
+- `pnpm tauri dev` and `pnpm tauri build` should automatically prepare the bundled `slang-server` when it is missing.
 
 ## Build, Lint, Typecheck, Test
 
@@ -105,6 +109,7 @@ Use these when Rust tests exist:
 ## Pre-PR Verification Checklist
 
 - `pnpm prepare:yosys-bundle`
+- `pnpm prepare:slang-server-bundle`
 - `pnpm lint`
 - `pnpm build`
 - `pnpm tauri build` for desktop-impacting changes

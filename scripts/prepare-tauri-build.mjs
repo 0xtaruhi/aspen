@@ -45,6 +45,7 @@ function runPackageManager(args) {
 }
 
 runPackageManager(['build'])
+runPackageManager(['prepare:slang-server-bundle'])
 
 if (process.platform !== 'win32') {
   process.exit(0)

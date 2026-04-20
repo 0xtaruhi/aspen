@@ -9,10 +9,11 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tauri::{AppHandle, Emitter};
+use tauri::{path::BaseDirectory, AppHandle, Emitter, Manager};
 
 const LSP_EVENT_NAME: &str = "hdl:lsp-message";
 const DEFAULT_WORKSPACE_ROOT_NAME: &str = "aspen-hdl-lsp";
+const BUNDLED_SLANG_SERVER_DIR: &str = "vendor/slang-server";
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct HdlLspSourceFile {
@@ -74,8 +75,8 @@ pub struct HdlLspManager {
 }
 
 #[tauri::command]
-pub fn hdl_lsp_status() -> Result<HdlLspStatusResponse, String> {
-    let command = resolve_slang_server_command();
+pub fn hdl_lsp_status(app: AppHandle) -> Result<HdlLspStatusResponse, String> {
+    let command = resolve_slang_server_command(Some(&app));
     Ok(HdlLspStatusResponse {
         available: command.is_some(),
         command,
@@ -88,7 +89,7 @@ pub fn hdl_lsp_start(
     manager: tauri::State<'_, Arc<HdlLspManager>>,
     request: HdlLspStartRequest,
 ) -> Result<HdlLspStartResponse, String> {
-    let command = resolve_slang_server_command();
+    let command = resolve_slang_server_command(Some(&app));
     let Some(program) = command.clone() else {
         return Ok(HdlLspStartResponse {
             session_id: request.session_id,
@@ -131,8 +132,8 @@ pub fn hdl_lsp_start(
     let stdin = Arc::new(Mutex::new(stdin));
     let session_id = request.session_id.clone();
 
-    spawn_reader_thread(app.clone(), session_id.clone(), stdout, false);
-    spawn_reader_thread(app, session_id.clone(), stderr, true);
+    spawn_reader_thread(app, session_id.clone(), stdout, false);
+    spawn_stderr_reader_thread(stderr);
 
     manager
         .sessions
@@ -323,6 +324,27 @@ where
     });
 }
 
+fn spawn_stderr_reader_thread<R>(reader: R)
+where
+    R: std::io::Read + Send + 'static,
+{
+    thread::spawn(move || {
+        let mut reader = BufReader::new(reader);
+        let mut line = String::new();
+
+        loop {
+            line.clear();
+            let Ok(bytes_read) = reader.read_line(&mut line) else {
+                break;
+            };
+
+            if bytes_read == 0 {
+                break;
+            }
+        }
+    });
+}
+
 fn read_lsp_message<R: BufRead>(reader: &mut R) -> Option<Value> {
     let mut content_length: Option<usize> = None;
     let mut line = String::new();
@@ -352,7 +374,7 @@ fn read_lsp_message<R: BufRead>(reader: &mut R) -> Option<Value> {
     serde_json::from_slice(&body).ok()
 }
 
-fn resolve_slang_server_command() -> Option<String> {
+fn resolve_slang_server_command(app: Option<&AppHandle>) -> Option<String> {
     if let Ok(explicit) = std::env::var("ASPEN_SLANG_SERVER") {
         let trimmed = explicit.trim();
         if !trimmed.is_empty() {
@@ -360,7 +382,15 @@ fn resolve_slang_server_command() -> Option<String> {
         }
     }
 
-    which("slang-server").or_else(find_known_dev_slang_server_path)
+    if let Some(candidate) = app.and_then(find_bundled_slang_server_resource_path) {
+        return Some(candidate);
+    }
+
+    if let Some(candidate) = find_bundled_dev_slang_server_path() {
+        return Some(candidate);
+    }
+
+    which("slang-server")
 }
 
 fn which(program: &str) -> Option<String> {
@@ -383,16 +413,37 @@ fn which(program: &str) -> Option<String> {
     None
 }
 
-fn find_known_dev_slang_server_path() -> Option<String> {
-    const CANDIDATES: &[&str] = &[
-        "/tmp/slang-server/build/bin/slang-server",
-        "/private/tmp/slang-server/build/bin/slang-server",
-    ];
+fn find_bundled_slang_server_resource_path(app: &AppHandle) -> Option<String> {
+    app.path()
+        .resolve(
+            format!(
+                "{}/{}",
+                BUNDLED_SLANG_SERVER_DIR,
+                slang_server_executable_name()
+            ),
+            BaseDirectory::Resource,
+        )
+        .ok()
+        .filter(|path| path.is_file())
+        .map(|path| path.to_string_lossy().into_owned())
+}
 
-    CANDIDATES
-        .iter()
-        .find(|candidate| Path::new(candidate).is_file())
-        .map(|candidate| (*candidate).to_string())
+fn find_bundled_dev_slang_server_path() -> Option<String> {
+    let candidate = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(BUNDLED_SLANG_SERVER_DIR)
+        .join(slang_server_executable_name());
+
+    candidate
+        .is_file()
+        .then(|| candidate.to_string_lossy().into_owned())
+}
+
+fn slang_server_executable_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "slang-server.exe"
+    } else {
+        "slang-server"
+    }
 }
 
 fn file_uri_to_path(uri: &str) -> Option<PathBuf> {

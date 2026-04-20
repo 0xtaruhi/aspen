@@ -92,6 +92,14 @@ Prepare the bundled Yosys toolchain:
 pnpm prepare:yosys-bundle
 ```
 
+Prepare the bundled `slang-server` language server:
+
+```bash
+pnpm prepare:slang-server-bundle
+```
+
+`pnpm tauri dev` and `pnpm tauri build` will also prepare the bundled `slang-server` automatically when it is missing.
+
 Run the desktop app in development mode:
 
 ```bash
@@ -132,8 +140,16 @@ Aspen uses a protected `main` branch:
 ### FPGA backend
 
 - Aspen bundles its Yosys toolchain with `pnpm prepare:yosys-bundle`.
+- Aspen bundles `slang-server` with `pnpm prepare:slang-server-bundle`.
 - Implementation is provided by `fde = "1.0"` from crates.io.
 - USB communication is provided by `vlfd-rs = "3"`.
+
+### HDL editor language server
+
+- Development builds look for `slang-server` in `src-tauri/vendor/slang-server/`.
+- Packaged desktop builds ship the same files as bundled Tauri resources under `vendor/slang-server/`.
+- CI prepares the same `src-tauri/vendor/slang-server/` directory before Rust checks and package builds.
+- `ASPEN_SLANG_SERVER=/absolute/path/to/slang-server` can override the bundled binary for debugging, but normal development and CI should use the bundled copy.
 
 ### Self-updates
 

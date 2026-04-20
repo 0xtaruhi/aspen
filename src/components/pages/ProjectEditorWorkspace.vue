@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api'
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, markRaw, onUnmounted, shallowRef, watch } from 'vue'
 
 import CodeEditor from '@/components/editor/CodeEditor.vue'
 import { Badge } from '@/components/ui/badge'
@@ -33,7 +33,7 @@ const activeFilePath = computed(() =>
 )
 const projectFilesKey = computed(() => collectProjectSourceFilePaths(projectStore.files).join('\n'))
 
-const activeModel = ref<monaco.editor.ITextModel | null>(null)
+const activeModel = shallowRef<monaco.editor.ITextModel | null>(null)
 let syncVersion = 0
 let sessionFilesSnapshot: ReturnType<typeof collectProjectSourceFiles> = []
 
@@ -79,15 +79,17 @@ watch(
       return
     }
 
-    activeModel.value = ensureHdlTextModel(
-      {
-        path: filePath,
-        content: file.content ?? '',
-        language,
-      },
-      {
-        rootUri: response.root_uri,
-      },
+    activeModel.value = markRaw(
+      ensureHdlTextModel(
+        {
+          path: filePath,
+          content: file.content ?? '',
+          language,
+        },
+        {
+          rootUri: response.root_uri,
+        },
+      ),
     )
   },
   {

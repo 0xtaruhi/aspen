@@ -58,6 +58,7 @@ onMounted(() => {
     model,
     theme: themeState.value ? 'vs-dark' : 'vs',
     automaticLayout: true,
+    fixedOverflowWidgets: true,
     minimap: { enabled: settingsStore.state.editorMinimap },
     fontSize: settingsStore.state.editorFontSize,
     fontFamily: settingsStore.state.editorFontFamily,
@@ -85,7 +86,11 @@ watch(
 watch(
   () => props.value,
   (val) => {
-    const model = props.model ?? fallbackModel ?? editor?.getModel() ?? null
+    if (props.model) {
+      return
+    }
+
+    const model = fallbackModel ?? editor?.getModel() ?? null
     if (model) {
       syncModelState(model, val, props.language)
     }

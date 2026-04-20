@@ -23,6 +23,7 @@ env:
   NODE_VERSION: '24'
   NODE_OPTIONS: --max-old-space-size=6144
   OSS_CAD_SUITE_VERSION: '2026-03-17'
+  SLANG_SERVER_VERSION: 'v0.2.4'
 
 jobs:
   changes:
@@ -216,9 +217,20 @@ jobs:
           path: src-tauri/vendor/yosys
           key: bundled-yosys-${{ runner.os }}-ubuntu-22.04-${{ env.OSS_CAD_SUITE_VERSION }}-${{ hashFiles('scripts/prepare-yosys-bundle.mjs') }}
 
+      - name: Cache bundled slang-server
+        id: cache-slang
+        uses: actions/cache@v5
+        with:
+          path: src-tauri/vendor/slang-server
+          key: bundled-slang-server-${{ runner.os }}-ubuntu-22.04-${{ env.SLANG_SERVER_VERSION }}-${{ hashFiles('scripts/prepare-slang-server-bundle.mjs') }}
+
       - name: Download bundled Yosys toolchain
         if: steps.cache-yosys.outputs.cache-hit != 'true'
         run: pnpm prepare:yosys-bundle
+
+      - name: Download bundled slang-server
+        if: steps.cache-slang.outputs.cache-hit != 'true'
+        run: pnpm prepare:slang-server-bundle
 
       - name: Upload bundled Yosys toolchain
         uses: actions/upload-artifact@v7
@@ -226,6 +238,7 @@ jobs:
           name: bundled-fpga-toolchains-ubuntu-22.04
           path: |
             src-tauri/vendor/yosys
+            src-tauri/vendor/slang-server
           if-no-files-found: error
           retention-days: 1
           compression-level: 0
@@ -257,9 +270,20 @@ jobs:
           path: src-tauri/vendor/yosys
           key: bundled-yosys-${{ runner.os }}-${{ env.OSS_CAD_SUITE_VERSION }}-${{ hashFiles('scripts/prepare-yosys-bundle.mjs') }}
 
+      - name: Cache bundled slang-server
+        id: cache-slang
+        uses: actions/cache@v5
+        with:
+          path: src-tauri/vendor/slang-server
+          key: bundled-slang-server-${{ runner.os }}-${{ env.SLANG_SERVER_VERSION }}-${{ hashFiles('scripts/prepare-slang-server-bundle.mjs') }}
+
       - name: Download bundled Yosys toolchain
         if: steps.cache-yosys.outputs.cache-hit != 'true'
         run: pnpm prepare:yosys-bundle
+
+      - name: Download bundled slang-server
+        if: steps.cache-slang.outputs.cache-hit != 'true'
+        run: pnpm prepare:slang-server-bundle
 
       - name: Upload bundled Yosys toolchain
         uses: actions/upload-artifact@v7
@@ -267,6 +291,7 @@ jobs:
           name: bundled-fpga-toolchains-macos-latest
           path: |
             src-tauri/vendor/yosys
+            src-tauri/vendor/slang-server
           if-no-files-found: error
           retention-days: 1
           compression-level: 0
@@ -298,9 +323,20 @@ jobs:
           path: src-tauri/vendor/yosys
           key: bundled-yosys-${{ runner.os }}-${{ env.OSS_CAD_SUITE_VERSION }}-${{ hashFiles('scripts/prepare-yosys-bundle.mjs') }}
 
+      - name: Cache bundled slang-server
+        id: cache-slang
+        uses: actions/cache@v5
+        with:
+          path: src-tauri/vendor/slang-server
+          key: bundled-slang-server-${{ runner.os }}-${{ env.SLANG_SERVER_VERSION }}-${{ hashFiles('scripts/prepare-slang-server-bundle.mjs') }}
+
       - name: Download bundled Yosys toolchain
         if: steps.cache-yosys.outputs.cache-hit != 'true'
         run: pnpm prepare:yosys-bundle
+
+      - name: Download bundled slang-server
+        if: steps.cache-slang.outputs.cache-hit != 'true'
+        run: pnpm prepare:slang-server-bundle
 
       - name: Upload bundled Yosys toolchain
         uses: actions/upload-artifact@v7
@@ -308,6 +344,7 @@ jobs:
           name: bundled-fpga-toolchains-windows-latest
           path: |
             src-tauri/vendor/yosys
+            src-tauri/vendor/slang-server
           if-no-files-found: error
           retention-days: 1
           compression-level: 0
@@ -337,7 +374,7 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: bundled-fpga-toolchains-ubuntu-22.04
-          path: src-tauri/vendor/yosys
+          path: src-tauri/vendor
 
       - name: Restore bundled toolchain execute permissions
         run: bash scripts/restore-bundled-toolchain-perms.sh
@@ -422,7 +459,7 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: bundled-fpga-toolchains-ubuntu-22.04
-          path: src-tauri/vendor/yosys
+          path: src-tauri/vendor
 
       - name: Restore bundled toolchain execute permissions
         run: bash scripts/restore-bundled-toolchain-perms.sh
@@ -514,7 +551,7 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: bundled-fpga-toolchains-macos-latest
-          path: src-tauri/vendor/yosys
+          path: src-tauri/vendor
 
       - name: Restore bundled toolchain execute permissions
         run: bash scripts/restore-bundled-toolchain-perms.sh
@@ -584,6 +621,7 @@ jobs:
           hdiutil attach -quiet -nobrowse -readonly -mountpoint "$mount_dir" "$dmg" >/dev/null
           test -f "$mount_dir/aspen.app/Contents/_CodeSignature/CodeResources"
           test -f "$mount_dir/aspen.app/Contents/Resources/vendor/yosys/bin/yosys"
+          test -f "$mount_dir/aspen.app/Contents/Resources/vendor/slang-server/slang-server"
           codesign --verify --deep --strict --verbose=4 "$mount_dir/aspen.app"
 
       - name: Upload Aspen package artifacts
@@ -629,7 +667,7 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: bundled-fpga-toolchains-windows-latest
-          path: src-tauri/vendor/yosys
+          path: src-tauri/vendor
 
       - name: Select Tauri config
         id: tauri_config
