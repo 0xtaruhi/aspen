@@ -1,53 +1,48 @@
 import type { ProjectNode } from './project-model'
 
+export type ProjectFileEntry = {
+  node: ProjectNode
+  path: string
+}
+
 export type ProjectSourceFileSnapshot = {
   path: string
   content: string
 }
 
-export function collectProjectSourceFilePaths(
+export function collectProjectFileEntries(
   nodes: ProjectNode[],
   parentSegments: string[] = [],
-): string[] {
-  const paths: string[] = []
+): ProjectFileEntry[] {
+  const files: ProjectFileEntry[] = []
 
   for (const node of nodes) {
     const pathSegments = [...parentSegments, node.name]
-
-    if (node.type === 'file') {
-      paths.push(pathSegments.join('/'))
-      continue
-    }
-
-    if (node.children) {
-      paths.push(...collectProjectSourceFilePaths(node.children, pathSegments))
-    }
-  }
-
-  return paths
-}
-
-export function collectProjectSourceFiles(
-  nodes: ProjectNode[],
-  parentSegments: string[] = [],
-): ProjectSourceFileSnapshot[] {
-  const files: ProjectSourceFileSnapshot[] = []
-
-  for (const node of nodes) {
-    const pathSegments = [...parentSegments, node.name]
+    const path = pathSegments.join('/')
 
     if (node.type === 'file') {
       files.push({
-        path: pathSegments.join('/'),
-        content: node.content ?? '',
+        node,
+        path,
       })
       continue
     }
 
     if (node.children) {
-      files.push(...collectProjectSourceFiles(node.children, pathSegments))
+      files.push(...collectProjectFileEntries(node.children, pathSegments))
     }
   }
 
   return files
+}
+
+export function collectProjectSourceFilePaths(nodes: ProjectNode[]): string[] {
+  return collectProjectFileEntries(nodes).map((file) => file.path)
+}
+
+export function collectProjectSourceFiles(nodes: ProjectNode[]): ProjectSourceFileSnapshot[] {
+  return collectProjectFileEntries(nodes).map((file) => ({
+    path: file.path,
+    content: file.node.content ?? '',
+  }))
 }

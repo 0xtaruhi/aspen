@@ -12,11 +12,10 @@ import {
   stopHdlLspSession,
 } from '@/lib/hdl-lsp'
 import { useI18n } from '@/lib/i18n'
-import { findProjectNodePathById } from '@/lib/project-tree-path'
 import { projectStore } from '@/stores/project'
 import {
-  collectProjectSourceFilePaths,
-  collectProjectSourceFiles,
+  collectProjectFileEntries,
+  type ProjectSourceFileSnapshot,
 } from '@/stores/project-tree-files'
 import { signalCatalogStore } from '@/stores/signal-catalog'
 
@@ -26,26 +25,22 @@ const activeFileDirty = computed(() =>
   projectStore.activeFileId ? projectStore.isFileDirty(projectStore.activeFileId) : false,
 )
 const activeEditorLanguage = computed(() => resolveEditorLanguage(projectStore.activeFile?.name))
-const activeFilePath = computed(() =>
-  projectStore.activeFileId
-    ? findProjectNodePathById(projectStore.files, projectStore.activeFileId)
-    : '',
+const projectFileEntries = computed(() => collectProjectFileEntries(projectStore.files))
+const activeFilePath = computed(
+  () =>
+    projectFileEntries.value.find((entry) => entry.node.id === projectStore.activeFileId)?.path ??
+    '',
 )
-const projectFilesKey = computed(() => collectProjectSourceFilePaths(projectStore.files).join('\n'))
+const projectSources = computed<ProjectSourceFileSnapshot[]>(() =>
+  projectFileEntries.value.map((entry) => ({
+    path: entry.path,
+    content: entry.node.content ?? '',
+  })),
+)
+const projectFilesKey = computed(() => projectSources.value.map((entry) => entry.path).join('\n'))
 
 const activeModel = shallowRef<monaco.editor.ITextModel | null>(null)
 let syncVersion = 0
-let sessionFilesSnapshot: ReturnType<typeof collectProjectSourceFiles> = []
-
-watch(
-  [() => projectStore.sessionId, () => projectFilesKey.value],
-  () => {
-    sessionFilesSnapshot = collectProjectSourceFiles(projectStore.files)
-  },
-  {
-    immediate: true,
-  },
-)
 
 watch(
   [
@@ -72,7 +67,7 @@ watch(
       sessionId,
       rootUri: null,
       filesKey: projectFilesKey.value,
-      files: sessionFilesSnapshot,
+      files: projectSources.value,
     }).catch(() => null)
 
     if (currentVersion !== syncVersion || !response?.root_uri) {

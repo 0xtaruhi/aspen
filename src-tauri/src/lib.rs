@@ -60,7 +60,6 @@ pub fn run() {
             project_commands::write_project_file,
             project_commands::write_project_bundle,
             project_commands::inspect_project_directory,
-            hdl_lsp::hdl_lsp_status,
             hdl_lsp::hdl_lsp_start,
             hdl_lsp::hdl_lsp_forward,
             hdl_lsp::hdl_lsp_stop,

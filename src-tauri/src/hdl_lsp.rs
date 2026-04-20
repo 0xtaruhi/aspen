@@ -47,13 +47,6 @@ pub struct HdlLspStartResponse {
     pub session_id: String,
     pub root_uri: String,
     pub available: bool,
-    pub command: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct HdlLspStatusResponse {
-    pub available: bool,
-    pub command: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -66,7 +59,6 @@ struct HdlLspEventPayload {
 struct HdlLspSession {
     stdin: Arc<Mutex<ChildStdin>>,
     child: Arc<Mutex<Child>>,
-    workspace_root: PathBuf,
 }
 
 #[derive(Default)]
@@ -75,27 +67,16 @@ pub struct HdlLspManager {
 }
 
 #[tauri::command]
-pub fn hdl_lsp_status(app: AppHandle) -> Result<HdlLspStatusResponse, String> {
-    let command = resolve_slang_server_command(Some(&app));
-    Ok(HdlLspStatusResponse {
-        available: command.is_some(),
-        command,
-    })
-}
-
-#[tauri::command]
 pub fn hdl_lsp_start(
     app: AppHandle,
     manager: tauri::State<'_, Arc<HdlLspManager>>,
     request: HdlLspStartRequest,
 ) -> Result<HdlLspStartResponse, String> {
-    let command = resolve_slang_server_command(Some(&app));
-    let Some(program) = command.clone() else {
+    let Some(program) = resolve_slang_server_command(Some(&app)) else {
         return Ok(HdlLspStartResponse {
             session_id: request.session_id,
             root_uri: "".to_string(),
             available: false,
-            command: None,
         });
     };
 
@@ -132,27 +113,19 @@ pub fn hdl_lsp_start(
     let stdin = Arc::new(Mutex::new(stdin));
     let session_id = request.session_id.clone();
 
-    spawn_reader_thread(app, session_id.clone(), stdout, false);
+    spawn_reader_thread(app, session_id.clone(), stdout);
     spawn_stderr_reader_thread(stderr);
 
     manager
         .sessions
         .lock()
         .map_err(|_| "failed to acquire HDL LSP session registry".to_string())?
-        .insert(
-            session_id.clone(),
-            HdlLspSession {
-                stdin,
-                child,
-                workspace_root: workspace_root.clone(),
-            },
-        );
+        .insert(session_id.clone(), HdlLspSession { stdin, child });
 
     Ok(HdlLspStartResponse {
         session_id,
         root_uri: path_to_file_uri(&workspace_root)?,
         available: true,
-        command,
     })
 }
 
@@ -274,41 +247,12 @@ fn sanitize_session_id(session_id: &str) -> String {
         .collect()
 }
 
-fn spawn_reader_thread<R>(app: AppHandle, session_id: String, reader: R, is_stderr: bool)
+fn spawn_reader_thread<R>(app: AppHandle, session_id: String, reader: R)
 where
     R: std::io::Read + Send + 'static,
 {
     thread::spawn(move || {
         let mut reader = BufReader::new(reader);
-
-        if is_stderr {
-            let mut line = String::new();
-            loop {
-                line.clear();
-                let Ok(bytes_read) = reader.read_line(&mut line) else {
-                    break;
-                };
-
-                if bytes_read == 0 {
-                    break;
-                }
-
-                let payload = HdlLspEventPayload {
-                    session_id: session_id.clone(),
-                    message: serde_json::json!({
-                        "jsonrpc": "2.0",
-                        "method": "$/logTrace",
-                        "params": {
-                            "message": line.trim_end_matches(['\r', '\n']),
-                            "verbose": "stderr"
-                        }
-                    }),
-                };
-                let _ = app.emit(LSP_EVENT_NAME, payload);
-            }
-
-            return;
-        }
 
         loop {
             let Some(message) = read_lsp_message(&mut reader) else {
@@ -471,11 +415,5 @@ fn path_to_file_uri(path: &Path) -> Result<String, String> {
     #[cfg(not(target_os = "windows"))]
     {
         Ok(format!("file://{}", path_str))
-    }
-}
-
-impl Drop for HdlLspSession {
-    fn drop(&mut self) {
-        let _ = std::fs::create_dir_all(&self.workspace_root);
     }
 }

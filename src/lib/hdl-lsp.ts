@@ -14,16 +14,10 @@ type HdlProjectSourceFile = {
   content: string
 }
 
-type HdlLspStatusResponse = {
-  available: boolean
-  command: string | null
-}
-
 type HdlLspStartResponse = {
   session_id: string
   root_uri: string
   available: boolean
-  command: string | null
 }
 
 type HdlLspEventPayload = {
@@ -642,10 +636,6 @@ function bindModelToRuntime(
   applyStoredDiagnostics(current, uri)
 }
 
-export async function getHdlLspStatus(): Promise<HdlLspStatusResponse> {
-  return invoke<HdlLspStatusResponse>('hdl_lsp_status')
-}
-
 async function disposeRuntime(target: HdlLspRuntime | null = runtime) {
   if (!target) {
     return
@@ -695,7 +685,6 @@ export async function ensureHdlLspSession(
       session_id: runtime.sessionId,
       root_uri: runtime.rootUri,
       available: true,
-      command: null,
     }
   }
 

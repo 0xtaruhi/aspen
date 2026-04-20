@@ -6,6 +6,7 @@ import { computed, ref, watch } from 'vue'
 import { extractVerilogModuleNames } from '../lib/verilog-modules'
 import { parseVerilogPorts } from '../lib/verilog-parser'
 import { projectStore } from './project'
+import { collectProjectFileEntries } from './project-tree-files'
 
 export type DesignSource = {
   id: string
@@ -29,54 +30,14 @@ function isHardwareSourceFile(name: string): boolean {
   return name.endsWith('.v') || name.endsWith('.sv')
 }
 
-function findNodePathById(
-  nodes: typeof projectStore.files,
-  targetId: string,
-  parentSegments: string[] = [],
-): string {
-  for (const node of nodes) {
-    const pathSegments = [...parentSegments, node.name]
-
-    if (node.id === targetId) {
-      return pathSegments.join('/')
-    }
-
-    if (node.children) {
-      const childPath = findNodePathById(node.children, targetId, pathSegments)
-      if (childPath) {
-        return childPath
-      }
-    }
-  }
-
-  return ''
-}
-
-function collectDesignSources(
-  nodes: typeof projectStore.files,
-  parentSegments: string[] = [],
-): DesignSource[] {
-  const sources: DesignSource[] = []
-
-  for (const node of nodes) {
-    const pathSegments = [...parentSegments, node.name]
-    if (node.type === 'file') {
-      sources.push({
-        id: node.id,
-        name: node.name,
-        path: pathSegments.join('/'),
-        code: node.content || '',
-        isHardwareSource: isHardwareSourceFile(node.name),
-      })
-      continue
-    }
-
-    if (node.children) {
-      sources.push(...collectDesignSources(node.children, pathSegments))
-    }
-  }
-
-  return sources
+function collectDesignSources(nodes: typeof projectStore.files): DesignSource[] {
+  return collectProjectFileEntries(nodes).map(({ node, path }) => ({
+    id: node.id,
+    name: node.name,
+    path,
+    code: node.content || '',
+    isHardwareSource: isHardwareSourceFile(node.name),
+  }))
 }
 
 function toSynthesisSourceFile(source: DesignSource): SynthesisSourceFileV1 {
@@ -92,12 +53,14 @@ const selectedSource = computed<DesignSource | null>(() => {
     return null
   }
 
+  const projectSources = collectDesignSources(projectStore.files)
+  const source = projectSources.find((entry) => entry.id === topFile.id)
+  if (!source) {
+    return null
+  }
+
   return {
-    id: topFile.id,
-    name: topFile.name,
-    path: findNodePathById(projectStore.files, topFile.id),
-    code: topFile.content || '',
-    isHardwareSource: isHardwareSourceFile(topFile.name),
+    ...source,
   }
 })
 
