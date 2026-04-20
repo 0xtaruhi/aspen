@@ -11,10 +11,12 @@ import {
 } from '@/components/ui/select'
 import { getCanvasHd44780LcdConfig } from '@/lib/canvas-devices'
 import type { CanvasDeviceSnapshot, CanvasHd44780BusMode } from '@/lib/hardware-client'
+import { useI18n } from '@/lib/i18n'
 import { hardwareStore } from '@/stores/hardware'
 import { clampInspectorInt, hd44780SlotCount, resizeCanvasSlotBindings } from './shared'
 
 const props = defineProps<{ device: CanvasDeviceSnapshot }>()
+const { t } = useI18n()
 
 const config = computed(() => getCanvasHd44780LcdConfig(props.device))
 const columnsInput = ref('16')
@@ -75,7 +77,7 @@ function commitHd44780BusMode(value: string) {
 
 <template>
   <section class="space-y-3">
-    <p class="text-sm font-medium">HD44780 LCD</p>
+    <p class="text-sm font-medium">{{ t('hd44780Lcd') }}</p>
     <div class="grid grid-cols-2 gap-3">
       <Input
         v-model="columnsInput"
@@ -100,8 +102,8 @@ function commitHd44780BusMode(value: string) {
     >
       <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
       <SelectContent>
-        <SelectItem value="4bit">4-bit bus</SelectItem>
-        <SelectItem value="8bit">8-bit bus</SelectItem>
+        <SelectItem value="4bit">{{ t('fourBitBus') }}</SelectItem>
+        <SelectItem value="8bit">{{ t('eightBitBus') }}</SelectItem>
       </SelectContent>
     </Select>
   </section>

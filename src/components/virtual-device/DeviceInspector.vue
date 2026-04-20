@@ -281,7 +281,7 @@ async function removeDevice() {
         <div class="mt-4 flex flex-wrap gap-2">
           <Badge variant="secondary">{{ capabilityLabel }}</Badge>
           <Badge variant="outline">{{ liveLevel ? t('high') : t('low') }}</Badge>
-          <Badge variant="outline">{{ bindingSlots.length }} pins</Badge>
+          <Badge variant="outline">{{ t('pinsCount', { count: bindingSlots.length }) }}</Badge>
         </div>
 
         <Separator class="my-5" />
@@ -320,14 +320,14 @@ async function removeDevice() {
         <Separator class="my-5" />
 
         <section v-if="device.state.binding.kind === 'single'" class="space-y-3">
-          <p class="text-sm font-medium">Signal</p>
+          <p class="text-sm font-medium">{{ t('signal') }}</p>
           <Select
             :model-value="singleBindingValue()"
             @update:model-value="(value) => commitSingleBinding(String(value))"
           >
             <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem :value="UNBOUND_SIGNAL">Unbound</SelectItem>
+              <SelectItem :value="UNBOUND_SIGNAL">{{ t('unbound') }}</SelectItem>
               <SelectItem
                 v-for="signal in compatibleSignals"
                 :key="signal.name"
@@ -347,7 +347,7 @@ async function removeDevice() {
             :indexed-compatible-buses="indexedCompatibleBuses"
           />
 
-          <p class="text-sm font-medium">Pins</p>
+          <p class="text-sm font-medium">{{ t('pins') }}</p>
           <div class="grid gap-3">
             <div v-for="(slot, index) in bindingSlots" :key="slot.key" class="grid gap-1.5">
               <p class="text-xs font-medium text-muted-foreground">{{ slot.label }}</p>
@@ -357,7 +357,7 @@ async function removeDevice() {
               >
                 <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem :value="UNBOUND_SIGNAL">Unbound</SelectItem>
+                  <SelectItem :value="UNBOUND_SIGNAL">{{ t('unbound') }}</SelectItem>
                   <SelectItem
                     v-for="signal in compatibleSignals"
                     :key="signal.name"

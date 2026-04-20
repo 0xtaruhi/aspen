@@ -4,10 +4,12 @@ import { computed, ref, watch } from 'vue'
 import { Input } from '@/components/ui/input'
 import { getCanvasMatrixDimensions } from '@/lib/canvas-devices'
 import type { CanvasDeviceSnapshot } from '@/lib/hardware-client'
+import { useI18n } from '@/lib/i18n'
 import { hardwareStore } from '@/stores/hardware'
 import { clampInspectorInt, resizeCanvasSlotBindings } from './shared'
 
 const props = defineProps<{ device: CanvasDeviceSnapshot }>()
+const { t } = useI18n()
 
 const dimensions = computed(() => getCanvasMatrixDimensions(props.device))
 const rowsInput = ref('8')
@@ -41,7 +43,7 @@ function commitLedMatrixConfig() {
 
 <template>
   <section class="space-y-3">
-    <p class="text-sm font-medium">LED matrix</p>
+    <p class="text-sm font-medium">{{ t('ledMatrix') }}</p>
     <div class="grid grid-cols-2 gap-3">
       <Input
         v-model="rowsInput"

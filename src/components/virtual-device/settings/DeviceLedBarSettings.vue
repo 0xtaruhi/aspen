@@ -11,10 +11,12 @@ import {
 } from '@/components/ui/select'
 import { getCanvasLedBarConfig } from '@/lib/canvas-devices'
 import type { CanvasDeviceSnapshot } from '@/lib/hardware-client'
+import { useI18n } from '@/lib/i18n'
 import { hardwareStore } from '@/stores/hardware'
 import { clampInspectorInt, resizeCanvasSlotBindings } from './shared'
 
 const props = defineProps<{ device: CanvasDeviceSnapshot }>()
+const { t } = useI18n()
 
 const config = computed(() => getCanvasLedBarConfig(props.device))
 const widthInput = ref('8')
@@ -62,7 +64,7 @@ function commitLedBarPolarity(value: string) {
 
 <template>
   <section class="space-y-3">
-    <p class="text-sm font-medium">LED bar</p>
+    <p class="text-sm font-medium">{{ t('ledBar') }}</p>
     <Input
       v-model="widthInput"
       type="number"
@@ -77,8 +79,8 @@ function commitLedBarPolarity(value: string) {
     >
       <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
       <SelectContent>
-        <SelectItem value="high">Active high</SelectItem>
-        <SelectItem value="low">Active low</SelectItem>
+        <SelectItem value="high">{{ t('activeHigh') }}</SelectItem>
+        <SelectItem value="low">{{ t('activeLow') }}</SelectItem>
       </SelectContent>
     </Select>
   </section>

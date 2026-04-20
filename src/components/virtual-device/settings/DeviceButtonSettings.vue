@@ -10,9 +10,11 @@ import {
 } from '@/components/ui/select'
 import { getCanvasButtonConfig } from '@/lib/canvas-devices'
 import type { CanvasDeviceSnapshot } from '@/lib/hardware-client'
+import { useI18n } from '@/lib/i18n'
 import { hardwareStore } from '@/stores/hardware'
 
 const props = defineProps<{ device: CanvasDeviceSnapshot }>()
+const { t } = useI18n()
 
 const activeLevel = computed(() =>
   (getCanvasButtonConfig(props.device)?.activeLow ?? false) ? 'low' : 'high',
@@ -38,15 +40,15 @@ function commitButtonPolarity(value: string) {
 
 <template>
   <section class="space-y-3">
-    <p class="text-sm font-medium">Active level</p>
+    <p class="text-sm font-medium">{{ t('activeLevel') }}</p>
     <Select
       :model-value="activeLevel"
       @update:model-value="(value) => commitButtonPolarity(String(value))"
     >
       <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
       <SelectContent>
-        <SelectItem value="high">Active high</SelectItem>
-        <SelectItem value="low">Active low</SelectItem>
+        <SelectItem value="high">{{ t('activeHigh') }}</SelectItem>
+        <SelectItem value="low">{{ t('activeLow') }}</SelectItem>
       </SelectContent>
     </Select>
   </section>

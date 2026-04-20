@@ -10,10 +10,12 @@ import {
 } from '@/components/ui/select'
 import { getCanvasQuadratureEncoderConfig } from '@/lib/canvas-devices'
 import type { CanvasDeviceSnapshot } from '@/lib/hardware-client'
+import { useI18n } from '@/lib/i18n'
 import { hardwareStore } from '@/stores/hardware'
 import { resizeCanvasSlotBindings } from './shared'
 
 const props = defineProps<{ device: CanvasDeviceSnapshot }>()
+const { t } = useI18n()
 
 const config = computed(() => getCanvasQuadratureEncoderConfig(props.device))
 
@@ -45,15 +47,15 @@ function commitQuadratureHasButton(value: string) {
 
 <template>
   <section class="space-y-3">
-    <p class="text-sm font-medium">Quadrature encoder</p>
+    <p class="text-sm font-medium">{{ t('quadratureEncoder') }}</p>
     <Select
       :model-value="(config?.hasButton ?? true) ? 'yes' : 'no'"
       @update:model-value="(value) => commitQuadratureHasButton(String(value))"
     >
       <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
       <SelectContent>
-        <SelectItem value="yes">With push button</SelectItem>
-        <SelectItem value="no">A/B only</SelectItem>
+        <SelectItem value="yes">{{ t('withPushButton') }}</SelectItem>
+        <SelectItem value="no">{{ t('abOnly') }}</SelectItem>
       </SelectContent>
     </Select>
   </section>

@@ -4,10 +4,12 @@ import { computed, ref, watch } from 'vue'
 import { Input } from '@/components/ui/input'
 import { getCanvasUartTerminalConfig } from '@/lib/canvas-devices'
 import type { CanvasDeviceSnapshot } from '@/lib/hardware-client'
+import { useI18n } from '@/lib/i18n'
 import { hardwareStore } from '@/stores/hardware'
 import { clampInspectorInt } from './shared'
 
 const props = defineProps<{ device: CanvasDeviceSnapshot }>()
+const { t } = useI18n()
 
 const config = computed(() => getCanvasUartTerminalConfig(props.device))
 const cyclesInput = ref('16')
@@ -45,7 +47,7 @@ function commitUartCycles() {
 
 <template>
   <section class="space-y-3">
-    <p class="text-sm font-medium">UART terminal</p>
+    <p class="text-sm font-medium">{{ t('uartTerminal') }}</p>
     <Input
       v-model="cyclesInput"
       type="number"

@@ -11,10 +11,12 @@ import {
 } from '@/components/ui/select'
 import { getCanvasSegmentDisplayConfig } from '@/lib/canvas-devices'
 import type { CanvasDeviceSnapshot } from '@/lib/hardware-client'
+import { useI18n } from '@/lib/i18n'
 import { hardwareStore } from '@/stores/hardware'
 import { clampInspectorInt, resizeCanvasSlotBindings } from './shared'
 
 const props = defineProps<{ device: CanvasDeviceSnapshot }>()
+const { t } = useI18n()
 
 const config = computed(() => getCanvasSegmentDisplayConfig(props.device))
 const digitsInput = ref('1')
@@ -65,7 +67,7 @@ function commitSegmentPolarity(value: string) {
 
 <template>
   <section class="space-y-3">
-    <p class="text-sm font-medium">Segment display</p>
+    <p class="text-sm font-medium">{{ t('segmentDisplay') }}</p>
     <Input
       v-model="digitsInput"
       type="number"
@@ -80,8 +82,8 @@ function commitSegmentPolarity(value: string) {
     >
       <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
       <SelectContent>
-        <SelectItem value="high">Active high</SelectItem>
-        <SelectItem value="low">Active low</SelectItem>
+        <SelectItem value="high">{{ t('activeHigh') }}</SelectItem>
+        <SelectItem value="low">{{ t('activeLow') }}</SelectItem>
       </SelectContent>
     </Select>
   </section>
