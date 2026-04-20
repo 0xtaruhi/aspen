@@ -10,6 +10,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{path::BaseDirectory, AppHandle, Emitter, Manager};
+use url::Url;
 
 const LSP_EVENT_NAME: &str = "hdl:lsp-message";
 const DEFAULT_WORKSPACE_ROOT_NAME: &str = "aspen-hdl-lsp";
@@ -25,7 +26,6 @@ pub struct HdlLspSourceFile {
 #[serde(rename_all = "camelCase")]
 pub struct HdlLspStartRequest {
     pub session_id: String,
-    pub root_uri: Option<String>,
     pub files: Vec<HdlLspSourceFile>,
 }
 
@@ -59,6 +59,7 @@ struct HdlLspEventPayload {
 struct HdlLspSession {
     stdin: Arc<Mutex<ChildStdin>>,
     child: Arc<Mutex<Child>>,
+    workspace_root: PathBuf,
 }
 
 #[derive(Default)]
@@ -82,11 +83,7 @@ pub fn hdl_lsp_start(
 
     stop_existing_session(&manager, &request.session_id);
 
-    let workspace_root = prepare_workspace_root(
-        request.root_uri.as_deref(),
-        &request.session_id,
-        &request.files,
-    )?;
+    let workspace_root = prepare_workspace_root(&request.session_id, &request.files)?;
 
     let mut child = Command::new(&program)
         .current_dir(&workspace_root)
@@ -120,7 +117,14 @@ pub fn hdl_lsp_start(
         .sessions
         .lock()
         .map_err(|_| "failed to acquire HDL LSP session registry".to_string())?
-        .insert(session_id.clone(), HdlLspSession { stdin, child });
+        .insert(
+            session_id.clone(),
+            HdlLspSession {
+                stdin,
+                child,
+                workspace_root: workspace_root.clone(),
+            },
+        );
 
     Ok(HdlLspStartResponse {
         session_id,
@@ -174,20 +178,17 @@ fn stop_existing_session(manager: &Arc<HdlLspManager>, session_id: &str) {
             let _ = child.kill();
             let _ = child.wait();
         }
+
+        let _ = std::fs::remove_dir_all(&session.workspace_root);
     }
 }
 
-fn prepare_workspace_root(
-    root_uri: Option<&str>,
-    session_id: &str,
-    files: &[HdlLspSourceFile],
-) -> Result<PathBuf, String> {
-    let workspace_root = match root_uri.and_then(file_uri_to_path) {
-        Some(path) if path.exists() => path,
-        _ => std::env::temp_dir()
-            .join(DEFAULT_WORKSPACE_ROOT_NAME)
-            .join(sanitize_session_id(session_id)),
-    };
+fn prepare_workspace_root(session_id: &str, files: &[HdlLspSourceFile]) -> Result<PathBuf, String> {
+    let workspace_root = std::env::temp_dir()
+        .join(DEFAULT_WORKSPACE_ROOT_NAME)
+        .join(sanitize_session_id(session_id));
+
+    std::fs::remove_dir_all(&workspace_root).ok();
 
     std::fs::create_dir_all(&workspace_root).map_err(|err| err.to_string())?;
 
@@ -278,12 +279,21 @@ where
 
         loop {
             line.clear();
-            let Ok(bytes_read) = reader.read_line(&mut line) else {
-                break;
+            let bytes_read = match reader.read_line(&mut line) {
+                Ok(bytes_read) => bytes_read,
+                Err(err) => {
+                    eprintln!("[slang-server stderr] failed to read stderr: {err}");
+                    break;
+                }
             };
 
             if bytes_read == 0 {
                 break;
+            }
+
+            let trimmed = line.trim_end();
+            if !trimmed.is_empty() {
+                eprintln!("[slang-server stderr] {trimmed}");
             }
         }
     });
@@ -390,15 +400,6 @@ fn slang_server_executable_name() -> &'static str {
     }
 }
 
-fn file_uri_to_path(uri: &str) -> Option<PathBuf> {
-    let stripped = uri.strip_prefix("file://")?;
-    #[cfg(target_os = "windows")]
-    let path = stripped.trim_start_matches('/');
-    #[cfg(not(target_os = "windows"))]
-    let path = stripped;
-    Some(PathBuf::from(path))
-}
-
 fn path_to_file_uri(path: &Path) -> Result<String, String> {
     let absolute = if path.is_absolute() {
         path.to_path_buf()
@@ -406,14 +407,7 @@ fn path_to_file_uri(path: &Path) -> Result<String, String> {
         std::fs::canonicalize(path).map_err(|err| err.to_string())?
     };
 
-    let path_str = absolute.to_string_lossy();
-    #[cfg(target_os = "windows")]
-    {
-        return Ok(format!("file:///{}", path_str.replace('\\', "/")));
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        Ok(format!("file://{}", path_str))
-    }
+    Url::from_file_path(&absolute)
+        .map(|url| url.to_string())
+        .map_err(|_| format!("failed to convert '{}' to a file URI", absolute.display()))
 }

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { normalizeEditorLanguage, resolveEditorLanguage } from './editor-language'
+import {
+  buildEditorFileUri,
+  normalizeEditorLanguage,
+  resolveEditorLanguage,
+} from './editor-language'
 
 describe('editor-language', () => {
   it('maps common HDL source and header extensions to Monaco language ids', () => {
@@ -27,5 +31,17 @@ describe('editor-language', () => {
     expect(normalizeEditorLanguage('systemverilog')).toBe('systemverilog')
     expect(normalizeEditorLanguage('javascript')).toBe('plaintext')
     expect(normalizeEditorLanguage(undefined)).toBe('plaintext')
+  })
+
+  it('builds encoded file URIs for relative project paths', () => {
+    expect(buildEditorFileUri('file:///tmp/aspen-hdl-lsp', 'rtl/top.sv')).toBe(
+      'file:///tmp/aspen-hdl-lsp/rtl/top.sv',
+    )
+    expect(buildEditorFileUri('file:///tmp/aspen hdl', 'rtl/alu #1.sv')).toBe(
+      'file:///tmp/aspen%20hdl/rtl/alu%20%231.sv',
+    )
+    expect(buildEditorFileUri('file:///tmp/aspen-hdl-lsp/', '中文/模块.sv')).toBe(
+      'file:///tmp/aspen-hdl-lsp/%E4%B8%AD%E6%96%87/%E6%A8%A1%E5%9D%97.sv',
+    )
   })
 })

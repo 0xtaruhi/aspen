@@ -39,8 +39,18 @@ export function normalizeEditorPath(path?: string | null): string {
 }
 
 export function buildEditorFileUri(rootUri: string, relativePath: string): string {
-  const normalizedRoot = rootUri.replace(/\/+$/, '')
   const normalizedPath = normalizeEditorPath(relativePath)
+  const url = new URL(rootUri)
 
-  return normalizedPath ? `${normalizedRoot}/${normalizedPath}` : normalizedRoot
+  if (!normalizedPath) {
+    return url.toString()
+  }
+
+  const encodedPath = normalizedPath
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/')
+
+  url.pathname = `${url.pathname.replace(/\/+$/, '')}/${encodedPath}`
+  return url.toString()
 }

@@ -11,8 +11,8 @@ export type ProjectSourceFileSnapshot = {
 }
 
 export function collectProjectFileEntries(
-  nodes: ProjectNode[],
-  parentSegments: string[] = [],
+  nodes: readonly ProjectNode[],
+  parentSegments: readonly string[] = [],
 ): ProjectFileEntry[] {
   const files: ProjectFileEntry[] = []
 
@@ -36,11 +36,13 @@ export function collectProjectFileEntries(
   return files
 }
 
-export function collectProjectSourceFilePaths(nodes: ProjectNode[]): string[] {
+export function collectProjectSourceFilePaths(nodes: readonly ProjectNode[]): string[] {
   return collectProjectFileEntries(nodes).map((file) => file.path)
 }
 
-export function collectProjectSourceFiles(nodes: ProjectNode[]): ProjectSourceFileSnapshot[] {
+export function collectProjectSourceFiles(
+  nodes: readonly ProjectNode[],
+): ProjectSourceFileSnapshot[] {
   return collectProjectFileEntries(nodes).map((file) => ({
     path: file.path,
     content: file.node.content ?? '',

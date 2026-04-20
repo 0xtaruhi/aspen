@@ -53,8 +53,7 @@ const selectedSource = computed<DesignSource | null>(() => {
     return null
   }
 
-  const projectSources = collectDesignSources(projectStore.files)
-  const source = projectSources.find((entry) => entry.id === topFile.id)
+  const source = projectSources.value.find((entry) => entry.id === topFile.id)
   if (!source) {
     return null
   }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import * as monaco from 'monaco-editor/esm/vs/editor/editor.api'
 import { computed, markRaw, onUnmounted, shallowRef, watch } from 'vue'
+import * as monaco from 'monaco-editor/esm/vs/editor/editor.api'
 
 import CodeEditor from '@/components/editor/CodeEditor.vue'
 import { Badge } from '@/components/ui/badge'
@@ -68,7 +68,10 @@ watch(
       rootUri: null,
       filesKey: projectFilesKey.value,
       files: projectSources.value,
-    }).catch(() => null)
+    }).catch((error) => {
+      console.error('[HDL LSP] Failed to initialize session:', error)
+      return null
+    })
 
     if (currentVersion !== syncVersion || !response?.root_uri) {
       return

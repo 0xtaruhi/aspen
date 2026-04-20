@@ -56,6 +56,9 @@ function resolveTargetAssetName() {
   if (platform === 'linux' && (arch === 'x64' || arch === 'amd64')) {
     return 'slang-server-linux-x64-gcc.tar.gz'
   }
+  if (platform === 'linux' && (arch === 'arm64' || arch === 'aarch64')) {
+    return 'slang-server-linux-arm64.tar.gz'
+  }
   if (platform === 'win32' && (arch === 'x64' || arch === 'amd64')) {
     return 'slang-server-windows-x64.zip'
   }

@@ -3,7 +3,8 @@ import * as monaco from 'monaco-editor/esm/vs/editor/editor.api'
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
-import { normalizeEditorLanguage, type EditorLanguage } from '@/lib/editor-language'
+import type { EditorLanguage } from '@/lib/editor-language'
+import { normalizeEditorLanguage } from '@/lib/editor-language'
 import { ensureMonacoHdlSupport } from '@/lib/monaco-hdl'
 import { useThemeState } from '@/lib/theme'
 import { settingsStore } from '@/stores/settings'
@@ -51,8 +52,9 @@ onMounted(() => {
 
   ensureMonacoHdlSupport(monaco)
 
-  fallbackModel = monaco.editor.createModel(props.value, getEditorLanguage(props.language))
-  const model = props.model ?? fallbackModel
+  const model =
+    props.model ??
+    (fallbackModel = monaco.editor.createModel(props.value, getEditorLanguage(props.language)))
 
   editor = monaco.editor.create(container.value, {
     model,
