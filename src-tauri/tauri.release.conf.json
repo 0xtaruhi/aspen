@@ -2,6 +2,7 @@
   "bundle": {
     "resources": [
       "vendor/yosys/**/*",
+      "vendor/slang-server/**/*",
       "resource/yosys-fde/**/*",
       "resource/fde/**/*",
       "resource/windows-driver/**/*"

@@ -27,6 +27,7 @@ import {
   getProjectSynthesisManifestPath,
   joinPath,
 } from '@/lib/project-layout'
+import { collectProjectSourceFiles as collectProjectSourceSnapshots } from '@/stores/project-tree-files'
 import {
   isMissingProjectPersistencePath,
   isProjectPersistenceTauriUnavailable,
@@ -148,28 +149,11 @@ function getPersistedSourceNodes() {
   return projectStore.rootNode?.children ?? projectStore.files
 }
 
-function collectProjectSourceFiles(
-  nodes: readonly ProjectNode[],
-  parentSegments: string[] = [],
-): ProjectSourceFileWriteRequest[] {
-  const sourceFiles: ProjectSourceFileWriteRequest[] = []
-
-  for (const node of nodes) {
-    const nextSegments = [...parentSegments, node.name]
-    if (node.type === 'file') {
-      sourceFiles.push({
-        relative_path: nextSegments.join('/'),
-        content: node.content ?? '',
-      })
-      continue
-    }
-
-    if (node.children) {
-      sourceFiles.push(...collectProjectSourceFiles(node.children, nextSegments))
-    }
-  }
-
-  return sourceFiles
+function collectProjectSourceFiles(nodes: readonly ProjectNode[]): ProjectSourceFileWriteRequest[] {
+  return collectProjectSourceSnapshots([...nodes]).map((file) => ({
+    relative_path: file.path,
+    content: file.content,
+  }))
 }
 
 async function hydrateNodesFromDisk(

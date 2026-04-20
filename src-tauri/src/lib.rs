@@ -3,6 +3,7 @@ mod app_menu;
 mod app_update;
 mod hardware;
 mod hardware_commands;
+mod hdl_lsp;
 mod project_commands;
 
 use std::sync::Arc;
@@ -32,6 +33,7 @@ pub fn run() {
         )
         .manage(Arc::new(app_update::PendingUpdateState::default()))
         .manage(Arc::new(hardware_commands::HotplugState::default()))
+        .manage(Arc::new(hdl_lsp::HdlLspManager::default()))
         .manage(hardware_runtime)
         .invoke_handler(tauri::generate_handler![
             app_update::app_get_update_capability,
@@ -58,6 +60,9 @@ pub fn run() {
             project_commands::write_project_file,
             project_commands::write_project_bundle,
             project_commands::inspect_project_directory,
+            hdl_lsp::hdl_lsp_start,
+            hdl_lsp::hdl_lsp_forward,
+            hdl_lsp::hdl_lsp_stop,
             hardware_commands::start_hotplug_watch,
             hardware_commands::stop_hotplug_watch
         ]);

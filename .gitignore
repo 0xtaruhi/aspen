@@ -27,6 +27,9 @@ src-tauri/vendor/*
 !src-tauri/vendor/yosys/
 src-tauri/vendor/yosys/*
 !src-tauri/vendor/yosys/.placeholder
+!src-tauri/vendor/slang-server/
+src-tauri/vendor/slang-server/*
+!src-tauri/vendor/slang-server/.placeholder
 !src-tauri/vendor/fde/
 src-tauri/vendor/fde/*
 !src-tauri/vendor/fde/.placeholder

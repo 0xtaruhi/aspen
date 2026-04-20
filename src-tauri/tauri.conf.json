@@ -4,7 +4,7 @@
   "version": "0.4.1",
   "identifier": "com.zhangzhengyi.aspen",
   "build": {
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "pnpm prepare:slang-server-bundle && pnpm dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "pnpm prepare:tauri-build",
     "frontendDist": "../dist"

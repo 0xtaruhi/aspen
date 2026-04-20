@@ -18,6 +18,7 @@
     "generate:zh-tw-locale": "node scripts/generate-zh-tw-locale.mjs",
     "generate:zh-tw-manuals": "node scripts/generate-zh-tw-manuals.mjs",
     "generate:icons": "bash scripts/generate-app-icon.sh",
+    "prepare:slang-server-bundle": "node scripts/prepare-slang-server-bundle.mjs",
     "prepare:yosys-bundle": "node scripts/prepare-yosys-bundle.mjs",
     "format": "prettier . --write",
     "format:check": "prettier . --check",

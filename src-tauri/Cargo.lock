@@ -127,6 +127,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-opener",
  "tauri-plugin-updater",
+ "url",
  "vlfd-rs",
  "windows-sys 0.61.2",
 ]
