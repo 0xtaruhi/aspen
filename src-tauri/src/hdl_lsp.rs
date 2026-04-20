@@ -360,7 +360,7 @@ fn resolve_slang_server_command() -> Option<String> {
         }
     }
 
-    which("slang-server")
+    which("slang-server").or_else(find_known_dev_slang_server_path)
 }
 
 fn which(program: &str) -> Option<String> {
@@ -381,6 +381,18 @@ fn which(program: &str) -> Option<String> {
     }
 
     None
+}
+
+fn find_known_dev_slang_server_path() -> Option<String> {
+    const CANDIDATES: &[&str] = &[
+        "/tmp/slang-server/build/bin/slang-server",
+        "/private/tmp/slang-server/build/bin/slang-server",
+    ];
+
+    CANDIDATES
+        .iter()
+        .find(|candidate| Path::new(candidate).is_file())
+        .map(|candidate| (*candidate).to_string())
 }
 
 fn file_uri_to_path(uri: &str) -> Option<PathBuf> {

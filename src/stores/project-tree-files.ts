@@ -5,6 +5,28 @@ export type ProjectSourceFileSnapshot = {
   content: string
 }
 
+export function collectProjectSourceFilePaths(
+  nodes: ProjectNode[],
+  parentSegments: string[] = [],
+): string[] {
+  const paths: string[] = []
+
+  for (const node of nodes) {
+    const pathSegments = [...parentSegments, node.name]
+
+    if (node.type === 'file') {
+      paths.push(pathSegments.join('/'))
+      continue
+    }
+
+    if (node.children) {
+      paths.push(...collectProjectSourceFilePaths(node.children, pathSegments))
+    }
+  }
+
+  return paths
+}
+
 export function collectProjectSourceFiles(
   nodes: ProjectNode[],
   parentSegments: string[] = [],

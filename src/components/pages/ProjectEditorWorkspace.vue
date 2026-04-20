@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import type * as monaco from 'monaco-editor/esm/vs/editor/editor.api'
-
+import * as monaco from 'monaco-editor/esm/vs/editor/editor.api'
 import { computed, onUnmounted, ref, watch } from 'vue'
 
 import CodeEditor from '@/components/editor/CodeEditor.vue'
@@ -10,16 +9,16 @@ import {
   buildHdlProjectSessionId,
   ensureHdlLspSession,
   ensureHdlTextModel,
-  getActiveHdlLspRootUri,
-  getHdlLspStatus,
-  resolveHdlWorkspaceRootUri,
   stopHdlLspSession,
 } from '@/lib/hdl-lsp'
 import { useI18n } from '@/lib/i18n'
 import { findProjectNodePathById } from '@/lib/project-tree-path'
 import { projectStore } from '@/stores/project'
+import {
+  collectProjectSourceFilePaths,
+  collectProjectSourceFiles,
+} from '@/stores/project-tree-files'
 import { signalCatalogStore } from '@/stores/signal-catalog'
-import { collectProjectSourceFiles } from '@/stores/project-tree-files'
 
 const { t } = useI18n()
 const activeFileName = computed(() => projectStore.activeFile?.name || t('noFileSelected'))
@@ -27,85 +26,90 @@ const activeFileDirty = computed(() =>
   projectStore.activeFileId ? projectStore.isFileDirty(projectStore.activeFileId) : false,
 )
 const activeEditorLanguage = computed(() => resolveEditorLanguage(projectStore.activeFile?.name))
-const activeModel = ref<monaco.editor.ITextModel | null>(null)
-const activeSessionId = computed(() =>
-  buildHdlProjectSessionId(projectStore.projectPath, projectStore.sessionId),
+const activeFilePath = computed(() =>
+  projectStore.activeFileId
+    ? findProjectNodePathById(projectStore.files, projectStore.activeFileId)
+    : '',
 )
-const activeFilePath = computed(() => {
-  if (!projectStore.activeFileId) {
-    return ''
-  }
+const projectFilesKey = computed(() => collectProjectSourceFilePaths(projectStore.files).join('\n'))
 
-  return findProjectNodePathById(projectStore.files, projectStore.activeFileId)
-})
+const activeModel = ref<monaco.editor.ITextModel | null>(null)
+let syncVersion = 0
+let sessionFilesSnapshot: ReturnType<typeof collectProjectSourceFiles> = []
 
-async function syncActiveModel() {
-  const activeFile = projectStore.activeFile
-  if (!activeFile || activeFile.type !== 'file') {
-    activeModel.value = null
-    return
-  }
-
-  const language = activeEditorLanguage.value
-  if (language === 'plaintext') {
-    activeModel.value = null
-    return
-  }
-
-  const files = collectProjectSourceFiles(projectStore.files)
-  const currentPath = activeFilePath.value
-  const matchingFile = files.find((file) => file.path === currentPath)
-  if (!matchingFile) {
-    activeModel.value = null
-    return
-  }
-
-  const lspStatus = await getHdlLspStatus().catch(() => null)
-  if (!lspStatus?.available) {
-    activeModel.value = null
-    return
-  }
-
-  const session = await ensureHdlLspSession({
-    sessionId: activeSessionId.value,
-    rootUri: resolveHdlWorkspaceRootUri(projectStore.projectPath),
-    files,
-  }).catch(() => null)
-
-  const rootUri = session?.root_uri ?? getActiveHdlLspRootUri()
-  if (!rootUri) {
-    activeModel.value = null
-    return
-  }
-
-  activeModel.value = ensureHdlTextModel(
-    {
-      path: matchingFile.path,
-      content: matchingFile.content,
-      language,
-    },
-    { rootUri },
-  )
-}
+watch(
+  [() => projectStore.sessionId, () => projectFilesKey.value],
+  () => {
+    sessionFilesSnapshot = collectProjectSourceFiles(projectStore.files)
+  },
+  {
+    immediate: true,
+  },
+)
 
 watch(
   [
     () => projectStore.sessionId,
-    () => projectStore.projectPath,
     () => projectStore.activeFileId,
-    () => projectStore.code,
-    activeEditorLanguage,
-    activeFilePath,
+    () => projectStore.activeFile?.content ?? '',
+    () => projectStore.activeFile?.name ?? '',
   ],
-  () => {
-    void syncActiveModel()
+  async () => {
+    const language = activeEditorLanguage.value
+    const filePath = activeFilePath.value
+    const file = projectStore.activeFile
+
+    syncVersion += 1
+    const currentVersion = syncVersion
+
+    if (!file || file.type !== 'file' || !filePath || language === 'plaintext') {
+      activeModel.value = null
+      return
+    }
+
+    const sessionId = buildHdlProjectSessionId(projectStore.projectPath, projectStore.sessionId)
+    const response = await ensureHdlLspSession({
+      sessionId,
+      rootUri: null,
+      filesKey: projectFilesKey.value,
+      files: sessionFilesSnapshot,
+    }).catch(() => null)
+
+    if (currentVersion !== syncVersion || !response?.root_uri) {
+      return
+    }
+
+    activeModel.value = ensureHdlTextModel(
+      {
+        path: filePath,
+        content: file.content ?? '',
+        language,
+      },
+      {
+        rootUri: response.root_uri,
+      },
+    )
   },
-  { immediate: true },
+  {
+    immediate: true,
+  },
+)
+
+watch(
+  () => projectStore.sessionId,
+  (next, previous) => {
+    if (previous === undefined || previous === next) {
+      return
+    }
+
+    const previousSessionId = buildHdlProjectSessionId(projectStore.projectPath, previous)
+    void stopHdlLspSession(previousSessionId)
+  },
 )
 
 onUnmounted(() => {
-  activeModel.value = null
-  void stopHdlLspSession(activeSessionId.value)
+  const sessionId = buildHdlProjectSessionId(projectStore.projectPath, projectStore.sessionId)
+  void stopHdlLspSession(sessionId)
 })
 </script>
 

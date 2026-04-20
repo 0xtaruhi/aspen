@@ -27,6 +27,7 @@ const emit = defineEmits<{
 
 const container = ref<HTMLElement | null>(null)
 let editor: monaco.editor.IStandaloneCodeEditor | null = null
+let fallbackModel: monaco.editor.ITextModel | null = null
 
 const themeState = useThemeState()
 
@@ -34,13 +35,24 @@ function getEditorLanguage(language?: EditorLanguage): EditorLanguage {
   return normalizeEditorLanguage(language)
 }
 
+function syncModelState(model: monaco.editor.ITextModel, value: string, language?: EditorLanguage) {
+  if (model.getValue() !== value) {
+    model.setValue(value)
+  }
+
+  const normalizedLanguage = getEditorLanguage(language)
+  if (model.getLanguageId() !== normalizedLanguage) {
+    monaco.editor.setModelLanguage(model, normalizedLanguage)
+  }
+}
+
 onMounted(() => {
   if (!container.value) return
 
   ensureMonacoHdlSupport(monaco)
 
-  const model =
-    props.model ?? monaco.editor.createModel(props.value, getEditorLanguage(props.language))
+  fallbackModel = monaco.editor.createModel(props.value, getEditorLanguage(props.language))
+  const model = props.model ?? fallbackModel
 
   editor = monaco.editor.create(container.value, {
     model,
@@ -73,9 +85,9 @@ watch(
 watch(
   () => props.value,
   (val) => {
-    const model = editor?.getModel()
-    if (model && val !== model.getValue()) {
-      model.setValue(val)
+    const model = props.model ?? fallbackModel ?? editor?.getModel() ?? null
+    if (model) {
+      syncModelState(model, val, props.language)
     }
   },
 )
@@ -87,8 +99,15 @@ watch(
       return
     }
 
-    if (model && editor.getModel() !== model) {
-      editor.setModel(model)
+    const nextModel = model ?? fallbackModel
+    if (!nextModel) {
+      return
+    }
+
+    syncModelState(nextModel, props.value, props.language)
+
+    if (editor.getModel() !== nextModel) {
+      editor.setModel(nextModel)
     }
   },
 )
@@ -129,6 +148,8 @@ watch(
 
 onUnmounted(() => {
   editor?.dispose()
+  fallbackModel?.dispose()
+  fallbackModel = null
 })
 </script>
 
