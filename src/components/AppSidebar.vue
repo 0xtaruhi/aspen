@@ -9,6 +9,7 @@ import NavMain from '@/components/NavMain.vue'
 import ProjectMenu from '@/components/ProjectMenu.vue'
 import ProjectExplorer from '@/components/project/ProjectExplorer.vue'
 import TopModuleSelect from '@/components/TopModuleSelect.vue'
+import { vWindowChrome } from '@/directives/window-chrome'
 import { importProjectFiles } from '@/lib/project-io'
 import { Button } from '@/components/ui/button'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
@@ -152,15 +153,18 @@ function handleImportFiles() {
 <template>
   <Sidebar v-bind="props">
     <SidebarHeader
+      v-window-chrome
       v-if="!showMacCollapsedRail"
       :class="[reserveMacTrafficLights ? 'app-sidebar-header-macos' : '']"
     >
       <ProjectMenu />
     </SidebarHeader>
     <SidebarContent class="overflow-hidden">
-      <div v-if="showMacCollapsedRail" class="app-sidebar-collapsed-macos-stack">
+      <div v-window-chrome v-if="showMacCollapsedRail" class="app-sidebar-collapsed-macos-stack">
         <ProjectMenu />
-        <NavMain :items="data.navMain" />
+        <div data-tauri-drag-region="false">
+          <NavMain :items="data.navMain" />
+        </div>
       </div>
       <template v-else>
         <div class="hidden min-h-0 flex-1 flex-col group-data-[collapsible=icon]:flex">
