@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import type { EditorLanguage } from '@/lib/editor-language'
+
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api'
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
-import type { EditorLanguage } from '@/lib/editor-language'
 import { normalizeEditorLanguage } from '@/lib/editor-language'
 import { ensureMonacoHdlSupport } from '@/lib/monaco-hdl'
 import { useThemeState } from '@/lib/theme'
@@ -36,6 +37,14 @@ function getEditorLanguage(language?: EditorLanguage): EditorLanguage {
   return normalizeEditorLanguage(language)
 }
 
+function ensureFallbackModel(): monaco.editor.ITextModel {
+  if (!fallbackModel) {
+    fallbackModel = monaco.editor.createModel(props.value, getEditorLanguage(props.language))
+  }
+
+  return fallbackModel
+}
+
 function syncModelState(model: monaco.editor.ITextModel, value: string, language?: EditorLanguage) {
   if (model.getValue() !== value) {
     model.setValue(value)
@@ -52,9 +61,7 @@ onMounted(() => {
 
   ensureMonacoHdlSupport(monaco)
 
-  const model =
-    props.model ??
-    (fallbackModel = monaco.editor.createModel(props.value, getEditorLanguage(props.language)))
+  const model = props.model ?? ensureFallbackModel()
 
   editor = monaco.editor.create(container.value, {
     model,
@@ -92,10 +99,7 @@ watch(
       return
     }
 
-    const model = fallbackModel ?? editor?.getModel() ?? null
-    if (model) {
-      syncModelState(model, val, props.language)
-    }
+    syncModelState(ensureFallbackModel(), val, props.language)
   },
 )
 
@@ -106,11 +110,14 @@ watch(
       return
     }
 
-    const nextModel = model ?? fallbackModel
-    if (!nextModel) {
+    if (model) {
+      if (editor.getModel() !== model) {
+        editor.setModel(model)
+      }
       return
     }
 
+    const nextModel = ensureFallbackModel()
     syncModelState(nextModel, props.value, props.language)
 
     if (editor.getModel() !== nextModel) {
@@ -122,11 +129,11 @@ watch(
 watch(
   () => props.language,
   (language) => {
-    const model = editor?.getModel()
-    if (!model) {
+    if (!editor || props.model) {
       return
     }
 
+    const model = ensureFallbackModel()
     monaco.editor.setModelLanguage(model, getEditorLanguage(language))
   },
 )

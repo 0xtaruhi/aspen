@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader, ErrorKind, Write},
     path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, Stdio},
     sync::{Arc, Mutex},
@@ -81,7 +81,7 @@ pub fn hdl_lsp_start(
         });
     };
 
-    stop_existing_session(&manager, &request.session_id);
+    stop_existing_session(&manager, &request.session_id)?;
 
     let workspace_root = prepare_workspace_root(&request.session_id, &request.files)?;
 
@@ -110,21 +110,30 @@ pub fn hdl_lsp_start(
     let stdin = Arc::new(Mutex::new(stdin));
     let session_id = request.session_id.clone();
 
-    spawn_reader_thread(app, session_id.clone(), stdout);
-    spawn_stderr_reader_thread(stderr);
-
-    manager
+    if let Err(err) = manager
         .sessions
         .lock()
-        .map_err(|_| "failed to acquire HDL LSP session registry".to_string())?
-        .insert(
-            session_id.clone(),
-            HdlLspSession {
-                stdin,
-                child,
-                workspace_root: workspace_root.clone(),
-            },
-        );
+        .map_err(|_| "failed to acquire HDL LSP session registry".to_string())
+        .map(|mut sessions| {
+            sessions.insert(
+                session_id.clone(),
+                HdlLspSession {
+                    stdin: stdin.clone(),
+                    child: child.clone(),
+                    workspace_root: workspace_root.clone(),
+                },
+            );
+        })
+    {
+        let cleanup_result = cleanup_startup_resources(&child, &workspace_root);
+        return Err(match cleanup_result {
+            Ok(()) => err,
+            Err(cleanup_err) => format!("{err}; cleanup failed: {cleanup_err}"),
+        });
+    }
+
+    spawn_reader_thread(app, session_id.clone(), stdout);
+    spawn_stderr_reader_thread(stderr);
 
     Ok(HdlLspStartResponse {
         session_id,
@@ -138,17 +147,20 @@ pub fn hdl_lsp_forward(
     manager: tauri::State<'_, Arc<HdlLspManager>>,
     request: HdlLspForwardRequest,
 ) -> Result<(), String> {
-    let sessions = manager
-        .sessions
-        .lock()
-        .map_err(|_| "failed to acquire HDL LSP session registry".to_string())?;
-    let session = sessions
-        .get(&request.session_id)
-        .ok_or_else(|| format!("unknown HDL LSP session '{}'", request.session_id))?;
+    let stdin = {
+        let sessions = manager
+            .sessions
+            .lock()
+            .map_err(|_| "failed to acquire HDL LSP session registry".to_string())?;
+        sessions
+            .get(&request.session_id)
+            .ok_or_else(|| format!("unknown HDL LSP session '{}'", request.session_id))?
+            .stdin
+            .clone()
+    };
 
     let body = serde_json::to_vec(&request.message).map_err(|err| err.to_string())?;
-    let mut stdin = session
-        .stdin
+    let mut stdin = stdin
         .lock()
         .map_err(|_| "failed to acquire HDL LSP stdin".to_string())?;
 
@@ -162,25 +174,22 @@ pub fn hdl_lsp_stop(
     manager: tauri::State<'_, Arc<HdlLspManager>>,
     request: HdlLspStopRequest,
 ) -> Result<(), String> {
-    stop_existing_session(&manager, &request.session_id);
-    Ok(())
+    stop_existing_session(&manager, &request.session_id)
 }
 
-fn stop_existing_session(manager: &Arc<HdlLspManager>, session_id: &str) {
+fn stop_existing_session(manager: &Arc<HdlLspManager>, session_id: &str) -> Result<(), String> {
     let session = manager
         .sessions
         .lock()
-        .ok()
-        .and_then(|mut sessions| sessions.remove(session_id));
+        .map_err(|_| "failed to acquire HDL LSP session registry".to_string())?
+        .remove(session_id);
 
     if let Some(session) = session {
-        if let Ok(mut child) = session.child.lock() {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
-
-        let _ = std::fs::remove_dir_all(&session.workspace_root);
+        stop_child_process(&session.child)?;
+        remove_workspace_root(&session.workspace_root)?;
     }
+
+    Ok(())
 }
 
 fn prepare_workspace_root(session_id: &str, files: &[HdlLspSourceFile]) -> Result<PathBuf, String> {
@@ -188,7 +197,7 @@ fn prepare_workspace_root(session_id: &str, files: &[HdlLspSourceFile]) -> Resul
         .join(DEFAULT_WORKSPACE_ROOT_NAME)
         .join(sanitize_session_id(session_id));
 
-    std::fs::remove_dir_all(&workspace_root).ok();
+    remove_workspace_root(&workspace_root)?;
 
     std::fs::create_dir_all(&workspace_root).map_err(|err| err.to_string())?;
 
@@ -228,6 +237,43 @@ fn sanitize_relative_project_path(path: &str) -> Result<PathBuf, String> {
     }
 
     Ok(relative)
+}
+
+fn cleanup_startup_resources(
+    child: &Arc<Mutex<Child>>,
+    workspace_root: &Path,
+) -> Result<(), String> {
+    stop_child_process(child)?;
+    remove_workspace_root(workspace_root)
+}
+
+fn stop_child_process(child: &Arc<Mutex<Child>>) -> Result<(), String> {
+    let mut child = child
+        .lock()
+        .map_err(|_| "failed to acquire HDL LSP child handle".to_string())?;
+
+    match child.kill() {
+        Ok(()) => {}
+        Err(err) if err.kind() == ErrorKind::InvalidInput => {}
+        Err(err) => return Err(format!("failed to kill slang-server: {err}")),
+    }
+
+    child
+        .wait()
+        .map_err(|err| format!("failed to wait for slang-server exit: {err}"))?;
+
+    Ok(())
+}
+
+fn remove_workspace_root(workspace_root: &Path) -> Result<(), String> {
+    match std::fs::remove_dir_all(workspace_root) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(format!(
+            "failed to remove workspace '{}': {err}",
+            workspace_root.display()
+        )),
+    }
 }
 
 fn sanitize_session_id(session_id: &str) -> String {
