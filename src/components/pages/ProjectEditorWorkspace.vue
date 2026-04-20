@@ -3,6 +3,7 @@ import { computed } from 'vue'
 
 import CodeEditor from '@/components/editor/CodeEditor.vue'
 import { Badge } from '@/components/ui/badge'
+import { resolveEditorLanguage } from '@/lib/editor-language'
 import { useI18n } from '@/lib/i18n'
 import { projectStore } from '@/stores/project'
 import { signalCatalogStore } from '@/stores/signal-catalog'
@@ -12,6 +13,7 @@ const activeFileName = computed(() => projectStore.activeFile?.name || t('noFile
 const activeFileDirty = computed(() =>
   projectStore.activeFileId ? projectStore.isFileDirty(projectStore.activeFileId) : false,
 )
+const activeEditorLanguage = computed(() => resolveEditorLanguage(projectStore.activeFile?.name))
 </script>
 
 <template>
@@ -28,7 +30,11 @@ const activeFileDirty = computed(() =>
     </div>
 
     <div class="project-editor-surface flex-1 min-h-0 overflow-hidden">
-      <CodeEditor :value="projectStore.code" @update:value="projectStore.updateCode($event)" />
+      <CodeEditor
+        :value="projectStore.code"
+        :language="activeEditorLanguage"
+        @update:value="projectStore.updateCode($event)"
+      />
     </div>
   </div>
 </template>

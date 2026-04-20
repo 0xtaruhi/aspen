@@ -1,7 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api'
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
+
+import { normalizeEditorLanguage, type EditorLanguage } from '@/lib/editor-language'
+import { ensureMonacoHdlSupport } from '@/lib/monaco-hdl'
+import { useThemeState } from '@/lib/theme'
+import { settingsStore } from '@/stores/settings'
 ;(
   globalThis as typeof globalThis & { MonacoEnvironment?: { getWorker: () => Worker } }
 ).MonacoEnvironment = {
@@ -12,7 +17,7 @@ import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
 
 const props = defineProps<{
   value: string
-  language?: string
+  language?: EditorLanguage
 }>()
 
 const emit = defineEmits<{
@@ -22,62 +27,30 @@ const emit = defineEmits<{
 const container = ref<HTMLElement | null>(null)
 let editor: monaco.editor.IStandaloneCodeEditor | null = null
 
-import { useThemeState } from '@/lib/theme'
-import { settingsStore } from '@/stores/settings'
-
 const themeState = useThemeState()
+
+function getEditorLanguage(language?: EditorLanguage): EditorLanguage {
+  return normalizeEditorLanguage(language)
+}
 
 onMounted(() => {
   if (!container.value) return
 
-  // Register Verilog (basic)
-  monaco.languages.register({ id: 'verilog' })
-  monaco.languages.setMonarchTokensProvider('verilog', {
-    keywords: [
-      'module',
-      'endmodule',
-      'input',
-      'output',
-      'inout',
-      'wire',
-      'reg',
-      'always',
-      'begin',
-      'end',
-      'if',
-      'else',
-      'case',
-      'endcase',
-      'default',
-      'assign',
-      'initial',
-      'parameter',
-      'localparam',
-    ],
-    tokenizer: {
-      root: [
-        [
-          /[a-zA-Z_]\w*/,
-          {
-            cases: {
-              '@keywords': 'keyword',
-              '@default': 'identifier',
-            },
-          },
-        ],
-        [/\/\/.*$/, 'comment'],
-      ],
-    },
-  })
+  ensureMonacoHdlSupport(monaco)
+
+  const model = monaco.editor.createModel(props.value, getEditorLanguage(props.language))
 
   editor = monaco.editor.create(container.value, {
-    value: props.value,
-    language: props.language || 'verilog',
+    model,
     theme: themeState.value ? 'vs-dark' : 'vs',
     automaticLayout: true,
     minimap: { enabled: settingsStore.state.editorMinimap },
     fontSize: settingsStore.state.editorFontSize,
     fontFamily: settingsStore.state.editorFontFamily,
+    matchBrackets: 'always',
+    guides: { bracketPairs: true, indentation: true },
+    bracketPairColorization: { enabled: true },
+    snippetSuggestions: 'top',
     scrollBeyondLastLine: false,
     padding: { top: 16, bottom: 16 },
   })
@@ -105,6 +78,18 @@ watch(
 )
 
 watch(
+  () => props.language,
+  (language) => {
+    const model = editor?.getModel()
+    if (!model) {
+      return
+    }
+
+    monaco.editor.setModelLanguage(model, getEditorLanguage(language))
+  },
+)
+
+watch(
   () => settingsStore.state.editorFontSize,
   (fontSize) => {
     editor?.updateOptions({ fontSize })
@@ -127,7 +112,9 @@ watch(
 )
 
 onUnmounted(() => {
+  const model = editor?.getModel()
   editor?.dispose()
+  model?.dispose()
 })
 </script>
 
