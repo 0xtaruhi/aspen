@@ -4,10 +4,12 @@ import { computed, ref, watch } from 'vue'
 import { Input } from '@/components/ui/input'
 import { getCanvasBitsetData, getCanvasDipSwitchBankConfig } from '@/lib/canvas-devices'
 import type { CanvasDeviceSnapshot } from '@/lib/hardware-client'
+import { useI18n } from '@/lib/i18n'
 import { hardwareStore } from '@/stores/hardware'
 import { clampInspectorInt, resizeCanvasSlotBindings } from './shared'
 
 const props = defineProps<{ device: CanvasDeviceSnapshot }>()
+const { t } = useI18n()
 
 const config = computed(() => getCanvasDipSwitchBankConfig(props.device))
 const widthInput = ref('8')
@@ -44,7 +46,7 @@ function commitDipWidth() {
 
 <template>
   <section class="space-y-3">
-    <p class="text-sm font-medium">DIP switch bank</p>
+    <p class="text-sm font-medium">{{ t('dipSwitchBank') }}</p>
     <Input
       v-model="widthInput"
       type="number"
@@ -53,6 +55,8 @@ function commitDipWidth() {
       @blur="commitDipWidth"
       @keydown.enter.prevent="commitDipWidth"
     />
-    <p class="text-xs text-muted-foreground">Current bits: {{ currentBits }}</p>
+    <p class="text-xs text-muted-foreground">
+      {{ t('currentBitsValue', { bits: currentBits }) }}
+    </p>
   </section>
 </template>

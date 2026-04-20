@@ -11,10 +11,12 @@ import {
 } from '@/components/ui/select'
 import { getCanvasMatrixKeypadConfig } from '@/lib/canvas-devices'
 import type { CanvasDeviceSnapshot } from '@/lib/hardware-client'
+import { useI18n } from '@/lib/i18n'
 import { hardwareStore } from '@/stores/hardware'
 import { clampInspectorInt, resizeCanvasSlotBindings } from './shared'
 
 const props = defineProps<{ device: CanvasDeviceSnapshot }>()
+const { t } = useI18n()
 
 const config = computed(() => getCanvasMatrixKeypadConfig(props.device))
 const rowsInput = ref('4')
@@ -68,7 +70,7 @@ function commitKeypadPolarity(value: string) {
 
 <template>
   <section class="space-y-3">
-    <p class="text-sm font-medium">Matrix keypad</p>
+    <p class="text-sm font-medium">{{ t('matrixKeypad') }}</p>
     <div class="grid grid-cols-2 gap-3">
       <Input
         v-model="rowsInput"
@@ -93,8 +95,8 @@ function commitKeypadPolarity(value: string) {
     >
       <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
       <SelectContent>
-        <SelectItem value="low">Active low scan</SelectItem>
-        <SelectItem value="high">Active high scan</SelectItem>
+        <SelectItem value="low">{{ t('activeLowScan') }}</SelectItem>
+        <SelectItem value="high">{{ t('activeHighScan') }}</SelectItem>
       </SelectContent>
     </Select>
   </section>

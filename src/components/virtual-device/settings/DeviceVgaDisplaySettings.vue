@@ -10,10 +10,12 @@ import {
 } from '@/components/ui/select'
 import { VGA_DISPLAY_RESOLUTION_PRESETS, getCanvasVgaDisplayConfig } from '@/lib/canvas-devices'
 import type { CanvasDeviceSnapshot, CanvasVgaColorMode } from '@/lib/hardware-client'
+import { useI18n } from '@/lib/i18n'
 import { hardwareStore } from '@/stores/hardware'
 import { clampInspectorInt, resizeCanvasSlotBindings, vgaSlotCount } from './shared'
 
 const props = defineProps<{ device: CanvasDeviceSnapshot }>()
+const { t } = useI18n()
 
 const config = computed(() => getCanvasVgaDisplayConfig(props.device))
 
@@ -59,7 +61,7 @@ function commitVgaColorMode(value: string) {
 
 <template>
   <section class="space-y-3">
-    <p class="text-sm font-medium">VGA display</p>
+    <p class="text-sm font-medium">{{ t('vgaDisplay') }}</p>
     <Select
       :model-value="`${config?.columns ?? 320}x${config?.rows ?? 240}`"
       @update:model-value="(value) => commitVgaResolution(String(value))"
@@ -81,12 +83,12 @@ function commitVgaColorMode(value: string) {
     >
       <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
       <SelectContent>
-        <SelectItem value="mono">Mono</SelectItem>
-        <SelectItem value="rgb111">RGB111</SelectItem>
-        <SelectItem value="rgb332">RGB332</SelectItem>
-        <SelectItem value="rgb444">RGB444</SelectItem>
-        <SelectItem value="rgb565">RGB565</SelectItem>
-        <SelectItem value="rgb888">RGB888</SelectItem>
+        <SelectItem value="mono">{{ t('vgaColorModeMono') }}</SelectItem>
+        <SelectItem value="rgb111">{{ t('vgaColorModeRgb111') }}</SelectItem>
+        <SelectItem value="rgb332">{{ t('vgaColorModeRgb332') }}</SelectItem>
+        <SelectItem value="rgb444">{{ t('vgaColorModeRgb444') }}</SelectItem>
+        <SelectItem value="rgb565">{{ t('vgaColorModeRgb565') }}</SelectItem>
+        <SelectItem value="rgb888">{{ t('vgaColorModeRgb888') }}</SelectItem>
       </SelectContent>
     </Select>
   </section>
