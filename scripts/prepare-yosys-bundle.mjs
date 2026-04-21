@@ -1150,6 +1150,29 @@ function buildYosysRuntimeEnv(bundleRoot) {
     existsSync(entry),
   )
   env.PATH = [...new Set([...runtimeEntries, ...pathEntries].filter(Boolean))].join(delimiter)
+
+  if (process.platform === 'linux') {
+    const libraryEntries = [join(bundleRoot, 'lib'), join(bundleRoot, 'lib64')]
+      .filter((entry) => existsSync(entry))
+      .concat(env.LD_LIBRARY_PATH ? env.LD_LIBRARY_PATH.split(delimiter) : [])
+    env.LD_LIBRARY_PATH = [...new Set(libraryEntries.filter(Boolean))].join(delimiter)
+
+    const ghdlPrefix = join(bundleRoot, 'lib', 'ghdl')
+    if (existsSync(ghdlPrefix)) {
+      env.GHDL_PREFIX = ghdlPrefix
+    }
+
+    const tclLibrary = join(bundleRoot, 'lib', 'tcl8.6')
+    if (existsSync(tclLibrary)) {
+      env.TCL_LIBRARY = tclLibrary
+    }
+
+    const tkLibrary = join(bundleRoot, 'lib', 'tk8.6')
+    if (existsSync(tkLibrary)) {
+      env.TK_LIBRARY = tkLibrary
+    }
+  }
+
   return env
 }
 

@@ -19,14 +19,6 @@ const TEST_FDE_BRAM_MAP_FILE: &str = "brams_map.v";
 const TEST_FDE_TECHMAP_FILE: &str = "techmap.v";
 const TEST_FDE_CELLS_MAP_FILE: &str = "cells_map.v";
 
-fn test_yosys_executable_name() -> &'static str {
-    if cfg!(target_os = "windows") {
-        "yosys.exe"
-    } else {
-        "yosys"
-    }
-}
-
 fn quote_test_yosys_path(path: &Path) -> String {
     format!(
         "\"{}\"",
@@ -57,10 +49,10 @@ fn prepare_test_synthesized_edif_with_source(
     workdir: &Path,
     top_source: &str,
 ) -> Result<PathBuf, String> {
-    let yosys_bin = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join(TEST_BUNDLED_YOSYS_DIR)
-        .join("bin")
-        .join(test_yosys_executable_name());
+    let bundle_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(TEST_BUNDLED_YOSYS_DIR);
+    let yosys_bin =
+        crate::hardware::synthesis::test_resolve_bundled_yosys_binary_from_root(&bundle_root)
+            .ok_or_else(|| "Bundled Yosys synthesis resources are unavailable".to_string())?;
     let fde_simlib = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join(TEST_YOSYS_SUPPORT_DIR)
         .join(TEST_FDE_SIMLIB_FILE);
@@ -146,18 +138,10 @@ write_edif {}\n",
     )
     .map_err(|err| err.to_string())?;
 
-    #[cfg(target_os = "windows")]
     let mut command = {
         let mut command = Command::new(&yosys_bin);
         command.arg("-s").arg(&script_path);
-        configure_test_yosys_runtime_env(&mut command, &yosys_bin);
-        command
-    };
-
-    #[cfg(not(target_os = "windows"))]
-    let mut command = {
-        let mut command = Command::new(&yosys_bin);
-        command.arg("-s").arg(&script_path);
+        crate::hardware::synthesis::test_configure_yosys_runtime_env(&mut command, &yosys_bin);
         command
     };
 
@@ -177,35 +161,6 @@ write_edif {}\n",
     }
 
     Ok(edif_path)
-}
-
-#[allow(dead_code)]
-fn configure_test_yosys_runtime_env(command: &mut Command, yosys_bin: &Path) {
-    let Some(bin_dir) = yosys_bin.parent() else {
-        return;
-    };
-
-    let mut runtime_entries = vec![bin_dir.to_path_buf()];
-    if let Some(bundle_root) = bin_dir.parent() {
-        let lib_dir = bundle_root.join("lib");
-        if lib_dir.is_dir() {
-            runtime_entries.push(lib_dir);
-        }
-
-        let libexec_dir = bundle_root.join("libexec");
-        if libexec_dir.is_dir() {
-            runtime_entries.push(libexec_dir);
-        }
-    }
-
-    let existing_entries = env::var_os("PATH")
-        .map(|value| env::split_paths(&value).collect::<Vec<_>>())
-        .unwrap_or_default();
-    runtime_entries.extend(existing_entries);
-
-    if let Ok(path) = env::join_paths(runtime_entries) {
-        command.env("PATH", path);
-    }
 }
 
 fn test_resource_paths() -> toolchain::ImplementationResourcePaths {

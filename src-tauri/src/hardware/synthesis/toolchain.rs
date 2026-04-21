@@ -24,26 +24,24 @@ pub(super) struct SynthesisToolchainPaths<'a> {
 }
 
 pub(super) fn resolve_yosys_binary(app: &AppHandle) -> Result<PathBuf, String> {
-    let executable_name = yosys_executable_name();
-    let bundled_resource_candidate = app
-        .path()
-        .resolve(
-            format!("{}/bin/{}", BUNDLED_YOSYS_DIR, executable_name),
-            BaseDirectory::Resource,
-        )
-        .ok()
-        .filter(|path| path.is_file());
-    if let Some(candidate) = bundled_resource_candidate {
-        return Ok(candidate);
+    for relative_path in bundled_yosys_relative_paths() {
+        let bundled_resource_candidate = app
+            .path()
+            .resolve(
+                format!("{}/{}", BUNDLED_YOSYS_DIR, relative_path),
+                BaseDirectory::Resource,
+            )
+            .ok()
+            .filter(|path| path.is_file());
+        if let Some(candidate) = bundled_resource_candidate {
+            return Ok(candidate);
+        }
     }
 
     if cfg!(debug_assertions) {
-        let bundled_dev_candidate = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join(BUNDLED_YOSYS_DIR)
-            .join("bin")
-            .join(executable_name);
-        if bundled_dev_candidate.is_file() {
-            return Ok(bundled_dev_candidate);
+        let bundle_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(BUNDLED_YOSYS_DIR);
+        if let Some(candidate) = resolve_bundled_yosys_binary_from_root(&bundle_root) {
+            return Ok(candidate);
         }
     }
 
@@ -71,21 +69,30 @@ pub(super) fn spawn_yosys_process(
     command.spawn()
 }
 
-fn configure_yosys_runtime_env(command: &mut Command, yosys_bin: &Path) {
-    let Some(bin_dir) = yosys_bin.parent() else {
+pub(super) fn resolve_bundled_yosys_binary_from_root(bundle_root: &Path) -> Option<PathBuf> {
+    bundled_yosys_relative_paths()
+        .iter()
+        .map(|relative_path| bundle_root.join(relative_path))
+        .find(|candidate| candidate.is_file())
+}
+
+pub(super) fn configure_yosys_runtime_env(command: &mut Command, yosys_bin: &Path) {
+    let Some(executable_dir) = yosys_bin.parent() else {
         return;
     };
 
-    let mut runtime_entries = vec![bin_dir.to_path_buf()];
-    if let Some(bundle_root) = bin_dir.parent() {
-        let lib_dir = bundle_root.join("lib");
-        if lib_dir.is_dir() {
-            runtime_entries.push(lib_dir);
-        }
+    let Some(bundle_root) = executable_dir.parent() else {
+        return;
+    };
 
-        let libexec_dir = bundle_root.join("libexec");
-        if libexec_dir.is_dir() {
-            runtime_entries.push(libexec_dir);
+    let mut runtime_entries = Vec::new();
+    for candidate in [
+        bundle_root.join("bin"),
+        bundle_root.join("libexec"),
+        executable_dir.to_path_buf(),
+    ] {
+        if candidate.is_dir() && !runtime_entries.contains(&candidate) {
+            runtime_entries.push(candidate);
         }
     }
 
@@ -96,6 +103,40 @@ fn configure_yosys_runtime_env(command: &mut Command, yosys_bin: &Path) {
 
     if let Ok(path) = env::join_paths(runtime_entries) {
         command.env("PATH", path);
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let mut library_entries = Vec::new();
+        for candidate in [bundle_root.join("lib"), bundle_root.join("lib64")] {
+            if candidate.is_dir() {
+                library_entries.push(candidate);
+            }
+        }
+
+        let existing_entries = env::var_os("LD_LIBRARY_PATH")
+            .map(|value| env::split_paths(&value).collect::<Vec<_>>())
+            .unwrap_or_default();
+        library_entries.extend(existing_entries);
+
+        if let Ok(path) = env::join_paths(library_entries) {
+            command.env("LD_LIBRARY_PATH", path);
+        }
+
+        let ghdl_prefix = bundle_root.join("lib").join("ghdl");
+        if ghdl_prefix.is_dir() {
+            command.env("GHDL_PREFIX", ghdl_prefix);
+        }
+
+        let tcl_library = bundle_root.join("lib").join("tcl8.6");
+        if tcl_library.is_dir() {
+            command.env("TCL_LIBRARY", tcl_library);
+        }
+
+        let tk_library = bundle_root.join("lib").join("tk8.6");
+        if tk_library.is_dir() {
+            command.env("TK_LIBRARY", tk_library);
+        }
     }
 }
 
@@ -130,10 +171,17 @@ pub(super) fn resolve_fde_support_file(
     ))
 }
 
-pub(super) fn yosys_executable_name() -> &'static str {
-    if cfg!(target_os = "windows") {
-        "yosys.exe"
-    } else {
-        "yosys"
-    }
+#[cfg(target_os = "linux")]
+fn bundled_yosys_relative_paths() -> &'static [&'static str] {
+    &["libexec/yosys", "bin/yosys"]
+}
+
+#[cfg(target_os = "windows")]
+fn bundled_yosys_relative_paths() -> &'static [&'static str] {
+    &["bin/yosys.exe"]
+}
+
+#[cfg(all(not(target_os = "linux"), not(target_os = "windows")))]
+fn bundled_yosys_relative_paths() -> &'static [&'static str] {
+    &["bin/yosys"]
 }

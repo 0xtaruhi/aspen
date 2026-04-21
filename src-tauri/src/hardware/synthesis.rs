@@ -225,3 +225,18 @@ fn now_millis() -> Result<u64, String> {
         .as_millis()
         .min(u128::from(u64::MAX)) as u64)
 }
+
+#[cfg(test)]
+pub(crate) fn test_resolve_bundled_yosys_binary_from_root(
+    bundle_root: &Path,
+) -> Option<std::path::PathBuf> {
+    toolchain::resolve_bundled_yosys_binary_from_root(bundle_root)
+}
+
+#[cfg(test)]
+pub(crate) fn test_configure_yosys_runtime_env(
+    command: &mut std::process::Command,
+    yosys_bin: &Path,
+) {
+    toolchain::configure_yosys_runtime_env(command, yosys_bin);
+}
