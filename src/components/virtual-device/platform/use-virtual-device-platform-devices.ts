@@ -95,6 +95,10 @@ export function useVirtualDevicePlatformDevices({
       return
     }
 
+    if (!hasCanvasDevices.value || streamBusy.value) {
+      return
+    }
+
     streamBusy.value = true
     streamMessage.value = ''
 
