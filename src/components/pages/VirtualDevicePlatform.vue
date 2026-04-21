@@ -18,10 +18,8 @@ const {
   canvasSessionKey,
   clearCanvas,
   closeManualDialog,
-  deleteSelectedDevices,
   galleryDropBlockInset,
   hasAnySynthesisSignals,
-  hasCanvasDevices,
   hasSelectedSource,
   hasStaleSynthesisSignals,
   inspectorOpen,
@@ -31,7 +29,6 @@ const {
   openManualForSelectedDevice,
   rateInput,
   selectedDevice,
-  selectedDeviceCount,
   selectedDeviceId,
   selectedDeviceIds,
   shouldWarnStreamBacklog,
@@ -60,9 +57,6 @@ const {
       :visible-signal-count="streamSignalNames.length"
       :available-signal-count="availableSignalCount"
       :actual-hz-label="actualHzLabel"
-      :selected-device-count="selectedDeviceCount"
-      :has-canvas-devices="hasCanvasDevices"
-      :stream-busy="streamBusy"
       :rate-input="rateInput"
       :can-apply-settings="canApplySettings"
       :can-toggle-stream="canToggleStream"
@@ -71,8 +65,6 @@ const {
       @toggle-waveform-panel="toggleWaveformPanel"
       @update:interaction-mode="canvasInteractionMode = $event"
       @update:rate-input="rateInput = $event"
-      @delete-selected="deleteSelectedDevices"
-      @clear-canvas="clearCanvas"
       @apply-settings="applyStreamSettings"
       @toggle-stream="toggleStream"
     />
@@ -98,6 +90,8 @@ const {
           v-model:selected-device-ids="selectedDeviceIds"
           :blocked-top-inset="showGallery ? galleryDropBlockInset : 0"
           :interaction-mode="canvasInteractionMode"
+          :stream-busy="streamBusy"
+          @clear-canvas="clearCanvas"
           @open-settings="openInspectorForDevice"
         />
       </div>

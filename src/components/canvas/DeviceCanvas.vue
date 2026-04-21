@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch, type CSSProperties } from 'vue'
 
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu'
 import BaseDevice from '../devices/BaseDevice.vue'
 import WireLayer from './WireLayer.vue'
 import {
@@ -32,6 +38,7 @@ import {
 } from '@/lib/canvas-devices'
 import { hardwareStore } from '@/stores/hardware'
 import { consumePaletteDrop, paletteDragStore } from '@/stores/palette-drag'
+import { useI18n } from '@/lib/i18n'
 
 type DeviceSelectionMode = 'preserve' | 'replace' | 'toggle'
 type CanvasInteractionMode = 'select' | 'pan'
@@ -56,11 +63,13 @@ const props = defineProps<{
   selectedDeviceIds?: string[]
   blockedTopInset?: number
   interactionMode?: CanvasInteractionMode
+  streamBusy?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'update:selectedDeviceId', value: string | null): void
   (e: 'update:selectedDeviceIds', value: string[]): void
+  (e: 'clear-canvas'): void
   (e: 'open-settings', value: string): void
 }>()
 
@@ -101,6 +110,9 @@ const selectedDeviceIdSet = computed(() => new Set(selectedDeviceIds.value))
 const resolvedInteractionMode = computed<CanvasInteractionMode>(
   () => props.interactionMode ?? 'select',
 )
+const hasCanvasDevices = computed(() => devices.value.length > 0)
+
+const { t } = useI18n()
 
 let dropIdCounter = 0
 const SNAP_GRID = 20
@@ -118,6 +130,30 @@ function handleWheel(e: WheelEvent) {
     offset.value.x -= e.deltaX
     offset.value.y -= e.deltaY
   }
+}
+
+function openCanvasContextMenuFromKeyboard(event: KeyboardEvent) {
+  if (event.key !== 'Enter' && event.key !== ' ') {
+    return
+  }
+
+  event.preventDefault()
+  const trigger = event.currentTarget
+  if (!(trigger instanceof HTMLElement)) {
+    return
+  }
+
+  const rect = trigger.getBoundingClientRect()
+  trigger.dispatchEvent(
+    new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      clientX: rect.left + rect.width / 2,
+      clientY: rect.top + rect.height / 2,
+      button: 2,
+      buttons: 0,
+    }),
+  )
 }
 
 function normalizeSelectedIds(ids: readonly string[]) {
@@ -826,6 +862,27 @@ onUnmounted(() => {
         color: 'var(--foreground)',
       }"
     ></div>
+
+    <ContextMenu>
+      <ContextMenuTrigger as-child>
+        <button
+          type="button"
+          class="absolute inset-0 bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+          :aria-label="t('clearCanvas')"
+          @keydown="openCanvasContextMenuFromKeyboard"
+        />
+      </ContextMenuTrigger>
+
+      <ContextMenuContent class="w-48">
+        <ContextMenuItem
+          :disabled="!hasCanvasDevices || props.streamBusy"
+          class="text-destructive"
+          @select="emit('clear-canvas')"
+        >
+          {{ t('clearCanvas') }}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
 
     <div
       class="absolute origin-top-left will-change-transform"
