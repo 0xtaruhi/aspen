@@ -1,5 +1,5 @@
 use std::{
-    env,
+    env, fs,
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
@@ -128,16 +128,37 @@ pub(super) fn configure_yosys_runtime_env(command: &mut Command, yosys_bin: &Pat
             command.env("GHDL_PREFIX", ghdl_prefix);
         }
 
-        let tcl_library = bundle_root.join("lib").join("tcl8.6");
-        if tcl_library.is_dir() {
+        if let Some(tcl_library) = find_prefixed_directory(&bundle_root.join("lib"), "tcl") {
             command.env("TCL_LIBRARY", tcl_library);
         }
 
-        let tk_library = bundle_root.join("lib").join("tk8.6");
-        if tk_library.is_dir() {
+        if let Some(tk_library) = find_prefixed_directory(&bundle_root.join("lib"), "tk") {
             command.env("TK_LIBRARY", tk_library);
         }
     }
+}
+
+fn find_prefixed_directory(root: &Path, prefix: &str) -> Option<PathBuf> {
+    let mut candidates = fs::read_dir(root)
+        .ok()?
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let file_type = entry.file_type().ok()?;
+            if !file_type.is_dir() {
+                return None;
+            }
+
+            let name = entry.file_name();
+            let name = name.to_str()?;
+            if !name.starts_with(prefix) {
+                return None;
+            }
+
+            Some(entry.path())
+        })
+        .collect::<Vec<_>>();
+    candidates.sort();
+    candidates.pop()
 }
 
 pub(super) fn resolve_fde_support_file(

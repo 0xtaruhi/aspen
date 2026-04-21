@@ -1074,7 +1074,7 @@ function validateBundledYosys(bundleRoot) {
       : spawnSync(yosysExecutable, ['-s', scriptPath], {
           cwd: validationDir,
           encoding: 'utf8',
-          env: buildYosysRuntimeEnv(bundleRoot),
+          env: buildYosysRuntimeEnv(bundleRoot, yosysExecutable),
         })
   rmSync(validationDir, { recursive: true, force: true })
 
@@ -1157,11 +1157,15 @@ function formatDuration(durationMs) {
   return `${minutes}m ${seconds.toFixed(1).replace(/\.0$/, '')}s`
 }
 
-function buildYosysRuntimeEnv(bundleRoot) {
+function buildYosysRuntimeEnv(bundleRoot, yosysExecutable = null) {
   const env = { ...process.env }
   const pathEntries = env.PATH ? env.PATH.split(delimiter) : []
-  const runtimeEntries = [join(bundleRoot, 'libexec'), join(bundleRoot, 'bin')].filter((entry) =>
-    existsSync(entry),
+  const runtimeEntries = [
+    yosysExecutable ? dirname(yosysExecutable) : null,
+    join(bundleRoot, 'libexec'),
+    join(bundleRoot, 'bin'),
+  ].filter(
+    (entry, index, entries) => entry && existsSync(entry) && entries.indexOf(entry) === index,
   )
   env.PATH = [...new Set([...runtimeEntries, ...pathEntries].filter(Boolean))].join(delimiter)
 
@@ -1176,18 +1180,31 @@ function buildYosysRuntimeEnv(bundleRoot) {
       env.GHDL_PREFIX = ghdlPrefix
     }
 
-    const tclLibrary = join(bundleRoot, 'lib', 'tcl8.6')
-    if (existsSync(tclLibrary)) {
+    const tclLibrary = findPrefixedDirectory(join(bundleRoot, 'lib'), 'tcl')
+    if (tclLibrary) {
       env.TCL_LIBRARY = tclLibrary
     }
 
-    const tkLibrary = join(bundleRoot, 'lib', 'tk8.6')
-    if (existsSync(tkLibrary)) {
+    const tkLibrary = findPrefixedDirectory(join(bundleRoot, 'lib'), 'tk')
+    if (tkLibrary) {
       env.TK_LIBRARY = tkLibrary
     }
   }
 
   return env
+}
+
+function findPrefixedDirectory(rootDir, prefix) {
+  if (!existsSync(rootDir)) {
+    return null
+  }
+
+  const candidates = readdirSync(rootDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith(prefix))
+    .map((entry) => join(rootDir, entry.name))
+    .sort()
+
+  return candidates.at(-1) ?? null
 }
 
 function runWindowsYosysWithEnvironmentBatch(environmentBatch, yosysExecutable, scriptPath, cwd) {
