@@ -1,8 +1,9 @@
 #[cfg(target_os = "macos")]
-use objc2::MainThreadMarker;
+use objc2::{MainThreadMarker, Message};
 #[cfg(target_os = "macos")]
 use objc2_app_kit::{
-    NSAppearance, NSAppearanceCustomization, NSApplication, NSColor, NSView, NSWindow,
+    NSAppearance, NSAppearanceCustomization, NSApplication, NSColor, NSScrollElasticity,
+    NSScrollView, NSView, NSWindow,
 };
 #[cfg(target_os = "macos")]
 use objc2_foundation::{NSArray, NSString, NSUserDefaults};
@@ -249,8 +250,38 @@ fn apply_macos_window_material<R: tauri::Runtime>(
             ns_window.setOpaque(false);
             let background = NSColor::clearColor();
             ns_window.setBackgroundColor(Some(&background));
+
+            let webview_view: &NSView = &*webview.inner().cast();
+            configure_macos_webview_scroll_behavior(webview_view);
         })
         .map_err(|err| format!("failed to apply NSWindow styling: {err}"))
+}
+
+#[cfg(target_os = "macos")]
+fn configure_macos_webview_scroll_behavior(root_view: &NSView) {
+    if let Some(scroll_view) = find_descendant_scroll_view(root_view) {
+        scroll_view.setHorizontalScrollElasticity(NSScrollElasticity::None);
+        scroll_view.setVerticalScrollElasticity(NSScrollElasticity::None);
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn find_descendant_scroll_view(view: &NSView) -> Option<objc2::rc::Retained<NSScrollView>> {
+    if let Some(scroll_view) = view.enclosingScrollView() {
+        return Some(scroll_view);
+    }
+
+    for subview in view.subviews().iter() {
+        if let Some(scroll_view) = subview.downcast_ref::<NSScrollView>() {
+            return Some(scroll_view.retain());
+        }
+
+        if let Some(scroll_view) = find_descendant_scroll_view(subview.as_ref()) {
+            return Some(scroll_view);
+        }
+    }
+
+    None
 }
 
 #[cfg(not(target_os = "macos"))]

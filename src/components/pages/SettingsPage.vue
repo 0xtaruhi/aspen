@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ArrowDownToLine, Globe, MonitorCog, ShieldCheck } from 'lucide-vue-next'
 
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -57,7 +56,6 @@ const {
     <div class="mx-auto flex max-w-5xl flex-col gap-6 px-8 py-8">
       <div class="flex flex-wrap items-end justify-between gap-4">
         <div class="space-y-2">
-          <Badge variant="outline">{{ t('settings') }}</Badge>
           <div>
             <h1 class="text-3xl font-semibold tracking-tight">{{ t('settings') }}</h1>
             <p class="mt-2 text-sm text-muted-foreground">
