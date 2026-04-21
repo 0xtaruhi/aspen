@@ -87,9 +87,9 @@ pub(super) fn configure_yosys_runtime_env(command: &mut Command, yosys_bin: &Pat
 
     let mut runtime_entries = Vec::new();
     for candidate in [
-        bundle_root.join("bin"),
-        bundle_root.join("libexec"),
         executable_dir.to_path_buf(),
+        bundle_root.join("libexec"),
+        bundle_root.join("bin"),
     ] {
         if candidate.is_dir() && !runtime_entries.contains(&candidate) {
             runtime_entries.push(candidate);

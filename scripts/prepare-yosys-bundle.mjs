@@ -1026,10 +1026,7 @@ function resolveBundledDependency(filePath, dependency, bundleRoot) {
 }
 
 function validateBundledYosys(bundleRoot) {
-  const yosysExecutable =
-    process.platform === 'win32'
-      ? join(bundleRoot, 'bin', 'yosys.exe')
-      : join(bundleRoot, 'bin', 'yosys')
+  const yosysExecutable = resolveBundledYosysExecutable(bundleRoot)
   if (!existsSync(yosysExecutable)) {
     throw new Error(`Bundled Yosys executable not found at ${yosysExecutable}.`)
   }
@@ -1084,6 +1081,23 @@ function validateBundledYosys(bundleRoot) {
   if (result.status !== 0) {
     throw new Error(formatSpawnFailure('Bundled Yosys validation failed.', result))
   }
+}
+
+function resolveBundledYosysExecutable(bundleRoot) {
+  const candidates =
+    process.platform === 'linux'
+      ? [join(bundleRoot, 'libexec', 'yosys'), join(bundleRoot, 'bin', 'yosys')]
+      : process.platform === 'win32'
+        ? [join(bundleRoot, 'bin', 'yosys.exe')]
+        : [join(bundleRoot, 'bin', 'yosys')]
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate
+    }
+  }
+
+  return candidates[0]
 }
 
 function getDirectorySize(rootDir) {
@@ -1146,7 +1160,7 @@ function formatDuration(durationMs) {
 function buildYosysRuntimeEnv(bundleRoot) {
   const env = { ...process.env }
   const pathEntries = env.PATH ? env.PATH.split(delimiter) : []
-  const runtimeEntries = [join(bundleRoot, 'bin'), join(bundleRoot, 'libexec')].filter((entry) =>
+  const runtimeEntries = [join(bundleRoot, 'libexec'), join(bundleRoot, 'bin')].filter((entry) =>
     existsSync(entry),
   )
   env.PATH = [...new Set([...runtimeEntries, ...pathEntries].filter(Boolean))].join(delimiter)
