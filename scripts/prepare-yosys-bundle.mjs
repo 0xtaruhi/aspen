@@ -1026,10 +1026,7 @@ function resolveBundledDependency(filePath, dependency, bundleRoot) {
 }
 
 function validateBundledYosys(bundleRoot) {
-  const yosysExecutable =
-    process.platform === 'win32'
-      ? join(bundleRoot, 'bin', 'yosys.exe')
-      : join(bundleRoot, 'bin', 'yosys')
+  const yosysExecutable = resolveBundledYosysExecutable(bundleRoot)
   if (!existsSync(yosysExecutable)) {
     throw new Error(`Bundled Yosys executable not found at ${yosysExecutable}.`)
   }
@@ -1077,13 +1074,30 @@ function validateBundledYosys(bundleRoot) {
       : spawnSync(yosysExecutable, ['-s', scriptPath], {
           cwd: validationDir,
           encoding: 'utf8',
-          env: buildYosysRuntimeEnv(bundleRoot),
+          env: buildYosysRuntimeEnv(bundleRoot, yosysExecutable),
         })
   rmSync(validationDir, { recursive: true, force: true })
 
   if (result.status !== 0) {
     throw new Error(formatSpawnFailure('Bundled Yosys validation failed.', result))
   }
+}
+
+function resolveBundledYosysExecutable(bundleRoot) {
+  const candidates =
+    process.platform === 'linux'
+      ? [join(bundleRoot, 'libexec', 'yosys'), join(bundleRoot, 'bin', 'yosys')]
+      : process.platform === 'win32'
+        ? [join(bundleRoot, 'bin', 'yosys.exe')]
+        : [join(bundleRoot, 'bin', 'yosys')]
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate
+    }
+  }
+
+  return candidates[0]
 }
 
 function getDirectorySize(rootDir) {
@@ -1143,14 +1157,54 @@ function formatDuration(durationMs) {
   return `${minutes}m ${seconds.toFixed(1).replace(/\.0$/, '')}s`
 }
 
-function buildYosysRuntimeEnv(bundleRoot) {
+function buildYosysRuntimeEnv(bundleRoot, yosysExecutable = null) {
   const env = { ...process.env }
   const pathEntries = env.PATH ? env.PATH.split(delimiter) : []
-  const runtimeEntries = [join(bundleRoot, 'bin'), join(bundleRoot, 'libexec')].filter((entry) =>
-    existsSync(entry),
+  const runtimeEntries = [
+    yosysExecutable ? dirname(yosysExecutable) : null,
+    join(bundleRoot, 'libexec'),
+    join(bundleRoot, 'bin'),
+  ].filter(
+    (entry, index, entries) => entry && existsSync(entry) && entries.indexOf(entry) === index,
   )
   env.PATH = [...new Set([...runtimeEntries, ...pathEntries].filter(Boolean))].join(delimiter)
+
+  if (process.platform === 'linux') {
+    const libraryEntries = [join(bundleRoot, 'lib'), join(bundleRoot, 'lib64')]
+      .filter((entry) => existsSync(entry))
+      .concat(env.LD_LIBRARY_PATH ? env.LD_LIBRARY_PATH.split(delimiter) : [])
+    env.LD_LIBRARY_PATH = [...new Set(libraryEntries.filter(Boolean))].join(delimiter)
+
+    const ghdlPrefix = join(bundleRoot, 'lib', 'ghdl')
+    if (existsSync(ghdlPrefix)) {
+      env.GHDL_PREFIX = ghdlPrefix
+    }
+
+    const tclLibrary = findPrefixedDirectory(join(bundleRoot, 'lib'), 'tcl')
+    if (tclLibrary) {
+      env.TCL_LIBRARY = tclLibrary
+    }
+
+    const tkLibrary = findPrefixedDirectory(join(bundleRoot, 'lib'), 'tk')
+    if (tkLibrary) {
+      env.TK_LIBRARY = tkLibrary
+    }
+  }
+
   return env
+}
+
+function findPrefixedDirectory(rootDir, prefix) {
+  if (!existsSync(rootDir)) {
+    return null
+  }
+
+  const candidates = readdirSync(rootDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith(prefix))
+    .map((entry) => join(rootDir, entry.name))
+    .sort()
+
+  return candidates.at(-1) ?? null
 }
 
 function runWindowsYosysWithEnvironmentBatch(environmentBatch, yosysExecutable, scriptPath, cwd) {

@@ -5,10 +5,8 @@ use std::{fs, path::PathBuf, time::Instant};
 use crate::hardware::types::{SynthesisRequestV1, SynthesisSourceFileV1};
 
 fn bundled_synthesis_toolchain() -> Option<toolchain::SynthesisToolchainPaths<'static>> {
-    let yosys_bin = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join(BUNDLED_YOSYS_DIR)
-        .join("bin")
-        .join(toolchain::yosys_executable_name());
+    let bundle_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(BUNDLED_YOSYS_DIR);
+    let yosys_bin = toolchain::resolve_bundled_yosys_binary_from_root(&bundle_root)?;
     let fde_simlib = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join(FDE_RESOURCE_DIR)
         .join(FDE_SIMLIB_FILE);
