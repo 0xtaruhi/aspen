@@ -16,7 +16,7 @@ const translations = {
   deviceFamily: 'Family',
   architecture: 'Architecture',
   sliceCount: 'Slices',
-  lut4Count: 'LUT4',
+  lutCount: 'LUT',
   ffCount: 'FF',
   bramCount: 'BRAM',
   bramCountValue: '8 blocks / 4608 bits',
@@ -74,6 +74,7 @@ describe('hardware manager helpers', () => {
     expect(targets[0].children?.[0].name).toBe('FDP3P7')
     expect(targets[0].children?.[0].status).toBe('ready')
     expect(targets[0].children?.[0].details?.Chip).toBe('FDP3P7')
+    expect(targets[0].children?.[0].details?.LUT).toBe('6,144')
   })
 
   it('maps flow phases to labels and badge classes', () => {

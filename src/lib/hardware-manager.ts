@@ -55,7 +55,7 @@ export function buildHardwareTargets(
             [t('deviceFamily')]: deviceDescriptor.family,
             [t('architecture')]: deviceDescriptor.architectureName,
             [t('sliceCount')]: deviceDescriptor.resources.slices.toLocaleString(),
-            [t('lut4Count')]: deviceDescriptor.resources.lut4.toLocaleString(),
+            [t('lutCount')]: deviceDescriptor.resources.lut4.toLocaleString(),
             [t('ffCount')]: deviceDescriptor.resources.ff.toLocaleString(),
             [t('bramCount')]: t('bramCountValue', {
               count: deviceDescriptor.resources.bramBlocks,

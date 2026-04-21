@@ -1,8 +1,11 @@
 use std::{
-    env, fs,
+    env,
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
+
+#[cfg(target_os = "linux")]
+use std::fs;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -138,6 +141,7 @@ pub(super) fn configure_yosys_runtime_env(command: &mut Command, yosys_bin: &Pat
     }
 }
 
+#[cfg(target_os = "linux")]
 fn find_prefixed_directory(root: &Path, prefix: &str) -> Option<PathBuf> {
     let mut candidates = fs::read_dir(root)
         .ok()?

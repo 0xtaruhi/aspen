@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import type { SynthesisCellTypeCountV1, SynthesisStatsV1 } from '@/lib/hardware-client'
-
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -11,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getFpgaDeviceDescriptor } from '@/lib/fpga-device-catalog'
 import { useI18n } from '@/lib/i18n'
 import { importProjectFiles, openProject } from '@/lib/project-io'
+import { summarizeSynthesisResources } from '@/lib/synthesis-resource-summary'
 import { designContextStore } from '@/stores/design-context'
 import { projectStore } from '@/stores/project'
 import { synthesisCatalogStore } from '@/stores/synthesis-catalog'
@@ -23,39 +22,8 @@ const targetDevice = computed(() => getFpgaDeviceDescriptor(projectStore.targetD
 const showNewProjectDialog = ref(false)
 const hasDesignSource = computed(() => Boolean(designContextStore.selectedSource.value))
 
-type ResourceSummaryStats = Pick<SynthesisStatsV1, 'memory_count'> & {
-  cell_type_counts: readonly SynthesisCellTypeCountV1[]
-}
-
-function summarizeResources(stats: ResourceSummaryStats | null) {
-  let lut = 0
-  let ff = 0
-  const bram = stats?.memory_count ?? 0
-  let dsp = 0
-
-  for (const entry of stats?.cell_type_counts ?? []) {
-    const cellType = entry.cell_type.toUpperCase()
-
-    if (/^LUT\d+$/.test(cellType)) {
-      lut += entry.count
-      continue
-    }
-
-    if (/DFF|EDFF|LATCH/.test(cellType)) {
-      ff += entry.count
-      continue
-    }
-
-    if (/DSP|MULT|MAC/.test(cellType)) {
-      dsp += entry.count
-    }
-  }
-
-  return { lut, ff, bram, dsp }
-}
-
 const synthesizedResources = computed(() => {
-  return summarizeResources(
+  return summarizeSynthesisResources(
     synthesisCatalogStore.currentSuccessfulSynthesisReport.value?.stats ?? null,
   )
 })
@@ -65,7 +33,7 @@ const hasCurrentSynthesis = synthesisCatalogStore.hasCurrentSuccessfulSynthesisR
 const summaryCards = computed(() => {
   return [
     {
-      title: t('lut4Count'),
+      title: t('lutCount'),
       value: synthesizedResources.value.lut.toLocaleString(),
       desc: `${synthesizedResources.value.lut}/${targetDevice.value.resources.lut4}`,
     },
@@ -134,7 +102,9 @@ function openSynthesis() {
 
 <template>
   <NewProjectDialog v-model:open="showNewProjectDialog" />
-  <div class="p-8 space-y-8 animate-in fade-in duration-500">
+  <div
+    class="app-scrollbar-hidden h-full overflow-x-hidden overflow-y-auto p-8 space-y-8 animate-in fade-in duration-500"
+  >
     <div class="flex items-center justify-between gap-4">
       <div>
         <h2 class="text-3xl font-bold tracking-tight">{{ t('projectStatus') }}</h2>
