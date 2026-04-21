@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Activity, Hand, LayoutGrid, Play, ScanSearch, Square, Trash2 } from 'lucide-vue-next'
+import { Activity, Hand, LayoutGrid, Play, ScanSearch, Square } from 'lucide-vue-next'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -15,9 +15,6 @@ const props = defineProps<{
   visibleSignalCount: number
   availableSignalCount: number
   actualHzLabel: string
-  selectedDeviceCount: number
-  hasCanvasDevices: boolean
-  streamBusy: boolean
   rateInput: string | number
   canApplySettings: boolean
   canToggleStream: boolean
@@ -28,8 +25,6 @@ const emit = defineEmits<{
   (e: 'toggleGallery'): void
   (e: 'update:interactionMode', value: CanvasInteractionMode): void
   (e: 'update:rateInput', value: string | number): void
-  (e: 'deleteSelected'): void
-  (e: 'clearCanvas'): void
   (e: 'applySettings'): void
   (e: 'toggleStream'): void
   (e: 'toggleWaveformPanel'): void
@@ -88,29 +83,6 @@ const { t } = useI18n()
         @click="emit('toggleWaveformPanel')"
       >
         <Activity class="h-4 w-4" />
-      </Button>
-      <Button
-        v-if="props.selectedDeviceCount > 0"
-        type="button"
-        size="sm"
-        variant="outline"
-        class="gap-2 text-destructive hover:text-destructive"
-        :disabled="props.streamBusy"
-        @click="emit('deleteSelected')"
-      >
-        <Trash2 class="h-4 w-4" />
-        {{ t('deleteSelected') }}
-      </Button>
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        class="gap-2 text-destructive hover:text-destructive"
-        :disabled="props.streamBusy || !props.hasCanvasDevices"
-        @click="emit('clearCanvas')"
-      >
-        <Trash2 class="h-4 w-4" />
-        {{ t('clearCanvas') }}
       </Button>
       <div class="flex items-center gap-2 rounded-md border border-border bg-background px-2">
         <span class="text-xs text-muted-foreground">Hz</span>

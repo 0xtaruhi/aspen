@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch, type CSSProperties } from 'vue'
 
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu'
 import BaseDevice from '../devices/BaseDevice.vue'
 import WireLayer from './WireLayer.vue'
 import {
@@ -32,6 +38,7 @@ import {
 } from '@/lib/canvas-devices'
 import { hardwareStore } from '@/stores/hardware'
 import { consumePaletteDrop, paletteDragStore } from '@/stores/palette-drag'
+import { useI18n } from '@/lib/i18n'
 
 type DeviceSelectionMode = 'preserve' | 'replace' | 'toggle'
 type CanvasInteractionMode = 'select' | 'pan'
@@ -61,6 +68,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:selectedDeviceId', value: string | null): void
   (e: 'update:selectedDeviceIds', value: string[]): void
+  (e: 'clear-canvas'): void
   (e: 'open-settings', value: string): void
 }>()
 
@@ -101,6 +109,9 @@ const selectedDeviceIdSet = computed(() => new Set(selectedDeviceIds.value))
 const resolvedInteractionMode = computed<CanvasInteractionMode>(
   () => props.interactionMode ?? 'select',
 )
+const hasCanvasDevices = computed(() => devices.value.length > 0)
+
+const { t } = useI18n()
 
 let dropIdCounter = 0
 const SNAP_GRID = 20
@@ -826,6 +837,22 @@ onUnmounted(() => {
         color: 'var(--foreground)',
       }"
     ></div>
+
+    <ContextMenu>
+      <ContextMenuTrigger as-child>
+        <div class="absolute inset-0" />
+      </ContextMenuTrigger>
+
+      <ContextMenuContent class="w-48">
+        <ContextMenuItem
+          :disabled="!hasCanvasDevices"
+          class="text-destructive"
+          @select="emit('clear-canvas')"
+        >
+          {{ t('clearCanvas') }}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
 
     <div
       class="absolute origin-top-left will-change-transform"

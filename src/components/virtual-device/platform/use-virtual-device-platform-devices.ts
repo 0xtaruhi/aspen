@@ -44,7 +44,6 @@ export function useVirtualDevicePlatformDevices({
 
     return canvasDevices.value.find((device) => device.id === manualDeviceId.value) ?? null
   })
-  const selectedDeviceCount = computed(() => selectedDeviceIds.value.length)
 
   function openInspectorForDevice(id: string) {
     selectedDeviceIds.value = [id]
@@ -203,8 +202,6 @@ export function useVirtualDevicePlatformDevices({
   return {
     clearCanvas,
     closeManualDialog,
-    deleteSelectedDevices,
-    hasCanvasDevices,
     inspectorOpen,
     manualDevice,
     manualDialogOpen,
@@ -212,7 +209,6 @@ export function useVirtualDevicePlatformDevices({
     openManualForSelectedDevice,
     resetDeviceUiState,
     selectedDevice,
-    selectedDeviceCount,
     selectedDeviceId,
     selectedDeviceIds,
   }
