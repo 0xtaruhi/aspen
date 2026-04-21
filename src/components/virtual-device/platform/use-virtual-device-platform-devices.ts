@@ -83,7 +83,7 @@ export function useVirtualDevicePlatformDevices({
   }
 
   async function clearCanvas() {
-    if (!hasCanvasDevices.value) {
+    if (!hasCanvasDevices.value || streamBusy.value) {
       return
     }
 

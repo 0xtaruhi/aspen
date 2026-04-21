@@ -63,6 +63,7 @@ const props = defineProps<{
   selectedDeviceIds?: string[]
   blockedTopInset?: number
   interactionMode?: CanvasInteractionMode
+  streamBusy?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -129,6 +130,30 @@ function handleWheel(e: WheelEvent) {
     offset.value.x -= e.deltaX
     offset.value.y -= e.deltaY
   }
+}
+
+function openCanvasContextMenuFromKeyboard(event: KeyboardEvent) {
+  if (event.key !== 'Enter' && event.key !== ' ') {
+    return
+  }
+
+  event.preventDefault()
+  const trigger = event.currentTarget
+  if (!(trigger instanceof HTMLElement)) {
+    return
+  }
+
+  const rect = trigger.getBoundingClientRect()
+  trigger.dispatchEvent(
+    new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      clientX: rect.left + rect.width / 2,
+      clientY: rect.top + rect.height / 2,
+      button: 2,
+      buttons: 0,
+    }),
+  )
 }
 
 function normalizeSelectedIds(ids: readonly string[]) {
@@ -840,12 +865,17 @@ onUnmounted(() => {
 
     <ContextMenu>
       <ContextMenuTrigger as-child>
-        <div class="absolute inset-0" />
+        <button
+          type="button"
+          class="absolute inset-0 bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+          :aria-label="t('clearCanvas')"
+          @keydown="openCanvasContextMenuFromKeyboard"
+        />
       </ContextMenuTrigger>
 
       <ContextMenuContent class="w-48">
         <ContextMenuItem
-          :disabled="!hasCanvasDevices"
+          :disabled="!hasCanvasDevices || props.streamBusy"
           class="text-destructive"
           @select="emit('clear-canvas')"
         >

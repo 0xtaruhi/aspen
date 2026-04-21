@@ -203,6 +203,7 @@ export function useVirtualDevicePlatformState() {
     selectedDeviceIds,
     shouldWarnStreamBacklog,
     showGallery,
+    streamBusy,
     streamMessage,
     streamRunning,
     streamScheduleLagMs,

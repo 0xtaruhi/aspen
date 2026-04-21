@@ -33,6 +33,7 @@ const {
   selectedDeviceIds,
   shouldWarnStreamBacklog,
   showGallery,
+  streamBusy,
   streamMessage,
   streamRunning,
   streamScheduleLagMs,
@@ -89,6 +90,7 @@ const {
           v-model:selected-device-ids="selectedDeviceIds"
           :blocked-top-inset="showGallery ? galleryDropBlockInset : 0"
           :interaction-mode="canvasInteractionMode"
+          :stream-busy="streamBusy"
           @clear-canvas="clearCanvas"
           @open-settings="openInspectorForDevice"
         />
