@@ -276,7 +276,7 @@ fn find_descendant_scroll_view(view: &NSView) -> Option<objc2::rc::Retained<NSSc
             return Some(scroll_view.retain());
         }
 
-        if let Some(scroll_view) = find_descendant_scroll_view(&subview) {
+        if let Some(scroll_view) = find_descendant_scroll_view(subview.as_ref()) {
             return Some(scroll_view);
         }
     }

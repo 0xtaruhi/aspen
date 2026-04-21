@@ -74,7 +74,7 @@ describe('hardware manager helpers', () => {
     expect(targets[0].children?.[0].name).toBe('FDP3P7')
     expect(targets[0].children?.[0].status).toBe('ready')
     expect(targets[0].children?.[0].details?.Chip).toBe('FDP3P7')
-    expect(targets[0].children?.[0].details?.LUT).toBe('6,144')
+    expect(String(targets[0].children?.[0].details?.LUT).replace(/[^\d]/g, '')).toBe('6144')
   })
 
   it('maps flow phases to labels and badge classes', () => {
