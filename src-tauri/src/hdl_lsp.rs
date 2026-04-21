@@ -7,6 +7,9 @@ use std::{
     thread,
 };
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{path::BaseDirectory, AppHandle, Emitter, Manager};
@@ -15,6 +18,9 @@ use url::Url;
 const LSP_EVENT_NAME: &str = "hdl:lsp-message";
 const DEFAULT_WORKSPACE_ROOT_NAME: &str = "aspen-hdl-lsp";
 const BUNDLED_SLANG_SERVER_DIR: &str = "vendor/slang-server";
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct HdlLspSourceFile {
@@ -85,11 +91,16 @@ pub fn hdl_lsp_start(
 
     let workspace_root = prepare_workspace_root(&request.session_id, &request.files)?;
 
-    let mut child = Command::new(&program)
+    let mut command = Command::new(&program);
+    command
         .current_dir(&workspace_root)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(target_os = "windows")]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    let mut child = command
         .spawn()
         .map_err(|err| format!("failed to spawn slang-server: {err}"))?;
 
