@@ -1,6 +1,10 @@
 [package]
 name = "aspen-driver-installer"
 version = "0.1.0"
+description = "Windows driver installer helper bundled with Aspen releases."
+authors = ["0xtaruhi"]
+homepage = "https://github.com/0xtaruhi/aspen"
+repository = "https://github.com/0xtaruhi/aspen"
 edition = "2021"
 
 [dependencies]

@@ -1,8 +1,10 @@
 [package]
 name = "aspen"
 version = "0.4.2"
-description = "A Tauri App"
-authors = ["you"]
+description = "Native FPGA desktop workbench for the FDE platform."
+authors = ["0xtaruhi"]
+homepage = "https://github.com/0xtaruhi/aspen"
+repository = "https://github.com/0xtaruhi/aspen"
 edition = "2021"
 
 [lib]

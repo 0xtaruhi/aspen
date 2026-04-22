@@ -2,6 +2,16 @@
   "name": "aspen",
   "private": true,
   "version": "0.4.2",
+  "description": "Native FPGA desktop workbench for the FDE platform.",
+  "author": "0xtaruhi",
+  "homepage": "https://github.com/0xtaruhi/aspen",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/0xtaruhi/aspen.git"
+  },
+  "bugs": {
+    "url": "https://github.com/0xtaruhi/aspen/issues"
+  },
   "type": "module",
   "engines": {
     "node": ">=24"
