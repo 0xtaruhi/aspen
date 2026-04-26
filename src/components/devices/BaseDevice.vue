@@ -41,7 +41,6 @@ const emit = defineEmits<{
 }>()
 const { t } = useI18n()
 
-const el = ref<HTMLElement | null>(null)
 const renameInputRef = ref<HTMLInputElement | null>(null)
 const dragState = ref<{
   startX: number
@@ -225,7 +224,6 @@ onUnmounted(() => {
 
 <template>
   <div
-    ref="el"
     class="absolute select-none group"
     :class="props.preview ? 'pointer-events-none z-20 opacity-60 saturate-75 drop-shadow-xl' : ''"
     :style="{
