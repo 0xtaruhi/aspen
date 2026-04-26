@@ -356,6 +356,8 @@ jobs:
   rust-checks:
     name: Rust Checks
     runs-on: ubuntu-22.04
+    env:
+      RUSTFLAGS: -D warnings
     needs:
       - changes
       - toolchain-linux
@@ -390,7 +392,7 @@ jobs:
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
       - name: Rust clippy
-        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 
   pipeline:
     name: Pipeline
