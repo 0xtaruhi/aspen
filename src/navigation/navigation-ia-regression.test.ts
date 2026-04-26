@@ -32,8 +32,8 @@ describe('navigation IA regression', () => {
       ).toBe(1)
     }
 
-    const topLevelMatches = Array.from(sidebarSource.matchAll(/title:\s*'(.*?)'/g)).map(
-      (match) => match[1],
+    const topLevelMatches = Array.from(sidebarSource.matchAll(/title:\s*'(.*?)'/g), (match) =>
+      String(match[1]),
     )
     const topLevelCanonicalCount = topLevelMatches.filter((title) =>
       canonicalLabels.includes(title as (typeof canonicalLabels)[number]),
@@ -54,7 +54,8 @@ describe('navigation IA regression', () => {
         routerSource.matchAll(
           /:\s*'(project-management|fpga-flow|hardware-manager|virtual-device-platform)'/g,
         ),
-      ).map((match) => match[1]),
+        (match) => String(match[1]),
+      ),
     )
 
     expect(
