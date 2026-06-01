@@ -63,7 +63,7 @@ impl HardwareRuntime {
             .map(|(signal_id, aggregate)| aggregate.into_signal(signal_id))
             .collect();
         if updates.len() > DATA_MAX_UPDATES_PER_BATCH {
-            updates.sort_by(|left, right| left.signal_id.cmp(&right.signal_id));
+            updates.sort_by_key(|update| update.signal_id);
             updates.truncate(DATA_MAX_UPDATES_PER_BATCH);
         }
         updates
