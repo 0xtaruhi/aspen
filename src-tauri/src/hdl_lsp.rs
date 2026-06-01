@@ -312,11 +312,7 @@ where
     thread::spawn(move || {
         let mut reader = BufReader::new(reader);
 
-        loop {
-            let Some(message) = read_lsp_message(&mut reader) else {
-                break;
-            };
-
+        while let Some(message) = read_lsp_message(&mut reader) {
             let payload = HdlLspEventPayload {
                 session_id: session_id.clone(),
                 message,
