@@ -1,7 +1,7 @@
 {
   "name": "aspen",
   "private": true,
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Native FPGA desktop workbench for the FDE platform.",
   "author": "0xtaruhi",
   "homepage": "https://github.com/0xtaruhi/aspen",
