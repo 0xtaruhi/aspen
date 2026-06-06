@@ -1,7 +1,15 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process'
-import { cpSync, createWriteStream, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  cpSync,
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { Readable } from 'node:stream'
@@ -57,7 +65,7 @@ function resolveTargetAssetName() {
     return 'slang-server-linux-x64-gcc.tar.gz'
   }
   if (platform === 'linux' && (arch === 'arm64' || arch === 'aarch64')) {
-    return 'slang-server-linux-arm64.tar.gz'
+    return 'slang-server-linux-arm64-clang.tar.gz'
   }
   if (platform === 'win32' && (arch === 'x64' || arch === 'amd64')) {
     return 'slang-server-windows-x64.zip'
@@ -219,7 +227,19 @@ function resolveBundledBinaryPath() {
 }
 
 function isBundleReady() {
-  return existsSync(resolveBundledBinaryPath())
+  if (!existsSync(resolveBundledBinaryPath())) {
+    return false
+  }
+
+  if (!explicitVersion) {
+    return true
+  }
+
+  const readmePath = join(bundleTargetDir, 'README.md')
+  return (
+    existsSync(readmePath) &&
+    readFileSync(readmePath, 'utf8').includes(`release \`${explicitVersion}\``)
+  )
 }
 
 function validateBundledSlangServer() {

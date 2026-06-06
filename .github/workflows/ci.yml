@@ -22,8 +22,8 @@ env:
   GITHUB_TOKEN: ${{ github.token }}
   NODE_VERSION: '24'
   NODE_OPTIONS: --max-old-space-size=6144
-  OSS_CAD_SUITE_VERSION: '2026-03-17'
-  SLANG_SERVER_VERSION: 'v0.2.4'
+  OSS_CAD_SUITE_VERSION: '2026-06-06'
+  SLANG_SERVER_VERSION: 'v0.2.6'
 
 jobs:
   changes:
