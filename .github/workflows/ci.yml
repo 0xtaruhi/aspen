@@ -43,7 +43,7 @@ jobs:
       run_toolchain_windows: ${{ steps.flags.outputs.run_toolchain_windows }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -166,7 +166,7 @@ jobs:
     if: needs.changes.outputs.run_frontend == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -202,7 +202,7 @@ jobs:
     if: needs.changes.outputs.run_toolchain_linux == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -255,7 +255,7 @@ jobs:
     if: needs.changes.outputs.run_toolchain_macos == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -308,7 +308,7 @@ jobs:
     if: needs.changes.outputs.run_toolchain_windows == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -364,7 +364,7 @@ jobs:
     if: needs.changes.outputs.run_rust == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install Linux desktop dependencies
         run: |
@@ -433,7 +433,7 @@ jobs:
     if: needs.changes.outputs.run_packages == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -537,7 +537,7 @@ jobs:
     if: needs.changes.outputs.run_packages == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -653,7 +653,7 @@ jobs:
     if: needs.changes.outputs.run_packages == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -749,7 +749,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Download Aspen package artifacts
         uses: actions/download-artifact@v8
