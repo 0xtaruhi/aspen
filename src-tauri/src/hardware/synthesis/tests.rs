@@ -332,6 +332,65 @@ endmodule
 }
 
 #[test]
+fn yosys_smoke_test_lowers_unary_negation_of_signed_signal() {
+    // Regression: unary `-v` on a signed signal lowers to a `$neg`, which
+    // alumacc turns into an ALU with a zero-width A operand. The FDE ALU
+    // techmap used to emit a `$pos` with A_WIDTH==0 and abort synthesis.
+    let Some(toolchain) = bundled_synthesis_toolchain() else {
+        return;
+    };
+
+    let request = SynthesisRequestV1 {
+        op_id: "test-unary-neg-op".to_string(),
+        project_name: Some("test-unary-neg-project".to_string()),
+        project_dir: None,
+        top_module: "top".to_string(),
+        files: vec![SynthesisSourceFileV1 {
+            path: "top.v".to_string(),
+            content: r#"
+module top(
+    input wire clk,
+    input wire rst_n,
+    input wire flip,
+    output reg signed [3:0] v
+);
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            v <= 4'sd1;
+        else if (flip)
+            v <= -v;
+    end
+endmodule
+"#
+            .trim()
+            .to_string(),
+        }],
+    };
+    let generated_at_ms = now_millis().unwrap();
+    let (workdir, _) = resolve_workdir(&request, generated_at_ms).unwrap();
+
+    let report = run_yosys_in_workdir(
+        &toolchain,
+        &workdir,
+        &request,
+        generated_at_ms,
+        Instant::now(),
+        |_| {},
+    )
+    .unwrap();
+
+    assert!(report.success, "{}", report.log);
+    let artifacts = report.artifacts.as_ref().expect("artifacts must exist");
+    assert!(
+        artifacts.netlist_json_path.is_some() && artifacts.edif_path.is_some(),
+        "{}",
+        report.log
+    );
+
+    let _ = fs::remove_dir_all(&workdir);
+}
+
+#[test]
 fn yosys_smoke_test_preserves_initialized_ff_properties() {
     let Some(toolchain) = bundled_synthesis_toolchain() else {
         return;

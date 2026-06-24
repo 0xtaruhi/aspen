@@ -235,6 +235,11 @@ module _90_lcu (P, G, CI, CO);
 	assign CO = g;
 endmodule
 
+// The `force_downto` attributes mirror upstream yosys and are required for
+// zero-width (`[-1:0]`) operands: unary `$neg` (e.g. `-x`) lowers to an ALU
+// with a zero-width A input, and without `force_downto` the resulting
+// zero-width `$pos` is rejected by the RTLIL checker. See YosysHQ/yosys
+// issue #2058 / PR #2027. Do not drop these attributes.
 (* techmap_celltype = "$alu" *)
 module _90_alu (A, B, CI, BI, X, Y, CO);
 	parameter A_SIGNED = 0;
@@ -243,13 +248,18 @@ module _90_alu (A, B, CI, BI, X, Y, CO);
 	parameter B_WIDTH = 1;
 	parameter Y_WIDTH = 1;
 
+	(* force_downto *)
 	input [A_WIDTH-1:0] A;
+	(* force_downto *)
 	input [B_WIDTH-1:0] B;
+	(* force_downto *)
 	output [Y_WIDTH-1:0] X, Y;
 
 	input CI, BI;
+	(* force_downto *)
 	output [Y_WIDTH-1:0] CO;
 
+	(* force_downto *)
 	wire [Y_WIDTH-1:0] A_buf, B_buf;
 	\$pos #(.A_SIGNED(A_SIGNED), .A_WIDTH(A_WIDTH), .Y_WIDTH(Y_WIDTH)) A_conv (.A(A), .Y(A_buf));
 	\$pos #(.A_SIGNED(B_SIGNED), .A_WIDTH(B_WIDTH), .Y_WIDTH(Y_WIDTH)) B_conv (.A(B), .Y(B_buf));
