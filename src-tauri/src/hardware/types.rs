@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 use vlfd_rs::{BoardInfo, Config};
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum HardwarePhase {
     Idle,
@@ -13,7 +14,7 @@ pub enum HardwarePhase {
     Error,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone)]
 pub struct HardwareConfigSnapshot {
     pub smims_version: String,
     pub fifo_words: u16,
@@ -45,14 +46,14 @@ impl From<Config> for HardwareConfigSnapshot {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone)]
 pub struct HardwareDeviceSnapshot {
     pub board: String,
     pub description: String,
     pub config: HardwareConfigSnapshot,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum HardwareBoardSelectorV1 {
     #[default]
@@ -66,12 +67,12 @@ pub enum HardwareBoardSelectorV1 {
     },
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
 pub struct HardwareAccessConfigV1 {
     pub selector: HardwareBoardSelectorV1,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct HardwareBoardInfoV1 {
     pub selector: HardwareBoardSelectorV1,
     pub address: u8,
@@ -102,13 +103,13 @@ impl From<BoardInfo> for HardwareBoardInfoV1 {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone)]
 pub struct HardwareArtifactSnapshot {
     pub path: String,
     pub bytes: usize,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum CanvasDeviceType {
     Led,
@@ -126,7 +127,7 @@ pub enum CanvasDeviceType {
     LedMatrix,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum CanvasVgaColorMode {
     Mono,
@@ -137,7 +138,7 @@ pub enum CanvasVgaColorMode {
     Rgb888,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CanvasHd44780BusMode {
     #[serde(rename = "4bit")]
     FourBit,
@@ -145,7 +146,7 @@ pub enum CanvasHd44780BusMode {
     EightBit,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum CanvasUartMode {
     Tx,
@@ -153,7 +154,7 @@ pub enum CanvasUartMode {
     TxRx,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CanvasDeviceBindingSnapshot {
     Single {
@@ -165,7 +166,7 @@ pub enum CanvasDeviceBindingSnapshot {
     },
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CanvasDeviceConfigSnapshot {
     None,
@@ -216,7 +217,7 @@ pub enum CanvasDeviceConfigSnapshot {
     },
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CanvasDeviceDataSnapshot {
     None,
@@ -239,7 +240,7 @@ pub enum CanvasDeviceDataSnapshot {
     },
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone)]
 pub struct CanvasDeviceStateSnapshot {
     pub is_on: bool,
     pub color: Option<String>,
@@ -406,7 +407,7 @@ impl CanvasDeviceStateSnapshot {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone)]
 pub struct CanvasDeviceSnapshot {
     pub id: String,
     pub r#type: CanvasDeviceType,
@@ -416,8 +417,9 @@ pub struct CanvasDeviceSnapshot {
     pub state: CanvasDeviceStateSnapshot,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone)]
 pub struct HardwareStateV1 {
+    #[ts(type = "1")]
     pub version: u8,
     pub phase: HardwarePhase,
     pub device: Option<HardwareDeviceSnapshot>,
@@ -443,7 +445,7 @@ impl Default for HardwareStateV1 {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
 pub enum HardwareEventReason {
     Action,
@@ -452,8 +454,9 @@ pub enum HardwareEventReason {
     Recovery,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone)]
 pub struct HardwareEventV1 {
+    #[ts(type = "1")]
     pub version: u8,
     pub state: HardwareStateV1,
     pub reason: HardwareEventReason,
@@ -467,32 +470,35 @@ pub struct HardwareSignalAggregateByIdV1 {
     pub edge_count: u16,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone)]
 pub struct HardwareDataBatchBinaryV1 {
+    #[ts(type = "1")]
     pub version: u8,
     pub payload: Vec<u8>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone)]
 pub struct HardwareWaveformBatchBinaryV1 {
+    #[ts(type = "1")]
     pub version: u8,
     pub payload: Vec<u8>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone)]
 pub struct HardwareDataSignalCatalogEntryV1 {
     pub signal_id: u16,
     pub signal: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone)]
 pub struct HardwareDataSignalCatalogV1 {
+    #[ts(type = "1")]
     pub version: u8,
     pub generated_at_ms: u64,
     pub entries: Vec<HardwareDataSignalCatalogEntryV1>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum HardwareCanvasDeviceTelemetryPayload {
     None,
@@ -525,7 +531,7 @@ pub enum HardwareCanvasDeviceTelemetryPayload {
     },
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone)]
 pub struct HardwareCanvasDeviceTelemetryEntry {
     pub device_id: String,
     pub latest: bool,
@@ -533,14 +539,15 @@ pub struct HardwareCanvasDeviceTelemetryEntry {
     pub payload: HardwareCanvasDeviceTelemetryPayload,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone)]
 pub struct HardwareCanvasDeviceTelemetry {
+    #[ts(type = "1")]
     pub version: u8,
     pub generated_at_ms: u64,
     pub devices: Vec<HardwareCanvasDeviceTelemetryEntry>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone)]
 pub struct HardwareDataStreamStatusV1 {
     pub running: bool,
     pub target_hz: f64,
@@ -561,7 +568,7 @@ pub struct HardwareDataStreamStatusV1 {
     pub last_error: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone)]
 pub struct HardwareDataStreamConfigV1 {
     pub target_hz: f64,
     pub input_signal_order: Vec<String>,
@@ -591,11 +598,12 @@ impl Default for HardwareDataStreamConfigV1 {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum HardwareActionV1 {
     Probe,
     ProgramBitstream {
+        #[ts(optional = nullable)]
         bitstream_path: Option<String>,
     },
     UpsertCanvasDevice {
@@ -612,11 +620,13 @@ pub enum HardwareActionV1 {
     },
     BindCanvasSignal {
         id: String,
+        #[ts(optional = nullable)]
         signal_name: Option<String>,
     },
     BindCanvasSignalSlot {
         id: String,
         slot_index: u16,
+        #[ts(optional = nullable)]
         signal_name: Option<String>,
     },
     SetCanvasSwitchState {
@@ -626,36 +636,39 @@ pub enum HardwareActionV1 {
     ClearError,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone)]
 pub struct SynthesisSourceFileV1 {
     pub path: String,
     pub content: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone)]
 pub struct SynthesisRequestV1 {
     pub op_id: String,
+    #[ts(optional = nullable)]
     pub project_name: Option<String>,
+    #[ts(optional = nullable)]
     pub project_dir: Option<String>,
     pub top_module: String,
     pub files: Vec<SynthesisSourceFileV1>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone)]
 pub struct SynthesisLogChunkV1 {
+    #[ts(type = "1")]
     pub version: u8,
     pub op_id: String,
     pub chunk: String,
     pub generated_at_ms: u64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone, Default)]
 pub struct SynthesisCellTypeCountV1 {
     pub cell_type: String,
     pub count: u64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone, Default)]
 pub struct SynthesisStatsV1 {
     pub wire_count: u64,
     pub wire_bits: u64,
@@ -668,25 +681,36 @@ pub struct SynthesisStatsV1 {
     pub cell_type_counts: Vec<SynthesisCellTypeCountV1>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SynthesisPortDirectionV1 {
+    #[default]
+    Input,
+    Output,
+    Inout,
+}
+
+#[derive(TS, Serialize, Deserialize, Debug, Clone, Default)]
 pub struct SynthesisTopPortV1 {
     pub name: String,
-    pub direction: String,
+    pub direction: SynthesisPortDirectionV1,
     pub width: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone, Default)]
 pub struct SynthesisArtifactsV1 {
     pub work_dir: String,
     pub script_path: Option<String>,
     pub netlist_json_path: Option<String>,
     pub edif_path: Option<String>,
     #[serde(default)]
+    #[ts(optional = nullable)]
     pub flow_revision: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone)]
 pub struct SynthesisReportV1 {
+    #[ts(type = "1")]
     pub version: u8,
     pub op_id: String,
     pub success: bool,
@@ -699,11 +723,12 @@ pub struct SynthesisReportV1 {
     pub log: String,
     pub stats: SynthesisStatsV1,
     pub top_ports: Vec<SynthesisTopPortV1>,
+    #[ts(optional = nullable)]
     pub artifacts: Option<SynthesisArtifactsV1>,
     pub generated_at_ms: u64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ImplementationStageKindV1 {
     Yosys,
@@ -715,7 +740,7 @@ pub enum ImplementationStageKindV1 {
     Bitgen,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ImplementationPlaceModeV1 {
     #[serde(alias = "timing-driven")]
@@ -724,7 +749,7 @@ pub enum ImplementationPlaceModeV1 {
     BoundingBox,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone)]
 pub struct ImplementationRequestV1 {
     pub op_id: String,
     pub project_name: String,
@@ -733,12 +758,14 @@ pub struct ImplementationRequestV1 {
     pub target_device_id: String,
     pub constraint_xml: String,
     pub place_mode: ImplementationPlaceModeV1,
+    #[ts(optional = nullable)]
     pub synthesized_edif_path: Option<String>,
     pub files: Vec<SynthesisSourceFileV1>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone)]
 pub struct ImplementationLogChunkV1 {
+    #[ts(type = "1")]
     pub version: u8,
     pub op_id: String,
     pub stage: ImplementationStageKindV1,
@@ -746,7 +773,7 @@ pub struct ImplementationLogChunkV1 {
     pub generated_at_ms: u64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone, Default)]
 pub struct ImplementationArtifactsV1 {
     pub work_dir: String,
     pub constraint_path: String,
@@ -760,7 +787,7 @@ pub struct ImplementationArtifactsV1 {
     pub bitstream_path: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone)]
 pub struct ImplementationStageResultV1 {
     pub stage: ImplementationStageKindV1,
     pub success: bool,
@@ -774,8 +801,9 @@ pub struct ImplementationStageResultV1 {
     pub error_message: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(TS, Serialize, Deserialize, Debug, Clone)]
 pub struct ImplementationReportV1 {
+    #[ts(type = "1")]
     pub version: u8,
     pub op_id: String,
     pub success: bool,
@@ -805,5 +833,82 @@ impl HardwareStatus {
             description: device.description.clone(),
             config: device.config.clone(),
         })
+    }
+}
+
+#[cfg(test)]
+mod contract_tests {
+    use super::*;
+    use std::{fs, path::PathBuf};
+
+    #[test]
+    #[ignore = "run via pnpm generate:ipc-contract"]
+    fn export_typescript_contract() {
+        let config = ts_rs::Config::new().with_large_int("number");
+        let mut output = String::from(
+            "// This file is generated by `pnpm generate:ipc-contract`. Do not edit.\n\n",
+        );
+
+        macro_rules! export {
+            ($($type:ty),+ $(,)?) => {$({
+                output.push_str("export ");
+                output.push_str(&<$type>::decl(&config));
+                output.push_str("\n\n");
+            })+};
+        }
+
+        export!(
+            HardwarePhase,
+            HardwareConfigSnapshot,
+            HardwareDeviceSnapshot,
+            HardwareBoardSelectorV1,
+            HardwareAccessConfigV1,
+            HardwareBoardInfoV1,
+            HardwareArtifactSnapshot,
+            SynthesisSourceFileV1,
+            SynthesisRequestV1,
+            SynthesisLogChunkV1,
+            SynthesisCellTypeCountV1,
+            SynthesisStatsV1,
+            SynthesisPortDirectionV1,
+            SynthesisTopPortV1,
+            SynthesisArtifactsV1,
+            SynthesisReportV1,
+            ImplementationStageKindV1,
+            ImplementationPlaceModeV1,
+            ImplementationRequestV1,
+            ImplementationLogChunkV1,
+            ImplementationArtifactsV1,
+            ImplementationStageResultV1,
+            ImplementationReportV1,
+            CanvasDeviceType,
+            CanvasVgaColorMode,
+            CanvasHd44780BusMode,
+            CanvasUartMode,
+            CanvasDeviceBindingSnapshot,
+            CanvasDeviceConfigSnapshot,
+            CanvasDeviceDataSnapshot,
+            CanvasDeviceStateSnapshot,
+            CanvasDeviceSnapshot,
+            HardwareStateV1,
+            HardwareEventReason,
+            HardwareEventV1,
+            HardwareDataBatchBinaryV1,
+            HardwareWaveformBatchBinaryV1,
+            HardwareDataSignalCatalogEntryV1,
+            HardwareDataSignalCatalogV1,
+            HardwareCanvasDeviceTelemetryPayload,
+            HardwareCanvasDeviceTelemetryEntry,
+            HardwareCanvasDeviceTelemetry,
+            HardwareDataStreamConfigV1,
+            HardwareDataStreamStatusV1,
+            HardwareActionV1,
+        );
+
+        let path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../src/generated/tauri-contract.ts");
+        fs::create_dir_all(path.parent().expect("generated contract parent"))
+            .expect("create generated contract directory");
+        fs::write(path, output).expect("write generated TypeScript contract");
     }
 }

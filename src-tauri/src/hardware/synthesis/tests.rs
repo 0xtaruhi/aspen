@@ -2,7 +2,7 @@ use super::*;
 use serde_json::json;
 use std::{fs, path::PathBuf, time::Instant};
 
-use crate::hardware::types::{SynthesisRequestV1, SynthesisSourceFileV1};
+use crate::hardware::types::{SynthesisPortDirectionV1, SynthesisRequestV1, SynthesisSourceFileV1};
 
 fn bundled_synthesis_toolchain() -> Result<toolchain::SynthesisToolchainPaths<'static>, String> {
     let bundle_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(BUNDLED_YOSYS_DIR);
@@ -168,14 +168,14 @@ endmodule
         .is_some());
     assert!(report.stats.cell_count > 0);
     assert_eq!(report.top_ports.len(), 4);
-    assert!(report
-        .top_ports
-        .iter()
-        .any(|port| port.name == "clk" && port.direction == "input" && port.width.is_empty()));
-    assert!(report
-        .top_ports
-        .iter()
-        .any(|port| port.name == "led" && port.direction == "output"));
+    assert!(report.top_ports.iter().any(|port| {
+        port.name == "clk"
+            && matches!(port.direction, SynthesisPortDirectionV1::Input)
+            && port.width.is_empty()
+    }));
+    assert!(report.top_ports.iter().any(
+        |port| port.name == "led" && matches!(port.direction, SynthesisPortDirectionV1::Output)
+    ));
     assert!(
         report
             .stats

@@ -2,7 +2,9 @@ use std::{collections::BTreeMap, fs, path::Path};
 
 use serde_json::Value;
 
-use crate::hardware::types::{SynthesisCellTypeCountV1, SynthesisStatsV1, SynthesisTopPortV1};
+use crate::hardware::types::{
+    SynthesisCellTypeCountV1, SynthesisPortDirectionV1, SynthesisStatsV1, SynthesisTopPortV1,
+};
 
 const RAMB4_CAPACITY_BITS: u64 = 4096;
 
@@ -142,10 +144,10 @@ fn parse_top_ports(top: &Value) -> Result<Vec<SynthesisTopPortV1>, String> {
                 .ok_or_else(|| format!("Port '{}' is missing direction metadata", name))?;
             let width = build_yosys_port_width(port);
 
-            let normalized_direction = match direction {
-                "input" => "input",
-                "output" => "output",
-                "inout" => "inout",
+            let direction = match direction {
+                "input" => SynthesisPortDirectionV1::Input,
+                "output" => SynthesisPortDirectionV1::Output,
+                "inout" => SynthesisPortDirectionV1::Inout,
                 other => {
                     return Err(format!(
                         "Port '{}' uses unsupported Yosys direction '{}'",
@@ -156,7 +158,7 @@ fn parse_top_ports(top: &Value) -> Result<Vec<SynthesisTopPortV1>, String> {
 
             Ok(SynthesisTopPortV1 {
                 name: name.clone(),
-                direction: normalized_direction.to_string(),
+                direction,
                 width,
             })
         })

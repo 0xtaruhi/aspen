@@ -27,6 +27,8 @@
     "test:ci": "vitest run --passWithNoTests",
     "generate:zh-tw-locale": "node scripts/generate-zh-tw-locale.mjs",
     "check:zh-tw-locale": "node scripts/generate-zh-tw-locale.mjs --check",
+    "generate:ipc-contract": "cargo test --manifest-path src-tauri/Cargo.toml export_typescript_contract -- --ignored && prettier src/generated/tauri-contract.ts --write",
+    "check:ipc-contract": "pnpm generate:ipc-contract && git diff --exit-code -- src/generated/tauri-contract.ts",
     "generate:zh-tw-manuals": "node scripts/generate-zh-tw-manuals.mjs",
     "generate:icons": "bash scripts/generate-app-icon.sh",
     "prepare:slang-server-bundle": "node scripts/prepare-slang-server-bundle.mjs",
