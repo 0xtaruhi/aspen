@@ -4,7 +4,7 @@ use tauri::Emitter;
 use vlfd_rs::{HotplugEvent, HotplugEventKind, HotplugOptions, HotplugRegistration, Probe};
 
 use crate::hardware::{
-    BitstreamGenerationResult, HardwareActionV1, HardwareDataStreamConfigV1,
+    HardwareAccessConfigV1, HardwareActionV1, HardwareBoardInfoV1, HardwareDataStreamConfigV1,
     HardwareDataStreamStatusV1, HardwareEventReason, HardwareRuntime, HardwareStateV1,
     HardwareStatus, HardwareWaveformBatchBinaryV1, ImplementationReportV1, ImplementationRequestV1,
     SynthesisReportV1, SynthesisRequestV1,
@@ -20,6 +20,24 @@ pub async fn hardware_get_state(
     runtime: tauri::State<'_, Arc<HardwareRuntime>>,
 ) -> Result<HardwareStateV1, String> {
     runtime.snapshot()
+}
+
+#[tauri::command]
+pub async fn hardware_list_boards(
+    runtime: tauri::State<'_, Arc<HardwareRuntime>>,
+) -> Result<Vec<HardwareBoardInfoV1>, String> {
+    let runtime = runtime.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || runtime.list_boards())
+        .await
+        .map_err(|err| err.to_string())?
+}
+
+#[tauri::command]
+pub fn configure_hardware_access(
+    runtime: tauri::State<'_, Arc<HardwareRuntime>>,
+    config: HardwareAccessConfigV1,
+) -> Result<HardwareAccessConfigV1, String> {
+    runtime.configure_access(config)
 }
 
 #[tauri::command]
@@ -119,35 +137,6 @@ pub async fn program_bitstream(
 }
 
 #[tauri::command]
-pub async fn generate_bitstream(
-    app: tauri::AppHandle,
-    runtime: tauri::State<'_, Arc<HardwareRuntime>>,
-    source_name: String,
-    source_code: String,
-    output_path: Option<String>,
-) -> Result<BitstreamGenerationResult, String> {
-    let state = runtime
-        .dispatch(
-            &app,
-            HardwareActionV1::GenerateBitstream {
-                source_name,
-                source_code,
-                output_path,
-            },
-            HardwareEventReason::Action,
-        )
-        .await?;
-
-    state
-        .artifact
-        .map(|artifact| BitstreamGenerationResult {
-            path: artifact.path,
-            bytes: artifact.bytes,
-        })
-        .ok_or_else(|| "Bitstream generation completed without an artifact".to_string())
-}
-
-#[tauri::command]
 pub async fn run_yosys_synthesis(
     app: tauri::AppHandle,
     request: SynthesisRequestV1,
@@ -218,11 +207,27 @@ pub fn start_hotplug_watch(
             let is_left = event_kind == "left";
             tauri::async_runtime::spawn(async move {
                 if is_left {
-                    if let Err(err) = runtime_for_task
-                        .mark_device_disconnected(&app_for_task, HardwareEventReason::Hotplug)
-                    {
-                        eprintln!("failed to mark device disconnected after hotplug: {err}");
+                    match runtime_for_task.selected_board_available() {
+                        Ok(true) => return,
+                        Ok(false) => {
+                            if let Err(err) = runtime_for_task.mark_device_disconnected(
+                                &app_for_task,
+                                HardwareEventReason::Hotplug,
+                            ) {
+                                eprintln!(
+                                    "failed to mark device disconnected after hotplug: {err}"
+                                );
+                            }
+                        }
+                        Err(err) => eprintln!("failed to refresh boards after hotplug: {err}"),
                     }
+                    return;
+                }
+
+                if runtime_for_task
+                    .data_stream_status()
+                    .is_ok_and(|status| status.running)
+                {
                     return;
                 }
 

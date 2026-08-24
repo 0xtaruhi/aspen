@@ -5,8 +5,6 @@ export type HardwarePhase =
   | 'idle'
   | 'probing'
   | 'device_ready'
-  | 'generating'
-  | 'bitstream_ready'
   | 'programming'
   | 'programmed'
   | 'device_disconnected'
@@ -27,6 +25,24 @@ export interface HardwareDeviceSnapshot {
   board: string
   description: string
   config: HardwareConfigSnapshot
+}
+
+export type HardwareBoardSelectorV1 =
+  | { kind: 'only' }
+  | { kind: 'serial_number'; serial_number: string }
+  | { kind: 'usb_location'; bus_id: string; port_chain: number[] }
+
+export interface HardwareAccessConfigV1 {
+  selector: HardwareBoardSelectorV1
+  customer_id: number | null
+}
+
+export interface HardwareBoardInfoV1 {
+  selector: HardwareBoardSelectorV1
+  address: number
+  serial_number: string | null
+  vendor_id: number
+  product_id: number
 }
 
 export interface HardwareArtifactSnapshot {
@@ -434,12 +450,6 @@ export interface HardwareDataStreamStatusV1 {
 export type HardwareActionV1 =
   | { type: 'probe' }
   | {
-      type: 'generate_bitstream'
-      source_name: string
-      source_code: string
-      output_path?: string | null
-    }
-  | {
       type: 'program_bitstream'
       bitstream_path?: string | null
     }
@@ -480,6 +490,16 @@ export type HardwareActionV1 =
 
 export async function hardwareGetState(): Promise<HardwareStateV1> {
   return invoke<HardwareStateV1>('hardware_get_state')
+}
+
+export async function hardwareListBoards(): Promise<HardwareBoardInfoV1[]> {
+  return invoke<HardwareBoardInfoV1[]>('hardware_list_boards')
+}
+
+export async function configureHardwareAccess(
+  config: HardwareAccessConfigV1,
+): Promise<HardwareAccessConfigV1> {
+  return invoke<HardwareAccessConfigV1>('configure_hardware_access', { config })
 }
 
 export async function hardwareDispatch(action: HardwareActionV1): Promise<HardwareStateV1> {

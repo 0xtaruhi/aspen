@@ -10,6 +10,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -19,9 +26,12 @@ import { useHardwareManagerState } from '@/lib/hardware-manager'
 
 const {
   autoConnect,
+  boardOptions,
   bitstreamFile,
   canOpenProgramDialog,
   canProgram,
+  commitCustomerId,
+  customerIdInput,
   defaultBitstreamPath,
   disconnect,
   errorMessage,
@@ -33,12 +43,14 @@ const {
   isConnecting,
   isProgramDialogOpen,
   isProgramming,
+  handleBoardSelection,
   openProgramDialog,
   pickBitstream,
   programDevice,
   programMessage,
   programMessageTone,
   refreshStatus,
+  selectedBoardKey,
   selectedDevice,
   selectedTargetId,
   showToolbarFlowBadge,
@@ -111,6 +123,31 @@ const {
       <ResizablePanelGroup direction="horizontal">
         <!-- Hardware Tree -->
         <ResizablePanel :default-size="25" :min-size="20" class="bg-muted/10">
+          <div class="grid gap-2 border-b border-border/60 p-3">
+            <Select :model-value="selectedBoardKey" @update:model-value="handleBoardSelection">
+              <SelectTrigger class="w-full">
+                <SelectValue :placeholder="t('selectVlfdBoard')" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem v-for="option in boardOptions" :key="option.key" :value="option.key">
+                  {{ option.label }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <div class="grid gap-1">
+              <label for="vlfd-customer-id" class="text-xs text-muted-foreground">
+                {{ t('vlfdCustomerId') }}
+              </label>
+              <Input
+                id="vlfd-customer-id"
+                v-model="customerIdInput"
+                class="h-8 font-mono"
+                placeholder="0x0000"
+                @blur="commitCustomerId"
+                @keydown.enter.prevent="commitCustomerId"
+              />
+            </div>
+          </div>
           <div class="p-2 font-medium text-xs text-muted-foreground uppercase tracking-wider mb-2">
             {{ t('hardwareTargets') }}
           </div>

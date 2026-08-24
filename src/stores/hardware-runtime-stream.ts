@@ -7,6 +7,7 @@ import {
   startHardwareDataStream,
   stopHardwareDataStream,
 } from '@/lib/hardware-client'
+import { syncHardwareAccess } from '@/lib/hardware-access'
 
 import { isTauriUnavailable } from './hardware-runtime-errors'
 import {
@@ -132,6 +133,7 @@ export async function setDataStreamRate(rateHz: number) {
 }
 
 export async function startDataStream() {
+  await syncHardwareAccess()
   try {
     await startHardwareDataStream()
     applyDataStreamStatus({

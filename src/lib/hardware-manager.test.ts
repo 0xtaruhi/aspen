@@ -5,6 +5,7 @@ import type { MessageKey } from '@/lib/i18n'
 
 import {
   buildHardwareTargets,
+  parseVlfdCustomerId,
   resolveHardwareFlowBadgeClass,
   resolveHardwareFlowLabel,
   shouldShowHardwareFlowBadge,
@@ -38,8 +39,6 @@ const translations = {
   no: 'No',
   probing: 'Probing',
   ready: 'Ready',
-  generating: 'Generating',
-  bitstreamReady: 'Bitstream Ready',
   programming: 'Programming',
   error: 'Error',
   disconnected: 'Disconnected',
@@ -79,16 +78,12 @@ describe('hardware manager helpers', () => {
 
   it('maps flow phases to labels and badge classes', () => {
     expect(resolveHardwareFlowLabel('probing', t)).toBe('Probing')
-    expect(resolveHardwareFlowLabel('bitstream_ready', t)).toBe('Bitstream Ready')
-    expect(resolveHardwareFlowBadgeClass('bitstream_ready')).toContain('text-green-600')
     expect(resolveHardwareFlowBadgeClass('error')).toContain('text-destructive')
   })
 
   it('shows the toolbar badge only for active or terminal flow states', () => {
     const visiblePhases: HardwarePhase[] = [
       'probing',
-      'generating',
-      'bitstream_ready',
       'programming',
       'error',
       'device_disconnected',
@@ -100,5 +95,12 @@ describe('hardware manager helpers', () => {
 
     expect(shouldShowHardwareFlowBadge('idle')).toBe(false)
     expect(shouldShowHardwareFlowBadge('device_ready')).toBe(false)
+  })
+
+  it('accepts decimal and hexadecimal VLFD customer IDs', () => {
+    expect(parseVlfdCustomerId('0x1234')).toBe(0x1234)
+    expect(parseVlfdCustomerId('4660')).toBe(0x1234)
+    expect(parseVlfdCustomerId('0x10000')).toBeNull()
+    expect(parseVlfdCustomerId('invalid')).toBeNull()
   })
 })
