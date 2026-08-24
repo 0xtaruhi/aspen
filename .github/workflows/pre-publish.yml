@@ -1,0 +1,13 @@
+name: Pre-publish
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full-ci:
+    name: Full release dry run
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
