@@ -85,7 +85,6 @@ export function useVirtualDevicePlatformState() {
     openManualForSelectedDevice,
     resetDeviceUiState,
     selectedDevice,
-    selectedDeviceId,
     selectedDeviceIds,
   } = useVirtualDevicePlatformDevices({
     canvasDevices,
@@ -199,7 +198,6 @@ export function useVirtualDevicePlatformState() {
     openManualForSelectedDevice,
     rateInput,
     selectedDevice,
-    selectedDeviceId,
     selectedDeviceIds,
     shouldWarnStreamBacklog,
     showGallery,
