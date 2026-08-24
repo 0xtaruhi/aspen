@@ -1,12 +1,9 @@
-import { onUnmounted, ref, type ComputedRef } from 'vue'
-
+import type { ComputedRef } from 'vue'
 import type { CanvasDeviceSnapshot } from '@/lib/hardware-client'
-import {
-  buildDraggedPositions,
-  snapDraggedPositions,
-  snapToGrid,
-  type CanvasPoint,
-} from '@/lib/canvas-selection'
+import type { CanvasPoint } from '@/lib/canvas-selection'
+
+import { onScopeDispose, ref } from 'vue'
+import { buildDraggedPositions, snapDraggedPositions, snapToGrid } from '@/lib/canvas-selection'
 
 type GroupDragState = {
   ids: string[]
@@ -28,6 +25,7 @@ export function useCanvasDeviceDrag(options: CanvasDeviceDragOptions) {
   const animationMs = options.animationMs ?? 180
   const transientDevicePositions = ref<Record<string, CanvasPoint>>({})
   const animatingDeviceIds = ref<Record<string, boolean>>({})
+  const positionError = ref<unknown | null>(null)
   const groupDragState = ref<GroupDragState | null>(null)
   const snapAnimationTimers = new Map<string, number>()
 
@@ -104,10 +102,16 @@ export function useCanvasDeviceDrag(options: CanvasDeviceDragOptions) {
   }
 
   async function settleDevicePosition(id: string, x: number, y: number) {
-    await options.setDevicePosition(id, x, y)
-    delete transientDevicePositions.value[id]
-    delete animatingDeviceIds.value[id]
-    clearSnapAnimation(id)
+    positionError.value = null
+    try {
+      await options.setDevicePosition(id, x, y)
+    } catch (error) {
+      positionError.value = error
+    } finally {
+      delete transientDevicePositions.value[id]
+      delete animatingDeviceIds.value[id]
+      clearSnapAnimation(id)
+    }
   }
 
   function animateDeviceToPosition(id: string, targetX: number, targetY: number) {
@@ -162,7 +166,7 @@ export function useCanvasDeviceDrag(options: CanvasDeviceDragOptions) {
     return Boolean(animatingDeviceIds.value[id])
   }
 
-  onUnmounted(() => {
+  onScopeDispose(() => {
     for (const timer of snapAnimationTimers.values()) {
       clearTimeout(timer)
     }
@@ -176,6 +180,7 @@ export function useCanvasDeviceDrag(options: CanvasDeviceDragOptions) {
     devicePosition,
     finishDeviceDrag,
     isDeviceAnimating,
+    positionError,
     startGroupDrag,
     transientDevicePositions,
     updateDevicePosition,

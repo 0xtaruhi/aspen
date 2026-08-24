@@ -1,3 +1,5 @@
+use crate::hardware::types::HardwareCanvasDeviceTelemetry;
+
 use super::*;
 
 impl HardwareRuntime {
@@ -79,7 +81,8 @@ impl HardwareRuntime {
                         let _ = self.clear_waveform_snapshot();
                     } else if batch.waveform_enabled
                         && batch.batch_words > 0
-                        && (!batch.write_buffer.is_empty() || !batch.read_buffer.is_empty())
+                        && batch.write_buffer.len() >= batch.batch_words
+                        && batch.read_buffer.len() >= batch.batch_words
                     {
                         let waveform_rate_hz = if batch.actual_hz > 0.0 {
                             batch.actual_hz
@@ -142,9 +145,7 @@ impl HardwareRuntime {
                             &mut output_decoders,
                             batch.generated_at_ms,
                         );
-                        if !snapshot.devices.is_empty() {
-                            let _ = app.emit("hardware:device_snapshot", snapshot);
-                        }
+                        Self::emit_device_snapshot(&app, snapshot);
                         last_device_snapshot_at = Instant::now();
                         output_dirty = false;
                     }
@@ -152,19 +153,14 @@ impl HardwareRuntime {
                     let _ = free_buffer_tx.try_send(batch.read_buffer);
                 }
                 Ok(StreamDecodeMessage::Shutdown) => {
-                    Self::emit_pending_signal_updates(
+                    Self::finalize_decode_output(
                         &app,
                         &mut last_latest_by_signal,
                         &mut pending_signal_meta,
                         &mut pending_signal_updates,
+                        &mut output_decoders,
+                        output_dirty,
                     );
-                    if output_dirty && !output_decoders.is_empty() {
-                        let snapshot =
-                            Self::flush_output_decoders(&mut output_decoders, Self::now_millis());
-                        if !snapshot.devices.is_empty() {
-                            let _ = app.emit("hardware:device_snapshot", snapshot);
-                        }
-                    }
                     break;
                 }
                 Err(RecvTimeoutError::Timeout) => {
@@ -186,33 +182,50 @@ impl HardwareRuntime {
                     {
                         let snapshot =
                             Self::flush_output_decoders(&mut output_decoders, Self::now_millis());
-                        if !snapshot.devices.is_empty() {
-                            let _ = app.emit("hardware:device_snapshot", snapshot);
-                        }
+                        Self::emit_device_snapshot(&app, snapshot);
                         last_device_snapshot_at = Instant::now();
                         output_dirty = false;
                     }
                     if stop_flag.load(Ordering::Relaxed) {
-                        Self::emit_pending_signal_updates(
+                        Self::finalize_decode_output(
                             &app,
                             &mut last_latest_by_signal,
                             &mut pending_signal_meta,
                             &mut pending_signal_updates,
+                            &mut output_decoders,
+                            output_dirty,
                         );
-                        if output_dirty && !output_decoders.is_empty() {
-                            let snapshot = Self::flush_output_decoders(
-                                &mut output_decoders,
-                                Self::now_millis(),
-                            );
-                            if !snapshot.devices.is_empty() {
-                                let _ = app.emit("hardware:device_snapshot", snapshot);
-                            }
-                        }
                         break;
                     }
                 }
                 Err(RecvTimeoutError::Disconnected) => break,
             }
+        }
+    }
+
+    fn emit_device_snapshot(app: &AppHandle, snapshot: HardwareCanvasDeviceTelemetry) {
+        if !snapshot.devices.is_empty() {
+            let _ = app.emit("hardware:device_snapshot", snapshot);
+        }
+    }
+
+    fn finalize_decode_output(
+        app: &AppHandle,
+        last_latest_by_signal: &mut HashMap<u16, bool>,
+        pending_signal_meta: &mut PendingSignalBatchMeta,
+        pending_signal_updates: &mut HashMap<u16, HardwareDataAggregate>,
+        output_decoders: &mut [Box<dyn OutputDeviceDecoder>],
+        output_dirty: bool,
+    ) {
+        Self::emit_pending_signal_updates(
+            app,
+            last_latest_by_signal,
+            pending_signal_meta,
+            pending_signal_updates,
+        );
+        if output_dirty && !output_decoders.is_empty() {
+            let snapshot = Self::flush_output_decoders(output_decoders, Self::now_millis());
+            Self::emit_device_snapshot(app, snapshot);
         }
     }
 

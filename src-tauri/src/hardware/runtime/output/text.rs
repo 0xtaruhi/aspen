@@ -1,5 +1,21 @@
 use super::*;
 
+const MAX_TEXT_LOG_BYTES: usize = 4096;
+
+fn trim_text_log(text_log: &mut String) {
+    if text_log.len() <= MAX_TEXT_LOG_BYTES {
+        return;
+    }
+
+    let overflow = text_log.len() - MAX_TEXT_LOG_BYTES;
+    let drain_end = text_log
+        .char_indices()
+        .map(|(index, _)| index)
+        .find(|index| *index >= overflow)
+        .unwrap_or(text_log.len());
+    text_log.drain(..drain_end);
+}
+
 struct UartTerminalOutputDecoder {
     device_id: String,
     signal_index: usize,
@@ -150,10 +166,7 @@ impl OutputDeviceDecoder for UartTerminalOutputDecoder {
                 '·'
             };
             self.text_log.push(next_char);
-            if self.text_log.len() > 4096 {
-                let drain_len = self.text_log.len().saturating_sub(4096);
-                self.text_log.drain(..drain_len);
-            }
+            trim_text_log(&mut self.text_log);
             self.state.receiving = false;
             self.state.countdown = self.cycles_per_bit.saturating_sub(1);
             self.state.bit_index = 0;
@@ -270,7 +283,9 @@ fn hd44780_text_lines(ddram: &[u8], columns: usize, rows: usize) -> Vec<String> 
     let row_starts = [0x00_u8, 0x40_u8, 0x14_u8, 0x54_u8];
     (0..rows)
         .map(|row| {
-            let start = row_starts.get(row).copied().unwrap_or(0x00);
+            let Some(start) = row_starts.get(row).copied() else {
+                return " ".repeat(columns);
+            };
             (0..columns)
                 .map(|offset| {
                     hd44780_ddram_index(start.wrapping_add(offset as u8))
@@ -280,4 +295,29 @@ fn hd44780_text_lines(ddram: &[u8], columns: usize, rows: usize) -> Vec<String> 
                 .collect()
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn text_log_trimming_preserves_utf8_boundaries() {
+        let mut text_log = format!("·{}", "a".repeat(MAX_TEXT_LOG_BYTES - 1));
+
+        trim_text_log(&mut text_log);
+
+        assert!(text_log.len() <= MAX_TEXT_LOG_BYTES);
+        assert_eq!(text_log, "a".repeat(MAX_TEXT_LOG_BYTES - 1));
+    }
+
+    #[test]
+    fn hd44780_rows_past_the_supported_addresses_are_blank() {
+        let mut ddram = vec![b' '; 0x68];
+        for (index, byte) in [(0, b'A'), (40, b'B'), (20, b'C'), (60, b'D')] {
+            ddram[index] = byte;
+        }
+
+        assert_eq!(hd44780_text_lines(&ddram, 1, 5), ["A", "B", "C", "D", " "]);
+    }
 }

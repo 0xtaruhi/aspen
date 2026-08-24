@@ -82,6 +82,16 @@ describe('portable executable dependency parser', () => {
     expect(parsePortableExecutableDependencyNames(executable)).toEqual([])
   })
 
+  it('does not map virtual-only section bytes into unrelated file data', () => {
+    const executable = buildPortableExecutable({ imports: ['example.dll'] })
+    const sectionTableOffset = 0x80 + 24 + 0xe0
+    executable.writeUInt32LE(0x100, sectionTableOffset + 16)
+    executable.writeUInt32LE(0x1300, 0x200 + 12)
+    executable.write('overlay.dll\0', 0x500, 'ascii')
+
+    expect(parsePortableExecutableDependencyNames(executable)).toEqual([])
+  })
+
   it('does not read data directories beyond the declared optional header', () => {
     const executable = buildPortableExecutable({ imports: ['example.dll'] })
     executable.writeUInt16LE(0x60, 0x80 + 20)

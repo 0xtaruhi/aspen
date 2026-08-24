@@ -13,8 +13,7 @@ function readDirectoryRva(
 
 function rvaToOffset(rva, sections) {
   for (const section of sections) {
-    const sectionSize = Math.max(section.virtualSize, section.rawSize)
-    if (rva >= section.virtualAddress && rva < section.virtualAddress + sectionSize) {
+    if (rva >= section.virtualAddress && rva < section.virtualAddress + section.rawSize) {
       return section.rawOffset + (rva - section.virtualAddress)
     }
   }

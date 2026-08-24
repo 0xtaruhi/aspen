@@ -602,5 +602,6 @@
   "hardwareDeviceDisconnectedError": "FPGA 板卡已中斷連線。請檢查 USB 連線後重新連線。",
   "viewLog": "查看日誌",
   "viewReleases": "檢視釋出頁",
-  "noLogAvailable": "暫時沒有日誌。"
+  "noLogAvailable": "暫時沒有日誌。",
+  "canvasDevicePositionUpdateFailed": "儲存裝置位置失敗：{message}"
 }

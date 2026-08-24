@@ -1,3 +1,6 @@
+import type { EditorLanguage } from '@/lib/editor-language'
+import type { JsonRpcId, JsonRpcMessage } from '@/lib/hdl-json-rpc'
+
 import { invoke } from '@tauri-apps/api/core'
 import * as monaco from 'monaco-editor/editor/editor.api'
 
@@ -5,9 +8,8 @@ import {
   buildEditorFileUri,
   normalizeEditorLanguage,
   normalizeEditorPath,
-  type EditorLanguage,
 } from '@/lib/editor-language'
-import { JsonRpcRequestManager, type JsonRpcId, type JsonRpcMessage } from '@/lib/hdl-json-rpc'
+import { JsonRpcRequestManager } from '@/lib/hdl-json-rpc'
 import { TauriMessageTransport } from '@/lib/hdl-lsp-transport'
 
 type HdlProjectSourceFile = {

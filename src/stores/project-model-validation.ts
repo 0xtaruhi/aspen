@@ -231,18 +231,18 @@ function isCanvasDeviceDataSnapshot(value: unknown): boolean {
   }
 }
 
-function isCanvasDeviceStateSnapshot(value: unknown): value is CanvasDeviceStateSnapshot {
+function isCanvasDeviceStateSnapshotShape(value: unknown): value is CanvasDeviceStateSnapshot {
   return (
     isRecord(value) &&
     typeof value.is_on === 'boolean' &&
     (value.color === null || typeof value.color === 'string') &&
     isCanvasDeviceBindingSnapshot(value.binding) &&
     isCanvasDeviceConfigSnapshot(value.config) &&
-    isCanvasDeviceDataSnapshot(value.data)
+    'data' in value
   )
 }
 
-function isCanvasDeviceSnapshot(value: unknown): value is CanvasDeviceSnapshot {
+function isCanvasDeviceSnapshotShape(value: unknown): value is CanvasDeviceSnapshot {
   return (
     isRecord(value) &&
     typeof value.id === 'string' &&
@@ -252,8 +252,12 @@ function isCanvasDeviceSnapshot(value: unknown): value is CanvasDeviceSnapshot {
     typeof value.y === 'number' &&
     Number.isFinite(value.y) &&
     typeof value.label === 'string' &&
-    isCanvasDeviceStateSnapshot(value.state)
+    isCanvasDeviceStateSnapshotShape(value.state)
   )
+}
+
+function hasValidCanvasDeviceData(device: CanvasDeviceSnapshot): boolean {
+  return isCanvasDeviceDataSnapshot(device.state.data)
 }
 
 export function cloneProjectCanvasDevices(
@@ -263,7 +267,12 @@ export function cloneProjectCanvasDevices(
 }
 
 export function normalizeProjectCanvasDevices(value: unknown): CanvasDeviceSnapshot[] {
-  return Array.isArray(value) ? cloneProjectCanvasDevices(value.filter(isCanvasDeviceSnapshot)) : []
+  return Array.isArray(value)
+    ? value
+        .filter(isCanvasDeviceSnapshotShape)
+        .map(sanitizeCanvasDeviceSnapshotForProject)
+        .filter(hasValidCanvasDeviceData)
+    : []
 }
 
 function isProjectNode(value: unknown): value is ProjectNode {

@@ -57,6 +57,16 @@ export default defineConfig({
           alias,
         },
         test: {
+          name: 'canvas',
+          alias,
+          include: ['src/components/canvas/**/*.{test,spec}.{ts,tsx}'],
+        },
+      },
+      {
+        resolve: {
+          alias,
+        },
+        test: {
           name: 'virtual-device',
           alias,
           include: [

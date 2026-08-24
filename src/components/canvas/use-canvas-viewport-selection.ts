@@ -1,13 +1,9 @@
-import {
-  computed,
-  onUnmounted,
-  ref,
-  type ComponentPublicInstance,
-  type ComputedRef,
-  type CSSProperties,
-} from 'vue'
-
+import type { ComponentPublicInstance, ComputedRef, CSSProperties } from 'vue'
 import type { CanvasDeviceSnapshot } from '@/lib/hardware-client'
+import type { CanvasPoint } from '@/lib/canvas-selection'
+import type { CanvasDeviceShellSize } from '@/lib/canvas-devices'
+
+import { computed, onUnmounted, ref } from 'vue'
 import {
   clampClientPointToCanvas,
   clientToCanvasPoint,
@@ -16,9 +12,7 @@ import {
   isClientPointInsideCanvas,
   normalizeCanvasRect,
   zoomCanvasScale,
-  type CanvasPoint,
 } from '@/lib/canvas-selection'
-import type { CanvasDeviceShellSize } from '@/lib/canvas-devices'
 
 export type CanvasInteractionMode = 'select' | 'pan'
 

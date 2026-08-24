@@ -1,27 +1,20 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import type { CanvasDeviceRendererListeners } from '@/components/virtual-device/registry'
+import type { CanvasDeviceSnapshot, CanvasDeviceType } from '@/lib/hardware-client'
+import type { CanvasInteractionMode } from './use-canvas-viewport-selection'
 
+import { computed, ref, watch } from 'vue'
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
-import BaseDevice from '../devices/BaseDevice.vue'
-import WireLayer from './WireLayer.vue'
-import { useCanvasDeviceDrag } from './use-canvas-device-drag'
 import {
-  useCanvasViewportSelection,
-  type CanvasInteractionMode,
-} from './use-canvas-viewport-selection'
-import {
-  type CanvasDeviceRendererListeners,
   buildCanvasDeviceRendererListeners,
   buildCanvasDeviceRendererProps,
   getCanvasDeviceRenderer,
 } from '@/components/virtual-device/registry'
-import type { CanvasDeviceSnapshot, CanvasDeviceType } from '@/lib/hardware-client'
-import { snapToGrid } from '@/lib/canvas-selection'
 import {
   appendCanvasDeviceText,
   rotateCanvasDeviceEncoder,
@@ -29,6 +22,7 @@ import {
   setCanvasDeviceEncoderButton,
   setCanvasDeviceMatrixKey,
 } from '@/lib/canvas-device-actions'
+import { snapToGrid } from '@/lib/canvas-selection'
 import {
   canvasDeviceEmitsToggle,
   createCanvasDeviceSnapshot,
@@ -38,9 +32,13 @@ import {
   getCanvasDeviceBoundSignalCount,
   getCanvasDeviceShellSize,
 } from '@/lib/canvas-devices'
+import { useI18n } from '@/lib/i18n'
 import { hardwareStore } from '@/stores/hardware'
 import { consumePaletteDrop, paletteDragStore } from '@/stores/palette-drag'
-import { useI18n } from '@/lib/i18n'
+import BaseDevice from '../devices/BaseDevice.vue'
+import WireLayer from './WireLayer.vue'
+import { useCanvasDeviceDrag } from './use-canvas-device-drag'
+import { useCanvasViewportSelection } from './use-canvas-viewport-selection'
 
 type DeviceSelectionMode = 'preserve' | 'replace' | 'toggle'
 
@@ -101,6 +99,7 @@ const {
   devicePosition,
   finishDeviceDrag,
   isDeviceAnimating,
+  positionError,
   startGroupDrag,
   transientDevicePositions,
   updateDevicePosition,
@@ -110,6 +109,16 @@ const {
   selectedDeviceIdSet,
   setDevicePosition: (id, x, y) => hardwareStore.setCanvasDevicePosition(id, x, y),
   gridSize: SNAP_GRID,
+})
+
+const positionErrorMessage = computed(() => {
+  if (positionError.value === null) {
+    return ''
+  }
+
+  const message =
+    positionError.value instanceof Error ? positionError.value.message : String(positionError.value)
+  return t('canvasDevicePositionUpdateFailed', { message })
 })
 
 const {
@@ -439,6 +448,14 @@ watch(
     @wheel="handleWheel"
     @mousedown="handleCanvasMouseDown"
   >
+    <div
+      v-if="positionErrorMessage"
+      role="alert"
+      class="absolute left-1/2 top-4 z-20 -translate-x-1/2 rounded-md border border-destructive/30 bg-background/95 px-3 py-2 text-xs text-destructive shadow-sm backdrop-blur"
+    >
+      {{ positionErrorMessage }}
+    </div>
+
     <div
       class="absolute inset-0 pointer-events-none opacity-10"
       :style="{

@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import type { JsonRpcMessage } from '@/lib/hdl-json-rpc'
+
 import {
   JsonRpcRequestManager,
   JsonRpcRequestTimeoutError,
   JsonRpcResponseError,
-  type JsonRpcMessage,
 } from '@/lib/hdl-json-rpc'
 
 afterEach(() => {

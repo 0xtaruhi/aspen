@@ -17,19 +17,37 @@ describe('project model validation', () => {
     expect(normalized[0]?.state.data).toEqual({ kind: 'none' })
   })
 
-  it.each([Number.NaN, -1, 256, 1.5])('rejects invalid queued byte payload %j', (byte) => {
+  it.each([Number.NaN, -1, 256, 1.5])('discards invalid transient byte payload %j', (byte) => {
     const terminal = createCanvasDeviceSnapshot('uart_terminal', 'uart', 0, 0, 0)
     terminal.state.data = { kind: 'queued_bytes', bytes: [byte] }
 
-    expect(normalizeProjectCanvasDevices([terminal])).toEqual([])
+    expect(normalizeProjectCanvasDevices([terminal])).toMatchObject([
+      { id: 'uart', state: { data: { kind: 'none' } } },
+    ])
   })
 
-  it('rejects partial matrix key coordinates and invalid encoder phases', () => {
+  it('discards invalid transient matrix and encoder state without removing devices', () => {
     const keypad = createCanvasDeviceSnapshot('matrix_keypad', 'keypad', 0, 0, 0)
     keypad.state.data = { kind: 'matrix_keypad', pressed_row: 1, pressed_column: null }
     const encoder = createCanvasDeviceSnapshot('quadrature_encoder', 'encoder', 0, 0, 0)
     encoder.state.data = { kind: 'quadrature_encoder', phase: 4, button_pressed: false }
 
-    expect(normalizeProjectCanvasDevices([keypad, encoder])).toEqual([])
+    expect(normalizeProjectCanvasDevices([keypad, encoder])).toMatchObject([
+      { id: 'keypad', state: { data: { kind: 'none' } } },
+      { id: 'encoder', state: { data: { kind: 'none' } } },
+    ])
+  })
+
+  it('rejects invalid data for device types that persist it', () => {
+    const switches = createCanvasDeviceSnapshot('dip_switch_bank', 'switches', 0, 0, 0)
+    const invalidSwitches = {
+      ...switches,
+      state: {
+        ...switches.state,
+        data: { kind: 'bitset', bits: [true, 1] },
+      },
+    }
+
+    expect(normalizeProjectCanvasDevices([invalidSwitches])).toEqual([])
   })
 })
