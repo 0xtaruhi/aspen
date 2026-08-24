@@ -1,5 +1,4 @@
 import { invoke } from '@tauri-apps/api/core'
-import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import * as monaco from 'monaco-editor/editor/editor.api'
 
 import {
@@ -8,6 +7,8 @@ import {
   normalizeEditorPath,
   type EditorLanguage,
 } from '@/lib/editor-language'
+import { JsonRpcRequestManager, type JsonRpcId, type JsonRpcMessage } from '@/lib/hdl-json-rpc'
+import { TauriMessageTransport } from '@/lib/hdl-lsp-transport'
 
 type HdlProjectSourceFile = {
   path: string
@@ -19,45 +20,6 @@ type HdlLspStartResponse = {
   root_uri: string
   available: boolean
 }
-
-type HdlLspEventPayload = {
-  session_id: string
-  message: unknown
-}
-
-type JsonRpcId = number
-
-type JsonRpcRequest = {
-  jsonrpc: '2.0'
-  id: JsonRpcId
-  method: string
-  params?: unknown
-}
-
-type JsonRpcNotification = {
-  jsonrpc: '2.0'
-  method: string
-  params?: unknown
-}
-
-type JsonRpcSuccessResponse = {
-  jsonrpc: '2.0'
-  id: JsonRpcId
-  result?: unknown
-}
-
-type JsonRpcErrorResponse = {
-  jsonrpc: '2.0'
-  id: JsonRpcId | null
-  error: {
-    code: number
-    message: string
-    data?: unknown
-  }
-}
-
-type JsonRpcMessage =
-  JsonRpcRequest | JsonRpcNotification | JsonRpcSuccessResponse | JsonRpcErrorResponse
 
 type LspPosition = {
   line: number
@@ -96,11 +58,6 @@ type HoverResponse = {
   range?: LspRange
 }
 
-type PendingRequest = {
-  resolve: (value: unknown) => void
-  reject: (reason?: unknown) => void
-}
-
 type HdlLspSessionConfig = {
   sessionId: string
   rootUri?: string | null
@@ -114,74 +71,10 @@ type HdlTextModelSpec = {
   language: EditorLanguage
 }
 
-type LspMessageListener = (message: unknown) => void
-
 type OpenDocumentBinding = {
   model: monaco.editor.ITextModel
   changeDisposable: monaco.IDisposable
   disposeDisposable: monaco.IDisposable
-}
-
-class TauriMessageTransport {
-  private readonly sessionId: string
-  private listener?: LspMessageListener
-  private readonly queuedMessages: unknown[] = []
-  private disposed = false
-  private readonly unlistenPromise: Promise<UnlistenFn>
-
-  constructor(sessionId: string) {
-    this.sessionId = sessionId
-    this.unlistenPromise = listen<HdlLspEventPayload>('hdl:lsp-message', (event) => {
-      if (event.payload.session_id !== this.sessionId || this.disposed) {
-        return
-      }
-
-      this.dispatchReceivedMessage(event.payload.message)
-    })
-  }
-
-  setListener(listener?: LspMessageListener) {
-    this.listener = listener
-    if (!listener) {
-      return
-    }
-
-    while (this.queuedMessages.length > 0 && this.listener) {
-      const message = this.queuedMessages.shift()
-      if (message !== undefined) {
-        this.listener(message)
-      }
-    }
-  }
-
-  async send(message: unknown) {
-    await invoke('hdl_lsp_forward', {
-      request: {
-        sessionId: this.sessionId,
-        message,
-      },
-    })
-  }
-
-  async dispose() {
-    if (this.disposed) {
-      return
-    }
-
-    this.disposed = true
-
-    const unlisten = await this.unlistenPromise
-    unlisten()
-  }
-
-  private dispatchReceivedMessage(message: unknown) {
-    if (this.listener) {
-      this.listener(message)
-      return
-    }
-
-    this.queuedMessages.push(message)
-  }
 }
 
 type HdlLspRuntime = {
@@ -189,8 +82,7 @@ type HdlLspRuntime = {
   rootUri: string
   filesKey: string
   transport: TauriMessageTransport
-  nextRequestId: number
-  pendingRequests: Map<JsonRpcId, PendingRequest>
+  requests: JsonRpcRequestManager
   diagnosticsByUri: Map<string, monaco.editor.IMarkerData[]>
   openDocuments: Map<string, OpenDocumentBinding>
 }
@@ -201,6 +93,7 @@ let pendingSessionPromise: Promise<HdlLspStartResponse | null> | null = null
 let featuresRegistered = false
 
 const HDL_LSP_MARKER_OWNER = 'slang-server'
+const HDL_LSP_REQUEST_TIMEOUT_MS = 15_000
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -435,22 +328,7 @@ async function sendLspError(
 }
 
 function requestLsp(current: HdlLspRuntime, method: string, params?: unknown): Promise<unknown> {
-  const id = current.nextRequestId
-  current.nextRequestId += 1
-
-  return new Promise((resolve, reject) => {
-    current.pendingRequests.set(id, { resolve, reject })
-
-    void sendLspMessage(current, {
-      jsonrpc: '2.0',
-      id,
-      method,
-      params,
-    } satisfies JsonRpcRequest).catch((error) => {
-      current.pendingRequests.delete(id)
-      reject(error)
-    })
-  })
+  return current.requests.request(method, params)
 }
 
 async function initializeRuntime(current: HdlLspRuntime) {
@@ -543,19 +421,18 @@ function handleIncomingMessage(current: HdlLspRuntime, message: unknown) {
     return
   }
 
-  const pendingRequest = current.pendingRequests.get(message.id)
-  if (!pendingRequest) {
-    return
-  }
-
-  current.pendingRequests.delete(message.id)
-
-  if (isRecord(message.error) && typeof message.error.message === 'string') {
-    pendingRequest.reject(new Error(message.error.message))
-    return
-  }
-
-  pendingRequest.resolve(message.result)
+  current.requests.handleResponse({
+    id: message.id,
+    result: message.result,
+    error:
+      isRecord(message.error) && typeof message.error.message === 'string'
+        ? {
+            code: typeof message.error.code === 'number' ? message.error.code : undefined,
+            message: message.error.message,
+            data: message.error.data,
+          }
+        : undefined,
+  })
 }
 
 function bindModelToRuntime(
@@ -657,11 +534,7 @@ async function disposeRuntime(target: HdlLspRuntime | null = runtime) {
   target.openDocuments.clear()
   target.diagnosticsByUri.clear()
 
-  for (const pendingRequest of target.pendingRequests.values()) {
-    pendingRequest.reject(new Error('HDL LSP session stopped'))
-  }
-
-  target.pendingRequests.clear()
+  target.requests.dispose(new Error('HDL LSP session stopped'))
 
   await target.transport.dispose()
   await invoke('hdl_lsp_stop', {
@@ -706,13 +579,16 @@ export async function ensureHdlLspSession(
     }
 
     const transport = new TauriMessageTransport(config.sessionId)
+    const requests = new JsonRpcRequestManager(
+      (message) => transport.send(message),
+      HDL_LSP_REQUEST_TIMEOUT_MS,
+    )
     const nextRuntime: HdlLspRuntime = {
       sessionId: config.sessionId,
       rootUri: response.root_uri,
       filesKey,
       transport,
-      nextRequestId: 1,
-      pendingRequests: new Map(),
+      requests,
       diagnosticsByUri: new Map(),
       openDocuments: new Map(),
     }
