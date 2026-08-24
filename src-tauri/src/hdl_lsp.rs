@@ -3,8 +3,9 @@ use std::{
     io::{BufRead, BufReader, ErrorKind, Write},
     path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, Stdio},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, Weak},
     thread,
+    time::Duration,
 };
 
 #[cfg(target_os = "windows")]
@@ -18,6 +19,7 @@ use url::Url;
 const LSP_EVENT_NAME: &str = "hdl:lsp-message";
 const DEFAULT_WORKSPACE_ROOT_NAME: &str = "aspen-hdl-lsp";
 const BUNDLED_SLANG_SERVER_DIR: &str = "vendor/slang-server";
+const CHILD_REAPER_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -70,7 +72,95 @@ struct HdlLspSession {
 
 #[derive(Default)]
 pub struct HdlLspManager {
-    sessions: Mutex<HashMap<String, HdlLspSession>>,
+    lifecycle: Mutex<()>,
+    sessions: Mutex<HashMap<String, Arc<HdlLspSession>>>,
+}
+
+impl HdlLspManager {
+    pub(crate) fn shutdown_all(&self) -> Result<(), String> {
+        let _lifecycle = self
+            .lifecycle
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let sessions = {
+            let mut sessions = self
+                .sessions
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            std::mem::take(&mut *sessions)
+        };
+        let mut failures = Vec::new();
+        let mut failed_sessions = Vec::new();
+
+        for (session_id, session) in sessions {
+            if let Err(err) = cleanup_session(&session) {
+                failures.push(format!("{session_id}: {err}"));
+                failed_sessions.push((session_id, session));
+            }
+        }
+
+        if !failed_sessions.is_empty() {
+            let mut sessions = self
+                .sessions
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            for (session_id, session) in failed_sessions {
+                sessions.entry(session_id).or_insert(session);
+            }
+        }
+
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "failed to clean up HDL LSP sessions: {}",
+                failures.join("; ")
+            ))
+        }
+    }
+}
+
+impl Drop for HdlLspManager {
+    fn drop(&mut self) {
+        if let Err(err) = self.shutdown_all() {
+            eprintln!("[slang-server] shutdown cleanup failed: {err}");
+        }
+    }
+}
+
+struct StartupChildGuard {
+    child: Option<Child>,
+    workspace_root: PathBuf,
+}
+
+impl StartupChildGuard {
+    fn new(child: Child, workspace_root: PathBuf) -> Self {
+        Self {
+            child: Some(child),
+            workspace_root,
+        }
+    }
+
+    fn child_mut(&mut self) -> &mut Child {
+        self.child.as_mut().expect("startup child guard is armed")
+    }
+
+    fn disarm(mut self) -> Child {
+        self.child.take().expect("startup child guard is armed")
+    }
+}
+
+impl Drop for StartupChildGuard {
+    fn drop(&mut self) {
+        if let Some(child) = self.child.as_mut() {
+            if let Err(err) = stop_child_handle(child) {
+                eprintln!("[slang-server] failed to clean up startup process: {err}");
+            }
+            if let Err(err) = remove_workspace_root(&self.workspace_root) {
+                eprintln!("[slang-server] failed to clean up startup workspace: {err}");
+            }
+        }
+    }
 }
 
 #[tauri::command]
@@ -87,9 +177,21 @@ pub fn hdl_lsp_start(
         });
     };
 
+    let _lifecycle = manager
+        .lifecycle
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
     stop_existing_session(&manager, &request.session_id)?;
 
     let workspace_root = prepare_workspace_root(&request.session_id, &request.files)?;
+    let root_uri = match path_to_file_uri(&workspace_root) {
+        Ok(root_uri) => root_uri,
+        Err(err) => {
+            let _ = remove_workspace_root(&workspace_root);
+            return Err(err);
+        }
+    };
 
     let mut command = Command::new(&program);
     command
@@ -100,24 +202,32 @@ pub fn hdl_lsp_start(
     #[cfg(target_os = "windows")]
     command.creation_flags(CREATE_NO_WINDOW);
 
-    let mut child = command
-        .spawn()
-        .map_err(|err| format!("failed to spawn slang-server: {err}"))?;
+    let child = match command.spawn() {
+        Ok(child) => child,
+        Err(err) => {
+            let _ = remove_workspace_root(&workspace_root);
+            return Err(format!("failed to spawn slang-server: {err}"));
+        }
+    };
+    let mut startup_guard = StartupChildGuard::new(child, workspace_root.clone());
 
-    let stdin = child
+    let stdin = startup_guard
+        .child_mut()
         .stdin
         .take()
         .ok_or_else(|| "failed to acquire slang-server stdin".to_string())?;
-    let stdout = child
+    let stdout = startup_guard
+        .child_mut()
         .stdout
         .take()
         .ok_or_else(|| "failed to acquire slang-server stdout".to_string())?;
-    let stderr = child
+    let stderr = startup_guard
+        .child_mut()
         .stderr
         .take()
         .ok_or_else(|| "failed to acquire slang-server stderr".to_string())?;
 
-    let child = Arc::new(Mutex::new(child));
+    let child = Arc::new(Mutex::new(startup_guard.disarm()));
     let stdin = Arc::new(Mutex::new(stdin));
     let session_id = request.session_id.clone();
 
@@ -128,11 +238,11 @@ pub fn hdl_lsp_start(
         .map(|mut sessions| {
             sessions.insert(
                 session_id.clone(),
-                HdlLspSession {
+                Arc::new(HdlLspSession {
                     stdin: stdin.clone(),
                     child: child.clone(),
                     workspace_root: workspace_root.clone(),
-                },
+                }),
             );
         })
     {
@@ -145,10 +255,11 @@ pub fn hdl_lsp_start(
 
     spawn_reader_thread(app, session_id.clone(), stdout);
     spawn_stderr_reader_thread(stderr);
+    spawn_child_reaper(Arc::downgrade(manager.inner()), session_id.clone(), child);
 
     Ok(HdlLspStartResponse {
         session_id,
-        root_uri: path_to_file_uri(&workspace_root)?,
+        root_uri,
         available: true,
     })
 }
@@ -185,6 +296,10 @@ pub fn hdl_lsp_stop(
     manager: tauri::State<'_, Arc<HdlLspManager>>,
     request: HdlLspStopRequest,
 ) -> Result<(), String> {
+    let _lifecycle = manager
+        .lifecycle
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     stop_existing_session(&manager, &request.session_id)
 }
 
@@ -193,11 +308,21 @@ fn stop_existing_session(manager: &Arc<HdlLspManager>, session_id: &str) -> Resu
         .sessions
         .lock()
         .map_err(|_| "failed to acquire HDL LSP session registry".to_string())?
-        .remove(session_id);
+        .get(session_id)
+        .cloned();
 
     if let Some(session) = session {
-        stop_child_process(&session.child)?;
-        remove_workspace_root(&session.workspace_root)?;
+        cleanup_session(&session)?;
+        let mut sessions = manager
+            .sessions
+            .lock()
+            .map_err(|_| "failed to acquire HDL LSP session registry".to_string())?;
+        if sessions
+            .get(session_id)
+            .is_some_and(|current| Arc::ptr_eq(current, &session))
+        {
+            sessions.remove(session_id);
+        }
     }
 
     Ok(())
@@ -258,11 +383,20 @@ fn cleanup_startup_resources(
     remove_workspace_root(workspace_root)
 }
 
+fn cleanup_session(session: &HdlLspSession) -> Result<(), String> {
+    stop_child_process(&session.child)?;
+    remove_workspace_root(&session.workspace_root)
+}
+
 fn stop_child_process(child: &Arc<Mutex<Child>>) -> Result<(), String> {
     let mut child = child
         .lock()
-        .map_err(|_| "failed to acquire HDL LSP child handle".to_string())?;
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
 
+    stop_child_handle(&mut child)
+}
+
+fn stop_child_handle(child: &mut Child) -> Result<(), String> {
     match child.kill() {
         Ok(()) => {}
         Err(err) if err.kind() == ErrorKind::InvalidInput => {}
@@ -274,6 +408,54 @@ fn stop_child_process(child: &Arc<Mutex<Child>>) -> Result<(), String> {
         .map_err(|err| format!("failed to wait for slang-server exit: {err}"))?;
 
     Ok(())
+}
+
+fn spawn_child_reaper(manager: Weak<HdlLspManager>, session_id: String, child: Arc<Mutex<Child>>) {
+    thread::spawn(move || loop {
+        thread::sleep(CHILD_REAPER_POLL_INTERVAL);
+        let exited = match child
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .try_wait()
+        {
+            Ok(status) => status.is_some(),
+            Err(err) => {
+                eprintln!("[slang-server] failed to query child status: {err}");
+                break;
+            }
+        };
+
+        if !exited {
+            if manager.strong_count() == 0 {
+                break;
+            }
+            continue;
+        }
+
+        let Some(manager) = manager.upgrade() else {
+            break;
+        };
+        let session = {
+            let mut sessions = manager
+                .sessions
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if sessions
+                .get(&session_id)
+                .is_some_and(|session| Arc::ptr_eq(&session.child, &child))
+            {
+                sessions.remove(&session_id)
+            } else {
+                None
+            }
+        };
+        if let Some(session) = session {
+            if let Err(err) = remove_workspace_root(&session.workspace_root) {
+                eprintln!("[slang-server] failed to remove exited session workspace: {err}");
+            }
+        }
+        break;
+    });
 }
 
 fn remove_workspace_root(workspace_root: &Path) -> Result<(), String> {
@@ -463,4 +645,100 @@ fn path_to_file_uri(path: &Path) -> Result<String, String> {
     Url::from_file_path(&absolute)
         .map(|url| url.to_string())
         .map_err(|_| format!("failed to convert '{}' to a file URI", absolute.display()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn dropping_manager_kills_and_reaps_lsp_children() {
+        let mut spawned = Command::new("sleep")
+            .arg("60")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("failed to spawn test child");
+        let stdin = spawned.stdin.take().expect("missing test stdin");
+        let child = Arc::new(Mutex::new(spawned));
+        let workspace_root =
+            std::env::temp_dir().join(format!("aspen-hdl-lsp-drop-test-{}", std::process::id()));
+        std::fs::create_dir_all(&workspace_root).expect("failed to create test workspace");
+
+        {
+            let manager = HdlLspManager::default();
+            manager
+                .sessions
+                .lock()
+                .expect("failed to lock sessions")
+                .insert(
+                    "drop-test".to_string(),
+                    Arc::new(HdlLspSession {
+                        stdin: Arc::new(Mutex::new(stdin)),
+                        child: child.clone(),
+                        workspace_root: workspace_root.clone(),
+                    }),
+                );
+        }
+
+        assert!(child
+            .lock()
+            .expect("failed to lock child")
+            .try_wait()
+            .expect("failed to query child")
+            .is_some());
+        assert!(!workspace_root.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn child_reaper_removes_naturally_exited_sessions() {
+        let mut spawned = Command::new("true")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("failed to spawn test child");
+        let stdin = spawned.stdin.take().expect("missing test stdin");
+        let child = Arc::new(Mutex::new(spawned));
+        let workspace_root =
+            std::env::temp_dir().join(format!("aspen-hdl-lsp-reaper-test-{}", std::process::id()));
+        std::fs::create_dir_all(&workspace_root).expect("failed to create test workspace");
+        let manager = Arc::new(HdlLspManager::default());
+        manager
+            .sessions
+            .lock()
+            .expect("failed to lock sessions")
+            .insert(
+                "reaper-test".to_string(),
+                Arc::new(HdlLspSession {
+                    stdin: Arc::new(Mutex::new(stdin)),
+                    child: child.clone(),
+                    workspace_root: workspace_root.clone(),
+                }),
+            );
+
+        spawn_child_reaper(Arc::downgrade(&manager), "reaper-test".to_string(), child);
+
+        for _ in 0..50 {
+            if manager
+                .sessions
+                .lock()
+                .expect("failed to lock sessions")
+                .is_empty()
+            {
+                break;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+
+        assert!(manager
+            .sessions
+            .lock()
+            .expect("failed to lock sessions")
+            .is_empty());
+        assert!(!workspace_root.exists());
+    }
 }

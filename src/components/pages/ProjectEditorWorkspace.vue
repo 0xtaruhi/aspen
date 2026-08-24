@@ -103,13 +103,18 @@ watch(
     }
 
     const previousSessionId = buildHdlProjectSessionId(projectStore.projectPath, previous)
-    void stopHdlLspSession(previousSessionId)
+    void stopHdlLspSession(previousSessionId).catch((error) => {
+      console.error('[HDL LSP] Failed to stop previous session:', error)
+    })
   },
 )
 
 onUnmounted(() => {
+  syncVersion += 1
   const sessionId = buildHdlProjectSessionId(projectStore.projectPath, projectStore.sessionId)
-  void stopHdlLspSession(sessionId)
+  void stopHdlLspSession(sessionId).catch((error) => {
+    console.error('[HDL LSP] Failed to stop session:', error)
+  })
 })
 </script>
 
