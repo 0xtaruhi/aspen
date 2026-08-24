@@ -27,6 +27,12 @@ export default defineConfig({
         },
       },
       {
+        test: {
+          name: 'scripts',
+          include: ['scripts/**/*.{test,spec}.mjs'],
+        },
+      },
+      {
         resolve: {
           alias,
         },
