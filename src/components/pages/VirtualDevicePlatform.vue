@@ -29,7 +29,6 @@ const {
   openManualForSelectedDevice,
   rateInput,
   selectedDevice,
-  selectedDeviceId,
   selectedDeviceIds,
   shouldWarnStreamBacklog,
   showGallery,
@@ -86,7 +85,6 @@ const {
         <ComponentGallery :open="showGallery" @close="showGallery = false" />
         <DeviceCanvas
           :key="canvasSessionKey"
-          v-model:selected-device-id="selectedDeviceId"
           v-model:selected-device-ids="selectedDeviceIds"
           :blocked-top-inset="showGallery ? galleryDropBlockInset : 0"
           :interaction-mode="canvasInteractionMode"

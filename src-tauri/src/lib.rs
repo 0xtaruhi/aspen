@@ -75,6 +75,10 @@ pub fn run() {
         .expect("error while building tauri application");
     app.run(|app_handle, event| {
         if matches!(event, tauri::RunEvent::Exit) {
+            let runtime = app_handle.state::<Arc<hardware::HardwareRuntime>>();
+            if let Err(err) = runtime.stop_data_stream() {
+                eprintln!("[hardware] application exit cleanup failed: {err}");
+            }
             let manager = app_handle.state::<Arc<hdl_lsp::HdlLspManager>>();
             if let Err(err) = manager.shutdown_all() {
                 eprintln!("[slang-server] application exit cleanup failed: {err}");

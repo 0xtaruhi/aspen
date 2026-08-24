@@ -63,7 +63,7 @@ struct HdlLspEventPayload {
     message: Value,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct HdlLspSession {
     stdin: Arc<Mutex<ChildStdin>>,
     child: Arc<Mutex<Child>>,
@@ -73,7 +73,7 @@ struct HdlLspSession {
 #[derive(Default)]
 pub struct HdlLspManager {
     lifecycle: Mutex<()>,
-    sessions: Mutex<HashMap<String, Arc<HdlLspSession>>>,
+    sessions: Mutex<HashMap<String, HdlLspSession>>,
 }
 
 impl HdlLspManager {
@@ -82,32 +82,21 @@ impl HdlLspManager {
             .lifecycle
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let sessions = {
-            let mut sessions = self
-                .sessions
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            std::mem::take(&mut *sessions)
-        };
-        let mut failures = Vec::new();
-        let mut failed_sessions = Vec::new();
-
-        for (session_id, session) in sessions {
-            if let Err(err) = cleanup_session(&session) {
-                failures.push(format!("{session_id}: {err}"));
-                failed_sessions.push((session_id, session));
-            }
-        }
-
-        if !failed_sessions.is_empty() {
-            let mut sessions = self
-                .sessions
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            for (session_id, session) in failed_sessions {
-                sessions.entry(session_id).or_insert(session);
-            }
-        }
+        let session_ids = self
+            .sessions
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        let failures = session_ids
+            .into_iter()
+            .filter_map(|session_id| {
+                stop_existing_session(self, &session_id)
+                    .err()
+                    .map(|err| format!("{session_id}: {err}"))
+            })
+            .collect::<Vec<_>>();
 
         if failures.is_empty() {
             Ok(())
@@ -182,7 +171,7 @@ pub fn hdl_lsp_start(
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
 
-    stop_existing_session(&manager, &request.session_id)?;
+    stop_existing_session(manager.inner().as_ref(), &request.session_id)?;
 
     let workspace_root = prepare_workspace_root(&request.session_id, &request.files)?;
     let root_uri = match path_to_file_uri(&workspace_root) {
@@ -238,11 +227,11 @@ pub fn hdl_lsp_start(
         .map(|mut sessions| {
             sessions.insert(
                 session_id.clone(),
-                Arc::new(HdlLspSession {
+                HdlLspSession {
                     stdin: stdin.clone(),
                     child: child.clone(),
                     workspace_root: workspace_root.clone(),
-                }),
+                },
             );
         })
     {
@@ -300,10 +289,10 @@ pub fn hdl_lsp_stop(
         .lifecycle
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    stop_existing_session(&manager, &request.session_id)
+    stop_existing_session(manager.inner().as_ref(), &request.session_id)
 }
 
-fn stop_existing_session(manager: &Arc<HdlLspManager>, session_id: &str) -> Result<(), String> {
+fn stop_existing_session(manager: &HdlLspManager, session_id: &str) -> Result<(), String> {
     let session = manager
         .sessions
         .lock()
@@ -319,7 +308,7 @@ fn stop_existing_session(manager: &Arc<HdlLspManager>, session_id: &str) -> Resu
             .map_err(|_| "failed to acquire HDL LSP session registry".to_string())?;
         if sessions
             .get(session_id)
-            .is_some_and(|current| Arc::ptr_eq(current, &session))
+            .is_some_and(|current| Arc::ptr_eq(&current.child, &session.child))
         {
             sessions.remove(session_id);
         }
@@ -675,11 +664,11 @@ mod tests {
                 .expect("failed to lock sessions")
                 .insert(
                     "drop-test".to_string(),
-                    Arc::new(HdlLspSession {
+                    HdlLspSession {
                         stdin: Arc::new(Mutex::new(stdin)),
                         child: child.clone(),
                         workspace_root: workspace_root.clone(),
-                    }),
+                    },
                 );
         }
 
@@ -713,11 +702,11 @@ mod tests {
             .expect("failed to lock sessions")
             .insert(
                 "reaper-test".to_string(),
-                Arc::new(HdlLspSession {
+                HdlLspSession {
                     stdin: Arc::new(Mutex::new(stdin)),
                     child: child.clone(),
                     workspace_root: workspace_root.clone(),
-                }),
+                },
             );
 
         spawn_child_reaper(Arc::downgrade(&manager), "reaper-test".to_string(), child);

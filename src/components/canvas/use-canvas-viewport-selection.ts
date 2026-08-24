@@ -1,4 +1,4 @@
-import type { ComponentPublicInstance, ComputedRef, CSSProperties } from 'vue'
+import type { ComponentPublicInstance, ComputedRef, CSSProperties, Ref } from 'vue'
 import type { CanvasDeviceSnapshot } from '@/lib/hardware-client'
 import type { CanvasPoint } from '@/lib/canvas-selection'
 import type { CanvasDeviceShellSize } from '@/lib/canvas-devices'
@@ -27,11 +27,11 @@ type DragSelectionState = {
 
 type CanvasViewportSelectionOptions = {
   devices: ComputedRef<CanvasDeviceSnapshot[]>
-  selectedDeviceIds: ComputedRef<string[]>
+  selectedDeviceIds: Readonly<Ref<string[]>>
   blockedTopInset: ComputedRef<number>
   interactionMode: ComputedRef<CanvasInteractionMode>
   normalizeSelectedIds: (ids: readonly string[]) => string[]
-  setSelectedDevices: (ids: readonly string[], primaryId?: string | null) => void
+  setSelectedDevices: (ids: readonly string[]) => void
   devicePosition: (device: CanvasDeviceSnapshot) => CanvasPoint
   shellSize: (device: CanvasDeviceSnapshot) => CanvasDeviceShellSize
 }
@@ -221,13 +221,13 @@ export function useCanvasViewportSelection(options: CanvasViewportSelectionOptio
 
     if (!selectionMovedEnough(currentSelection)) {
       if (!currentSelection.append) {
-        options.setSelectedDevices([], null)
+        options.setSelectedDevices([])
       }
       return
     }
 
     const nextIds = options.normalizeSelectedIds(collectSelectionIds(currentSelection))
-    options.setSelectedDevices(nextIds, nextIds.length === 1 ? (nextIds[0] ?? null) : null)
+    options.setSelectedDevices(nextIds)
   }
 
   function handleWindowMouseUp() {

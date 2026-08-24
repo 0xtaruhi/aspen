@@ -81,6 +81,7 @@ type OpenDocumentBinding = {
 
 type HdlLspRuntime = {
   sessionId: string
+  backendSessionId: string
   rootUri: string
   filesKey: string
   transport: TauriMessageTransport
@@ -89,11 +90,15 @@ type HdlLspRuntime = {
   openDocuments: Map<string, OpenDocumentBinding>
 }
 
+type PendingHdlLspSession = {
+  key: string
+  sessionId: string
+  controller: AbortController
+  promise: Promise<HdlLspStartResponse | null>
+}
+
 let runtime: HdlLspRuntime | null = null
-let pendingSessionId: string | null = null
-let pendingSessionPromise: Promise<HdlLspStartResponse | null> | null = null
-let pendingBackendSessionId: string | null = null
-let lifecycleGeneration = 0
+let pendingSession: PendingHdlLspSession | null = null
 let featuresRegistered = false
 
 const HDL_LSP_MARKER_OWNER = 'slang-server'
@@ -544,7 +549,7 @@ async function disposeRuntime(target: HdlLspRuntime | null = runtime) {
     target.transport.dispose(),
     invoke('hdl_lsp_stop', {
       request: {
-        sessionId: target.sessionId,
+        sessionId: target.backendSessionId,
       },
     }),
   ])
@@ -573,31 +578,28 @@ export async function ensureHdlLspSession(
     }
   }
 
-  if (pendingSessionId === `${config.sessionId}:${filesKey}` && pendingSessionPromise) {
-    return pendingSessionPromise
+  const sessionKey = `${config.sessionId}:${filesKey}`
+  if (pendingSession?.key === sessionKey) {
+    return pendingSession.promise
   }
 
-  const sessionKey = `${config.sessionId}:${filesKey}`
-  const previousSessionPromise = pendingSessionPromise
-  const generation = ++lifecycleGeneration
-  pendingSessionId = sessionKey
-  pendingBackendSessionId = config.sessionId
-  const sessionPromise = (async () => {
-    if (previousSessionPromise) {
-      await previousSessionPromise.catch(() => undefined)
-    }
-    if (generation !== lifecycleGeneration) {
+  const previousSession = pendingSession
+  previousSession?.controller.abort()
+  const controller = new AbortController()
+  const backendSessionId = `${config.sessionId}:lsp:${crypto.randomUUID()}`
+  const promise = (async () => {
+    if (controller.signal.aborted) {
       return null
     }
 
     await disposeRuntime()
-    if (generation !== lifecycleGeneration) {
+    if (controller.signal.aborted) {
       return null
     }
 
     const response = await invoke<HdlLspStartResponse>('hdl_lsp_start', {
       request: {
-        sessionId: config.sessionId,
+        sessionId: backendSessionId,
         rootUri: config.rootUri,
         files: config.files,
       },
@@ -607,22 +609,23 @@ export async function ensureHdlLspSession(
       return null
     }
 
-    if (generation !== lifecycleGeneration) {
+    if (controller.signal.aborted) {
       await invoke('hdl_lsp_stop', {
         request: {
-          sessionId: config.sessionId,
+          sessionId: backendSessionId,
         },
       })
       return null
     }
 
-    const transport = new TauriMessageTransport(config.sessionId)
+    const transport = new TauriMessageTransport(backendSessionId)
     const requests = new JsonRpcRequestManager(
       (message) => transport.send(message),
       HDL_LSP_REQUEST_TIMEOUT_MS,
     )
     const nextRuntime: HdlLspRuntime = {
       sessionId: config.sessionId,
+      backendSessionId,
       rootUri: response.root_uri,
       filesKey,
       transport,
@@ -641,20 +644,32 @@ export async function ensureHdlLspSession(
       await initializeRuntime(nextRuntime)
     } catch (error) {
       await disposeRuntime(nextRuntime)
+      if (controller.signal.aborted) {
+        return null
+      }
       throw error
+    }
+
+    if (controller.signal.aborted) {
+      await disposeRuntime(nextRuntime)
+      return null
     }
 
     return response
   })()
-  pendingSessionPromise = sessionPromise
+  const nextSession: PendingHdlLspSession = {
+    key: sessionKey,
+    sessionId: config.sessionId,
+    controller,
+    promise,
+  }
+  pendingSession = nextSession
 
   try {
-    return await sessionPromise
+    return await nextSession.promise
   } finally {
-    if (pendingSessionPromise === sessionPromise) {
-      pendingSessionId = null
-      pendingSessionPromise = null
-      pendingBackendSessionId = null
+    if (pendingSession === nextSession) {
+      pendingSession = null
     }
   }
 }
@@ -692,21 +707,15 @@ export function ensureHdlTextModel(
 }
 
 export async function stopHdlLspSession(sessionId?: string | null) {
-  const pending = pendingSessionPromise
-  const shouldCancelPending = Boolean(
-    pending && (!sessionId || pendingBackendSessionId === sessionId),
-  )
-  if (shouldCancelPending) {
-    lifecycleGeneration += 1
+  const pending = pendingSession
+  const shouldCancelPending = Boolean(pending && (!sessionId || pending.sessionId === sessionId))
+  if (shouldCancelPending && pending) {
+    pending.controller.abort()
   }
 
   const current = runtime
   if (current && (!sessionId || current.sessionId === sessionId)) {
     await disposeRuntime(current)
-  }
-
-  if (shouldCancelPending && pending) {
-    await pending.catch(() => undefined)
   }
 }
 

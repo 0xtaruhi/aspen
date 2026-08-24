@@ -1,4 +1,4 @@
-import type { ComputedRef } from 'vue'
+import type { ComputedRef, Ref } from 'vue'
 import type { CanvasDeviceSnapshot } from '@/lib/hardware-client'
 import type { CanvasPoint } from '@/lib/canvas-selection'
 
@@ -13,7 +13,7 @@ type GroupDragState = {
 
 type CanvasDeviceDragOptions = {
   devices: ComputedRef<CanvasDeviceSnapshot[]>
-  selectedDeviceIds: ComputedRef<string[]>
+  selectedDeviceIds: Readonly<Ref<string[]>>
   selectedDeviceIdSet: ComputedRef<Set<string>>
   setDevicePosition: (id: string, x: number, y: number) => Promise<unknown>
   gridSize?: number

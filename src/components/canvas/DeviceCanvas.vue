@@ -43,22 +43,17 @@ import { useCanvasViewportSelection } from './use-canvas-viewport-selection'
 type DeviceSelectionMode = 'preserve' | 'replace' | 'toggle'
 
 const props = defineProps<{
-  selectedDeviceId?: string | null
-  selectedDeviceIds?: string[]
   blockedTopInset?: number
   interactionMode?: CanvasInteractionMode
   streamBusy?: boolean
 }>()
+const selectedDeviceIds = defineModel<string[]>('selectedDeviceIds', { required: true })
 
 const emit = defineEmits<{
-  (e: 'update:selectedDeviceId', value: string | null): void
-  (e: 'update:selectedDeviceIds', value: string[]): void
   (e: 'clear-canvas'): void
   (e: 'open-settings', value: string): void
 }>()
 
-const internalSelectedDeviceId = ref<string | null>(null)
-const internalSelectedDeviceIds = ref<string[]>([])
 const wires = ref<
   Array<{ id: string; x1: number; y1: number; x2: number; y2: number; color: string }>
 >([])
@@ -69,17 +64,6 @@ const sampleRateHz = computed(() => {
   return (
     hardwareStore.dataStreamStatus.value.actual_hz || hardwareStore.dataStreamStatus.value.target_hz
   )
-})
-const selectedDeviceIds = computed(() => {
-  if (props.selectedDeviceIds !== undefined) {
-    return props.selectedDeviceIds
-  }
-
-  if (props.selectedDeviceId !== undefined) {
-    return props.selectedDeviceId ? [props.selectedDeviceId] : []
-  }
-
-  return internalSelectedDeviceIds.value
 })
 const selectedDeviceIdSet = computed(() => new Set(selectedDeviceIds.value))
 const resolvedInteractionMode = computed<CanvasInteractionMode>(
@@ -183,45 +167,33 @@ function normalizeSelectedIds(ids: readonly string[]) {
   return normalized
 }
 
-function setSelectedDevices(ids: readonly string[], primaryId: string | null = null) {
-  const normalizedIds = normalizeSelectedIds(ids)
-  const nextPrimaryId =
-    normalizedIds.length === 1
-      ? primaryId && normalizedIds.includes(primaryId)
-        ? primaryId
-        : (normalizedIds[0] ?? null)
-      : null
-
-  internalSelectedDeviceIds.value = normalizedIds
-  internalSelectedDeviceId.value = nextPrimaryId
-  emit('update:selectedDeviceIds', [...normalizedIds])
-  emit('update:selectedDeviceId', nextPrimaryId)
+function setSelectedDevices(ids: readonly string[]) {
+  selectedDeviceIds.value = normalizeSelectedIds(ids)
 }
 
 function selectDevice(id: string, mode: DeviceSelectionMode) {
   if (mode === 'preserve') {
     if (selectedDeviceIdSet.value.has(id)) {
-      setSelectedDevices(selectedDeviceIds.value, selectedDeviceIds.value.length === 1 ? id : null)
       return
     }
 
-    setSelectedDevices([id], id)
+    setSelectedDevices([id])
     return
   }
 
   if (mode === 'replace') {
-    setSelectedDevices([id], id)
+    setSelectedDevices([id])
     return
   }
 
   const nextIds = selectedDeviceIdSet.value.has(id)
     ? selectedDeviceIds.value.filter((selectedId) => selectedId !== id)
     : [...selectedDeviceIds.value, id]
-  setSelectedDevices(nextIds, nextIds.length === 1 ? (nextIds[0] ?? null) : null)
+  setSelectedDevices(nextIds)
 }
 
 function openDeviceSettings(id: string) {
-  setSelectedDevices([id], id)
+  setSelectedDevices([id])
   emit('open-settings', id)
 }
 
@@ -241,10 +213,7 @@ function removeDevice(id: string) {
   clearDeviceAnimation(id)
   delete transientDevicePositions.value[id]
   clearGroupDrag()
-  setSelectedDevices(
-    selectedDeviceIds.value.filter((selectedId) => selectedId !== id),
-    null,
-  )
+  setSelectedDevices(selectedDeviceIds.value.filter((selectedId) => selectedId !== id))
   void hardwareStore.removeCanvasDevice(id)
 }
 
@@ -413,7 +382,7 @@ watch(
   () => {
     const nextIds = normalizeSelectedIds(selectedDeviceIds.value)
     if (nextIds.length !== selectedDeviceIds.value.length) {
-      setSelectedDevices(nextIds, nextIds.length === 1 ? (nextIds[0] ?? null) : null)
+      setSelectedDevices(nextIds)
     }
   },
   { deep: true },
