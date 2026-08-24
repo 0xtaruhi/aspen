@@ -9,6 +9,16 @@ on:
       - 'v*'
   pull_request:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      release_dry_run:
+        type: boolean
+        default: false
+    secrets:
+      TAURI_SIGNING_PRIVATE_KEY:
+        required: true
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD:
+        required: true
 
 permissions:
   contents: read
@@ -23,6 +33,7 @@ env:
   NODE_VERSION: '24'
   NODE_OPTIONS: --max-old-space-size=6144
   OSS_CAD_SUITE_VERSION: '2026-06-24'
+  RELEASE_DRY_RUN: ${{ inputs.release_dry_run || false }}
   SLANG_SERVER_VERSION: 'v0.2.6'
 
 jobs:
@@ -49,7 +60,7 @@ jobs:
 
       - name: Filter changed paths
         id: filter
-        if: github.event_name != 'workflow_dispatch' && !startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name != 'workflow_dispatch' && github.event_name != 'workflow_call' && !startsWith(github.ref, 'refs/tags/v')
         uses: dorny/paths-filter@v4
         with:
           filters: |
@@ -105,7 +116,7 @@ jobs:
           [ -n "$desktop" ] || desktop=false
 
           force_full=false
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+          if [[ "$GITHUB_EVENT_NAME" =~ ^workflow_(dispatch|call)$ || "$GITHUB_REF" == refs/tags/v* ]]; then
             force_full=true
           fi
 
@@ -484,7 +495,7 @@ jobs:
         id: tauri_config
         shell: bash
         run: |
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+          if [[ "$GITHUB_REF" == refs/tags/v* || "$RELEASE_DRY_RUN" == true ]]; then
             echo "path=src-tauri/tauri.release.conf.json" >> "$GITHUB_OUTPUT"
           else
             echo "path=src-tauri/tauri.yosys.conf.json" >> "$GITHUB_OUTPUT"
@@ -492,13 +503,13 @@ jobs:
 
       - name: Build Aspen installer packages
         env:
-          ASPEN_ENABLE_UPDATER: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '' }}
+          ASPEN_ENABLE_UPDATER: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.release_dry_run) && '1' || '' }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm tauri build --ci -v -b deb,rpm,appimage -c ${{ steps.tauri_config.outputs.path }}
 
       - name: Record updater target metadata
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release_dry_run
         shell: bash
         run: |
           set -euo pipefail
@@ -576,7 +587,7 @@ jobs:
         id: tauri_config
         shell: bash
         run: |
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+          if [[ "$GITHUB_REF" == refs/tags/v* || "$RELEASE_DRY_RUN" == true ]]; then
             echo "path=src-tauri/tauri.release.conf.json" >> "$GITHUB_OUTPUT"
           else
             echo "path=src-tauri/tauri.yosys.conf.json" >> "$GITHUB_OUTPUT"
@@ -584,13 +595,13 @@ jobs:
 
       - name: Build Aspen installer packages
         env:
-          ASPEN_ENABLE_UPDATER: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '' }}
+          ASPEN_ENABLE_UPDATER: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.release_dry_run) && '1' || '' }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm tauri build --ci -v -b app,dmg -c ${{ steps.tauri_config.outputs.path }}
 
       - name: Record updater target metadata
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release_dry_run
         shell: bash
         run: |
           set -euo pipefail
@@ -689,7 +700,7 @@ jobs:
         id: tauri_config
         shell: bash
         run: |
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+          if [[ "$GITHUB_REF" == refs/tags/v* || "$RELEASE_DRY_RUN" == true ]]; then
             echo "path=src-tauri/tauri.release.conf.json" >> "$GITHUB_OUTPUT"
           else
             echo "path=src-tauri/tauri.yosys.conf.json" >> "$GITHUB_OUTPUT"
@@ -697,13 +708,13 @@ jobs:
 
       - name: Build Aspen installer packages
         env:
-          ASPEN_ENABLE_UPDATER: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '' }}
+          ASPEN_ENABLE_UPDATER: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.release_dry_run) && '1' || '' }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm tauri build --ci -v -c ${{ steps.tauri_config.outputs.path }}
 
       - name: Record updater target metadata
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release_dry_run
         shell: bash
         run: |
           set -euo pipefail
