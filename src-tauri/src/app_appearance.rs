@@ -1,9 +1,8 @@
 #[cfg(target_os = "macos")]
-use objc2::{MainThreadMarker, Message};
+use objc2::MainThreadMarker;
 #[cfg(target_os = "macos")]
 use objc2_app_kit::{
-    NSAppearance, NSAppearanceCustomization, NSApplication, NSColor, NSScrollElasticity,
-    NSScrollView, NSView, NSWindow,
+    NSAppearance, NSAppearanceCustomization, NSApplication, NSColor, NSView, NSWindow,
 };
 #[cfg(target_os = "macos")]
 use objc2_foundation::{NSArray, NSString, NSUserDefaults};
@@ -44,6 +43,40 @@ impl ThemeMode {
 
 fn theme_name(is_dark: bool) -> String {
     if is_dark { "dark" } else { "light" }.to_string()
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TitlebarDoubleClickAction {
+    Zoom,
+    Minimize,
+    None,
+}
+
+#[cfg(target_os = "macos")]
+fn resolve_titlebar_double_click_action(
+    action_name: Option<&str>,
+    minimize_fallback: bool,
+) -> TitlebarDoubleClickAction {
+    match action_name.map(str::to_ascii_lowercase).as_deref() {
+        Some("minimize") => TitlebarDoubleClickAction::Minimize,
+        Some("none" | "do nothing") => TitlebarDoubleClickAction::None,
+        Some("maximize" | "zoom" | "fill") => TitlebarDoubleClickAction::Zoom,
+        _ if minimize_fallback => TitlebarDoubleClickAction::Minimize,
+        _ => TitlebarDoubleClickAction::Zoom,
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn requested_titlebar_double_click_action() -> TitlebarDoubleClickAction {
+    let defaults = NSUserDefaults::standardUserDefaults();
+    let action_name = defaults
+        .stringForKey(&NSString::from_str("AppleActionOnDoubleClick"))
+        .map(|value| value.to_string());
+    let minimize_fallback =
+        defaults.boolForKey(&NSString::from_str("AppleMiniaturizeOnDoubleClick"));
+
+    resolve_titlebar_double_click_action(action_name.as_deref(), minimize_fallback)
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -127,6 +160,33 @@ pub fn app_set_window_appearance(
     apply_window_theme(&app, &window, mode, resolved_dark)
 }
 
+#[tauri::command]
+pub fn app_perform_titlebar_double_click(app: tauri::AppHandle) -> Result<(), String> {
+    let Some(window) = app.get_webview_window("main") else {
+        return Ok(());
+    };
+
+    #[cfg(target_os = "macos")]
+    {
+        let action = requested_titlebar_double_click_action();
+        window
+            .with_webview(move |webview| unsafe {
+                let ns_window: &NSWindow = &*webview.ns_window().cast();
+                match action {
+                    TitlebarDoubleClickAction::Zoom => ns_window.zoom(None),
+                    TitlebarDoubleClickAction::Minimize => ns_window.miniaturize(None),
+                    TitlebarDoubleClickAction::None => {}
+                }
+            })
+            .map_err(|err| format!("failed to perform native titlebar double click: {err}"))?;
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    window.toggle_maximize().map_err(|err| err.to_string())?;
+
+    Ok(())
+}
+
 pub fn configure_window_material<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     let Some(window) = app.get_webview_window("main") else {
         return;
@@ -141,7 +201,7 @@ pub fn configure_window_material<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 fn macos_window_effects() -> tauri::utils::config::WindowEffectsConfig {
     EffectsBuilder::new()
         .effect(Effect::Sidebar)
-        .state(EffectState::Active)
+        .state(EffectState::FollowsWindowActiveState)
         .build()
 }
 
@@ -250,38 +310,41 @@ fn apply_macos_window_material<R: tauri::Runtime>(
             ns_window.setOpaque(false);
             let background = NSColor::clearColor();
             ns_window.setBackgroundColor(Some(&background));
-
-            let webview_view: &NSView = &*webview.inner().cast();
-            configure_macos_webview_scroll_behavior(webview_view);
         })
         .map_err(|err| format!("failed to apply NSWindow styling: {err}"))
 }
 
-#[cfg(target_os = "macos")]
-fn configure_macos_webview_scroll_behavior(root_view: &NSView) {
-    if let Some(scroll_view) = find_descendant_scroll_view(root_view) {
-        scroll_view.setHorizontalScrollElasticity(NSScrollElasticity::None);
-        scroll_view.setVerticalScrollElasticity(NSScrollElasticity::None);
-    }
-}
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::{resolve_titlebar_double_click_action, TitlebarDoubleClickAction};
 
-#[cfg(target_os = "macos")]
-fn find_descendant_scroll_view(view: &NSView) -> Option<objc2::rc::Retained<NSScrollView>> {
-    if let Some(scroll_view) = view.enclosingScrollView() {
-        return Some(scroll_view);
-    }
-
-    for subview in view.subviews().iter() {
-        if let Some(scroll_view) = subview.downcast_ref::<NSScrollView>() {
-            return Some(scroll_view.retain());
-        }
-
-        if let Some(scroll_view) = find_descendant_scroll_view(subview.as_ref()) {
-            return Some(scroll_view);
-        }
+    #[test]
+    fn titlebar_double_click_respects_named_system_actions() {
+        assert_eq!(
+            resolve_titlebar_double_click_action(Some("Minimize"), false),
+            TitlebarDoubleClickAction::Minimize
+        );
+        assert_eq!(
+            resolve_titlebar_double_click_action(Some("None"), false),
+            TitlebarDoubleClickAction::None
+        );
+        assert_eq!(
+            resolve_titlebar_double_click_action(Some("Fill"), true),
+            TitlebarDoubleClickAction::Zoom
+        );
     }
 
-    None
+    #[test]
+    fn titlebar_double_click_supports_the_legacy_minimize_preference() {
+        assert_eq!(
+            resolve_titlebar_double_click_action(None, true),
+            TitlebarDoubleClickAction::Minimize
+        );
+        assert_eq!(
+            resolve_titlebar_double_click_action(None, false),
+            TitlebarDoubleClickAction::Zoom
+        );
+    }
 }
 
 #[cfg(not(target_os = "macos"))]

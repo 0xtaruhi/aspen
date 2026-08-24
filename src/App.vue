@@ -52,7 +52,7 @@ const {
       <SidebarInset class="relative flex h-full min-h-0 flex-col">
         <header
           v-window-chrome
-          class="app-shell-header app-navigation-glass flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear z-10 group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12"
+          class="app-shell-header app-navigation-glass z-10 flex h-16 shrink-0 items-center gap-2"
         >
           <div class="flex w-full items-center gap-2 px-4">
             <div
@@ -143,11 +143,16 @@ const {
 
 <style scoped>
 .app-shell-root-native-frame {
+  --app-titlebar-height: 3.25rem;
   overflow: clip;
   background:
     radial-gradient(circle at 18% 0%, var(--window-workspace-ambient), transparent 36rem),
     color-mix(in oklab, var(--background) 28%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border) 28%, transparent);
+}
+
+.app-shell-root-native-frame .app-shell-header {
+  height: var(--app-titlebar-height);
 }
 
 .app-shell-workspace {
@@ -165,7 +170,7 @@ const {
 }
 
 .app-shell-root-native-frame .app-shell-workspace {
-  border-radius: calc(var(--radius-xl) + 2px);
+  border-radius: var(--radius-lg);
 }
 
 .app-shell-breadcrumb {
@@ -198,8 +203,11 @@ const {
 }
 
 .app-shell-stage-native-frame {
+  position: absolute;
+  inset: var(--app-titlebar-height) 0 0;
+  width: auto;
+  contain: layout;
   padding: 0.2rem 0.5rem 0.5rem 0;
-  transition: padding 180ms ease;
 }
 
 .app-shell-jobs {

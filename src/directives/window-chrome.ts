@@ -1,5 +1,6 @@
 import type { Directive } from 'vue'
 
+import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
 import { isMacDesktop } from '@/lib/window-frame'
@@ -18,7 +19,6 @@ const DRAG_BLOCK_SELECTOR = [
 
 const WINDOW_CHROME_HANDLERS = Symbol('windowChromeHandlers')
 
-type WindowChromeAction = 'startDragging' | 'toggleMaximize'
 type WindowChromeBinding = boolean | undefined
 type WindowChromeHandlers = {
   onDoubleClick: (event: MouseEvent) => void
@@ -45,11 +45,19 @@ function isWindowChromeGestureTarget(event: MouseEvent | PointerEvent) {
   return target instanceof Element && !target.closest(DRAG_BLOCK_SELECTOR)
 }
 
-async function runWindowChromeAction(action: WindowChromeAction, errorMessage: string) {
+async function startWindowDragging() {
   try {
-    await getCurrentWindow()[action]()
+    await getCurrentWindow().startDragging()
   } catch (error) {
-    console.error(errorMessage, error)
+    console.error('Failed to start native window drag', error)
+  }
+}
+
+async function performTitlebarDoubleClick() {
+  try {
+    await invoke('app_perform_titlebar_double_click')
+  } catch (error) {
+    console.error('Failed to perform native titlebar double click', error)
   }
 }
 
@@ -63,7 +71,7 @@ function bindWindowChrome(el: WindowChromeElement) {
       return
     }
 
-    void runWindowChromeAction('startDragging', 'Failed to start window drag')
+    void startWindowDragging()
   }
 
   const onDoubleClick = (event: MouseEvent) => {
@@ -71,7 +79,7 @@ function bindWindowChrome(el: WindowChromeElement) {
       return
     }
 
-    void runWindowChromeAction('toggleMaximize', 'Failed to toggle window maximize')
+    void performTitlebarDoubleClick()
   }
 
   el.addEventListener('pointerdown', onPointerDown)

@@ -55,6 +55,7 @@ pub fn run() {
             hardware_commands::run_yosys_synthesis,
             hardware_commands::run_fde_implementation,
             app_appearance::app_get_system_theme,
+            app_appearance::app_perform_titlebar_double_click,
             app_appearance::app_set_window_appearance,
             app_menu::app_set_menu_language,
             project_commands::read_project_file,
