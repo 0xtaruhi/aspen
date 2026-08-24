@@ -81,6 +81,7 @@ type OpenDocumentBinding = {
 
 type HdlLspRuntime = {
   sessionId: string
+  backendSessionId: string
   rootUri: string
   filesKey: string
   transport: TauriMessageTransport
@@ -548,7 +549,7 @@ async function disposeRuntime(target: HdlLspRuntime | null = runtime) {
     target.transport.dispose(),
     invoke('hdl_lsp_stop', {
       request: {
-        sessionId: target.sessionId,
+        sessionId: target.backendSessionId,
       },
     }),
   ])
@@ -585,10 +586,8 @@ export async function ensureHdlLspSession(
   const previousSession = pendingSession
   previousSession?.controller.abort()
   const controller = new AbortController()
+  const backendSessionId = `${config.sessionId}:lsp:${crypto.randomUUID()}`
   const promise = (async () => {
-    if (previousSession) {
-      await previousSession.promise.catch(() => undefined)
-    }
     if (controller.signal.aborted) {
       return null
     }
@@ -600,7 +599,7 @@ export async function ensureHdlLspSession(
 
     const response = await invoke<HdlLspStartResponse>('hdl_lsp_start', {
       request: {
-        sessionId: config.sessionId,
+        sessionId: backendSessionId,
         rootUri: config.rootUri,
         files: config.files,
       },
@@ -613,19 +612,20 @@ export async function ensureHdlLspSession(
     if (controller.signal.aborted) {
       await invoke('hdl_lsp_stop', {
         request: {
-          sessionId: config.sessionId,
+          sessionId: backendSessionId,
         },
       })
       return null
     }
 
-    const transport = new TauriMessageTransport(config.sessionId)
+    const transport = new TauriMessageTransport(backendSessionId)
     const requests = new JsonRpcRequestManager(
       (message) => transport.send(message),
       HDL_LSP_REQUEST_TIMEOUT_MS,
     )
     const nextRuntime: HdlLspRuntime = {
       sessionId: config.sessionId,
+      backendSessionId,
       rootUri: response.root_uri,
       filesKey,
       transport,
@@ -708,10 +708,6 @@ export async function stopHdlLspSession(sessionId?: string | null) {
   const current = runtime
   if (current && (!sessionId || current.sessionId === sessionId)) {
     await disposeRuntime(current)
-  }
-
-  if (shouldCancelPending && pending) {
-    await pending.promise.catch(() => undefined)
   }
 }
 

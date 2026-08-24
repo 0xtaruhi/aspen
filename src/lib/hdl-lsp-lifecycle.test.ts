@@ -61,8 +61,10 @@ describe('HDL LSP session lifecycle', () => {
       root_uri: string
       available: boolean
     }>()
-    invoke.mockImplementation((command: string) => {
+    let backendSessionId = ''
+    invoke.mockImplementation((command: string, payload?: { request: { sessionId: string } }) => {
       if (command === 'hdl_lsp_start') {
+        backendSessionId = payload?.request.sessionId ?? ''
         return startResponse.promise
       }
       if (command === 'hdl_lsp_stop') {
@@ -78,39 +80,41 @@ describe('HDL LSP session lifecycle', () => {
     })
     await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('hdl_lsp_start', expect.anything()))
 
-    const stop = stopHdlLspSession('project:test')
+    await expect(stopHdlLspSession('project:test')).resolves.toBeUndefined()
     startResponse.resolve({
-      session_id: 'project:test',
+      session_id: backendSessionId,
       root_uri: 'file:///tmp/aspen-hdl-lsp/project-test',
       available: true,
     })
 
     await expect(start).resolves.toBeNull()
-    await stop
     expect(invoke).toHaveBeenCalledWith('hdl_lsp_stop', {
-      request: { sessionId: 'project:test' },
+      request: { sessionId: backendSessionId },
     })
   })
 
-  it('serializes replacement starts so stale cleanup cannot stop the new process', async () => {
+  it('replaces an unresolved start without letting stale cleanup stop the new process', async () => {
     const firstResponse = deferred<{
       session_id: string
       root_uri: string
       available: boolean
     }>()
-    let startCalls = 0
-    invoke.mockImplementation((command: string) => {
+    const startedSessionIds: string[] = []
+    const stoppedSessionIds: string[] = []
+    invoke.mockImplementation((command: string, payload?: { request: { sessionId: string } }) => {
       if (command === 'hdl_lsp_start') {
-        startCalls += 1
-        return startCalls === 1
+        const sessionId = payload?.request.sessionId ?? ''
+        startedSessionIds.push(sessionId)
+        return startedSessionIds.length === 1
           ? firstResponse.promise
           : Promise.resolve({
-              session_id: 'project:test',
+              session_id: sessionId,
               root_uri: 'file:///tmp/aspen-hdl-lsp/project-test-new',
               available: true,
             })
       }
       if (command === 'hdl_lsp_stop') {
+        stoppedSessionIds.push(payload?.request.sessionId ?? '')
         return Promise.resolve()
       }
       return Promise.reject(new Error(`unexpected command: ${command}`))
@@ -121,25 +125,31 @@ describe('HDL LSP session lifecycle', () => {
       filesKey: 'old',
       files: [{ path: 'old.sv', content: 'module old; endmodule' }],
     })
-    await vi.waitFor(() => expect(startCalls).toBe(1))
+    await vi.waitFor(() => expect(startedSessionIds).toHaveLength(1))
+    await expect(stopHdlLspSession('project:test')).resolves.toBeUndefined()
+
     const replacement = ensureHdlLspSession({
       sessionId: 'project:test',
       filesKey: 'new',
       files: [{ path: 'new.sv', content: 'module new; endmodule' }],
     })
 
-    expect(startCalls).toBe(1)
-    firstResponse.resolve({
-      session_id: 'project:test',
-      root_uri: 'file:///tmp/aspen-hdl-lsp/project-test-old',
-      available: true,
-    })
-
-    await expect(first).resolves.toBeNull()
     await expect(replacement).resolves.toMatchObject({
       root_uri: 'file:///tmp/aspen-hdl-lsp/project-test-new',
     })
-    expect(startCalls).toBe(2)
+    expect(startedSessionIds).toHaveLength(2)
+    expect(startedSessionIds[0]).not.toBe(startedSessionIds[1])
+
+    firstResponse.resolve({
+      session_id: startedSessionIds[0] ?? '',
+      root_uri: 'file:///tmp/aspen-hdl-lsp/project-test-old',
+      available: true,
+    })
+    await expect(first).resolves.toBeNull()
+    await vi.waitFor(() => expect(stoppedSessionIds).toContain(startedSessionIds[0]))
+    expect(stoppedSessionIds).not.toContain(startedSessionIds[1])
+
     await stopHdlLspSession('project:test')
+    expect(stoppedSessionIds).toContain(startedSessionIds[1])
   })
 })

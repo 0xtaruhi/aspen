@@ -349,10 +349,10 @@ impl HardwareRuntime {
         };
 
         if let Some(session) = stale_session {
-            session
-                .handle
-                .join()
-                .map_err(|_| "hardware data stream thread panicked".to_string())?;
+            if session.handle.join().is_err() {
+                return self
+                    .finish_failed_data_stream("hardware data stream thread panicked".to_string());
+            }
         }
 
         self.invalidate_waveform_snapshot()?;
@@ -401,21 +401,19 @@ impl HardwareRuntime {
             guard.take()
         };
 
-        if let Some(session) = session {
+        let join_error = session.and_then(|session| {
             session.stop_flag.store(true, Ordering::Relaxed);
             session
                 .handle
                 .join()
-                .map_err(|_| "hardware data stream thread panicked".to_string())?;
+                .err()
+                .map(|_| "hardware data stream thread panicked".to_string())
+        });
+
+        match join_error {
+            Some(error) => self.finish_failed_data_stream(error),
+            None => self.reset_data_stream_state(),
         }
-
-        self.invalidate_waveform_snapshot()?;
-
-        self.update_data_stream_status(|status| {
-            status.running = false;
-            Self::clear_stream_progress(status);
-            status.last_error = None;
-        })
     }
 
     pub fn mark_device_disconnected(
@@ -808,6 +806,21 @@ impl HardwareRuntime {
         status.queue_fill = 0;
         status.last_batch_at_ms = 0;
         status.last_batch_cycles = 0;
+    }
+
+    fn reset_data_stream_state(&self) -> Result<(), String> {
+        self.invalidate_waveform_snapshot()?;
+        self.update_data_stream_status(|status| {
+            status.running = false;
+            Self::clear_stream_progress(status);
+            status.last_error = None;
+        })
+    }
+
+    fn finish_failed_data_stream(&self, error: String) -> Result<(), String> {
+        self.reset_data_stream_state()
+            .map_err(|cleanup| format!("{error}; cleanup failed: {cleanup}"))?;
+        Err(error)
     }
 
     fn emit_data_stream_status(
