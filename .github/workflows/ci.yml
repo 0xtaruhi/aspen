@@ -76,6 +76,7 @@ jobs:
               - 'vitest.config.*'
             rust:
               - '.github/workflows/ci.yml'
+              - 'src/generated/tauri-contract.ts'
               - 'src-tauri/build.rs'
               - 'src-tauri/src/**'
               - 'src-tauri/Cargo.toml'
@@ -403,6 +404,20 @@ jobs:
       - name: Restore bundled toolchain execute permissions
         run: bash scripts/restore-bundled-toolchain-perms.sh
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Rust fmt check
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
 
@@ -411,6 +426,9 @@ jobs:
 
       - name: Bundled toolchain integration tests
         run: cargo test --manifest-path src-tauri/Cargo.toml -- --ignored
+
+      - name: IPC contract consistency
+        run: pnpm check:ipc-contract
 
       - name: Rust clippy
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings

@@ -23,6 +23,7 @@ tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+ts-rs = { version = "12.0.1", features = ["no-serde-warnings"] }
 fde = "1.1.0"
 vlfd-rs = "4"
 tauri-plugin-updater = "2.10.1"

@@ -70,6 +70,8 @@ Follow repository facts first, then these conventions.
 - Frontend typecheck: `pnpm typecheck`
 - Frontend format write: `pnpm format`
 - Frontend format check: `pnpm format:check`
+- Generate Rust-backed TypeScript IPC types: `pnpm generate:ipc-contract`
+- Check generated IPC types are current: `pnpm check:ipc-contract`
 - Tauri production build: `pnpm tauri build`
 - Tauri build with bundled FPGA toolchains/resources: `pnpm tauri build --no-bundle -c src-tauri/tauri.yosys.conf.json`
 - Release dry run: manually run the `Pre-publish` GitHub Actions workflow from the release commit.
@@ -112,6 +114,7 @@ Use these when Rust tests exist:
 - `pnpm prepare:yosys-bundle`
 - `pnpm prepare:slang-server-bundle`
 - `pnpm lint`
+- `pnpm check:ipc-contract`
 - `pnpm build`
 - `pnpm tauri build` for desktop-impacting changes
 - `cargo test --manifest-path src-tauri/Cargo.toml` when Rust code changes
