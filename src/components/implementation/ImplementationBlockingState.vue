@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CheckCircle2, TriangleAlert } from 'lucide-vue-next'
+import { CheckCircle2, TriangleAlert } from '@lucide/vue'
 
 import RecentProjectsPanel from '@/components/project/RecentProjectsPanel.vue'
 import { Badge } from '@/components/ui/badge'

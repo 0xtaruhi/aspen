@@ -11,7 +11,7 @@ use std::{
 };
 
 use tauri::{AppHandle, Emitter};
-use vlfd_rs::{Board, IoConfig, IoTransferWindow};
+use vlfd_rs::{Board, IoConfig, IoTransferWindow, Licence};
 
 use crate::hardware::types::{
     HardwareDataSignalCatalogEntryV1, HardwareDataSignalCatalogV1, HardwareDataStreamConfigV1,
@@ -20,6 +20,10 @@ use crate::hardware::types::{
 use super::*;
 
 pub(super) const UNMAPPED_SIGNAL_ID: u16 = u16::MAX;
+
+// Customer identifier issued for the VLFD boards used by Aspen. Historical
+// board credentials encode this value as the F805 serial-number segment.
+const VLFD_CUSTOMER_ID: u16 = 0xf805;
 
 #[derive(Clone, Copy)]
 struct StreamRateWindowSample {
@@ -50,11 +54,11 @@ struct PendingStreamTransfer {
 }
 
 impl HardwareRuntime {
-    fn io_config_from_stream_config(config: &HardwareDataStreamConfigV1) -> IoConfig {
+    pub(super) fn io_config_from_stream_config(config: &HardwareDataStreamConfigV1) -> IoConfig {
         IoConfig {
             clock_high_delay: config.vericomm_clock_high_delay,
             clock_low_delay: config.vericomm_clock_low_delay,
-            ..IoConfig::default()
+            ..IoConfig::new(Licence::CustomerId(VLFD_CUSTOMER_ID))
         }
     }
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { SidebarProps } from '@/components/ui/sidebar'
 
-import { Bug, FileCode2, FolderCog, FolderOpen, FolderPlus, Plus, Plug } from 'lucide-vue-next'
+import { Bug, FileCode2, FolderCog, FolderOpen, FolderPlus, Plus, Plug } from '@lucide/vue'
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 

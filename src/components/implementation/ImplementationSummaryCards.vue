@@ -1,13 +1,5 @@
 <script setup lang="ts">
-import {
-  Binary,
-  CircuitBoard,
-  Gauge,
-  Route,
-  ShieldAlert,
-  Sparkles,
-  SquareStack,
-} from 'lucide-vue-next'
+import { Binary, CircuitBoard, Gauge, Route, ShieldAlert, Sparkles, SquareStack } from '@lucide/vue'
 
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/lib/i18n'

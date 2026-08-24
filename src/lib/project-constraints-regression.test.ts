@@ -5,6 +5,7 @@ import {
   autoAssignProjectConstraints,
   buildPhysicalSignalSlotOrder,
   buildConstraintXml,
+  isLikelyClockPort,
   resolveCurrentProjectPinConstraints,
 } from './project-constraints'
 import type { ExpandedVerilogPortBit } from './verilog-port-bits'
@@ -43,6 +44,9 @@ describe('project constraints regression', () => {
     const assignments = autoAssignProjectConstraints(ports, referenceBoard)
 
     expect(assignments.find((entry) => entry.portName === 'clk')?.pinId).toBe('P77')
+    expect(assignments.find((entry) => entry.portName === 'clk')?.clockPeriodNs).toBeCloseTo(
+      1000 / 30,
+    )
     expect(assignments.find((entry) => entry.portName === 'sw')?.pinId).not.toBe('P77')
   })
 
@@ -55,12 +59,29 @@ describe('project constraints regression', () => {
       {
         portName: 'clk',
         pinId: 'P77',
+        clockPeriodNs: 1000 / 30,
       },
     ])
 
     expect(xml).toContain('<design name="top_module">')
     expect(xml).toContain('<port name="led[0]" position="P7"/>')
     expect(xml).toContain('<port name="clk" position="P77"/>')
+    expect(xml).toContain('<clock name="clk" port="clk" period="33.333333"/>')
+  })
+
+  it('omits invalid clock periods from constraint xml', () => {
+    const xml = buildConstraintXml('top_module', [
+      { portName: 'clk', pinId: 'P77', clockPeriodNs: 0 },
+      { portName: 'clock_aux', pinId: 'P151', clockPeriodNs: Number.NaN },
+    ])
+
+    expect(xml).not.toContain('<clock')
+  })
+
+  it('recognizes common prefixed and suffixed clock names', () => {
+    expect(isLikelyClockPort('sys_clk')).toBe(true)
+    expect(isLikelyClockPort('clk_50m')).toBe(true)
+    expect(isLikelyClockPort('data')).toBe(false)
   })
 
   it('only exposes assignments that belong to the current top file', () => {

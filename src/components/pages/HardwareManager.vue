@@ -1,14 +1,5 @@
 <script setup lang="ts">
-import {
-  Server,
-  Cpu,
-  RefreshCw,
-  Plug,
-  Play,
-  CheckCircle2,
-  FileCode,
-  XCircle,
-} from 'lucide-vue-next'
+import { Server, Cpu, RefreshCw, Plug, Play, CheckCircle2, FileCode, XCircle } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,

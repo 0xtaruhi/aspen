@@ -5,7 +5,7 @@ import type { ThemeMode } from '@/lib/theme'
 import { computed, onMounted, ref, watch } from 'vue'
 import { isTauri } from '@tauri-apps/api/core'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import { Monitor, Moon, Sun } from 'lucide-vue-next'
+import { Monitor, Moon, Sun } from '@lucide/vue'
 
 import { UPDATE_RELEASES_URL } from '@/lib/app-update'
 import { APP_THEME_PRESET_COLORS, normalizeThemeAccentColor } from '@/lib/theme-accent'

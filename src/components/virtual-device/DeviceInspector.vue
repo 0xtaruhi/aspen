@@ -3,7 +3,7 @@ import type { CanvasDeviceSnapshot } from '@/lib/hardware-client'
 import type { SignalCatalogEntry } from '@/stores/signal-catalog'
 
 import { computed, ref, watch } from 'vue'
-import { BookOpenText, Link2, Trash2, Unplug, X } from 'lucide-vue-next'
+import { BookOpenText, Link2, Trash2, Unplug, X } from '@lucide/vue'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'

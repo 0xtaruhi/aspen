@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowRight } from 'lucide-vue-next'
+import { ArrowRight } from '@lucide/vue'
 import { computed, ref } from 'vue'
 
 import TextReportDialog from '@/components/flow/TextReportDialog.vue'

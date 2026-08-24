@@ -42,6 +42,10 @@ function isProjectPinConstraint(value: unknown): value is ProjectPinConstraint {
   return typeof value.portName === 'string' && typeof value.pinId === 'string'
 }
 
+function normalizeClockPeriodNs(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
+}
+
 export function normalizeProjectConstraintSnapshot(
   value: unknown,
   fallbackTopFileId = '',
@@ -60,7 +64,7 @@ export function normalizeProjectConstraintSnapshot(
     pull: entry.pull ?? null,
     drive: entry.drive ?? null,
     slew: entry.slew ?? null,
-    clockPeriodNs: entry.clockPeriodNs ?? null,
+    clockPeriodNs: normalizeClockPeriodNs(entry.clockPeriodNs),
     boardFunction: entry.boardFunction ?? null,
   }))
 
@@ -89,7 +93,7 @@ export function buildConstraintAssignmentMap(assignments: readonly ProjectPinCon
 
 export function isLikelyClockPort(name: string) {
   const normalized = name.trim().toLowerCase()
-  return maybeClockNames.includes(normalized)
+  return maybeClockNames.includes(normalized) || /(^|_)(clk|clock)(?=_|$|\d)/.test(normalized)
 }
 
 export function getCompatiblePinRoles(
@@ -160,14 +164,25 @@ export function buildConstraintXml(
   assignments: readonly ProjectPinConstraint[],
 ): string {
   const normalizedName = designName.trim() || 'top'
-  const lines = assignments.map((assignment) => {
+  const portLines = assignments.map((assignment) => {
     return `  <port name="${escapeXml(assignment.portName)}" position="${escapeXml(assignment.pinId)}"/>`
+  })
+  const clockLines = assignments.flatMap((assignment) => {
+    const periodNs = normalizeClockPeriodNs(assignment.clockPeriodNs)
+    if (periodNs === null) {
+      return []
+    }
+
+    const portName = escapeXml(assignment.portName)
+    const formattedPeriod = Number(periodNs.toFixed(6)).toString()
+    return [`  <clock name="${portName}" port="${portName}" period="${formattedPeriod}"/>`]
   })
 
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     `<design name="${escapeXml(normalizedName)}">`,
-    ...lines,
+    ...portLines,
+    ...clockLines,
     '</design>',
     '',
   ].join('\n')
@@ -189,6 +204,10 @@ export function autoAssignProjectConstraints(
     assignments.push({
       portName: port.bitName,
       pinId: nextPin.id,
+      clockPeriodNs:
+        nextPin.role === 'clock' && isLikelyClockPort(port.baseName)
+          ? board.defaultClockPeriodNs
+          : null,
       boardFunction: nextPin.boardFunction,
     })
     usedPins.add(nextPin.id)

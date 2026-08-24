@@ -11,7 +11,7 @@ import {
   Tv,
   Volume2,
   Waypoints,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 
 import AudioPwmDevice from '@/components/devices/AudioPwmDevice.vue'
 import ButtonDevice from '@/components/devices/ButtonDevice.vue'

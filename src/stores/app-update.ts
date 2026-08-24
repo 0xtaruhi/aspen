@@ -5,13 +5,7 @@ import { listen } from '@tauri-apps/api/event'
 import { reactive } from 'vue'
 
 export type AppUpdateStatus =
-  | 'idle'
-  | 'unsupported'
-  | 'checking'
-  | 'up-to-date'
-  | 'available'
-  | 'installing'
-  | 'error'
+  'idle' | 'unsupported' | 'checking' | 'up-to-date' | 'available' | 'installing' | 'error'
 
 interface AppUpdateCheckResult {
   currentVersion: string

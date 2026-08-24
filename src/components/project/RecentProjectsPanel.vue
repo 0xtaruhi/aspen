@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { FolderOpen, History } from 'lucide-vue-next'
+import { FolderOpen, History } from '@lucide/vue'
 
 import { useI18n } from '@/lib/i18n'
 import { openRecentProject } from '@/lib/project-io'

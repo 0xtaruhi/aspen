@@ -11,6 +11,7 @@ export type FpgaBoardPinDescriptor = {
 type FpgaBoardDefinition = {
   displayName: string
   deviceId: FpgaDeviceId
+  defaultClockPeriodNs: number | null
   pins: FpgaBoardPinDescriptor[]
 }
 
@@ -132,6 +133,7 @@ const catalog = {
   FDP3P7_REFERENCE: {
     displayName: 'FDP3P7 Reference Board',
     deviceId: 'FDP3P7',
+    defaultClockPeriodNs: 1000 / 30,
     pins: [
       ...fdp3p7InputPins.map((id) => ({
         id,

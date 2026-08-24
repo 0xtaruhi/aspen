@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onUnmounted, ref, watch } from 'vue'
-import { Settings2, Trash2 } from 'lucide-vue-next'
+import { Settings2, Trash2 } from '@lucide/vue'
 
 import {
   ContextMenu,

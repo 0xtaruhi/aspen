@@ -103,13 +103,7 @@ export interface SynthesisReportV1 {
 }
 
 export type ImplementationStageKindV1 =
-  | 'yosys'
-  | 'map'
-  | 'pack'
-  | 'place'
-  | 'route'
-  | 'sta'
-  | 'bitgen'
+  'yosys' | 'map' | 'pack' | 'place' | 'route' | 'sta' | 'bitgen'
 
 export type ImplementationPlaceModeV1 = 'timing_driven' | 'bounding_box'
 

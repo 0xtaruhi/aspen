@@ -246,6 +246,8 @@
   "conflicts": "衝突",
   "duplicatePinAssignments": "偵測到重複的腳位指派",
   "pin": "腳位",
+  "clockPeriodNs": "時鐘週期（ns）",
+  "clockPeriodPlaceholder": "例如 33.333",
   "selectPin": "選擇腳位",
   "status": "狀態",
   "mapped": "已指派",

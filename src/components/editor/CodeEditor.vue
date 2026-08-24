@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { EditorLanguage } from '@/lib/editor-language'
 
-import * as monaco from 'monaco-editor/esm/vs/editor/editor.api'
-import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
+import * as monaco from 'monaco-editor/editor/editor.api'
+import editorWorker from 'monaco-editor/editor/editor.worker?worker'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { normalizeEditorLanguage } from '@/lib/editor-language'

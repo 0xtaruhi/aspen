@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Download, Eraser, Search, Wand2 } from 'lucide-vue-next'
+import { Download, Eraser, Search, Wand2 } from '@lucide/vue'
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -258,10 +258,30 @@ function handlePinUpdate(port: SignalCatalogEntry, value: unknown) {
   }
 
   const selectedPin = boardDescriptor.value.pins.find((pin) => pin.id === value)
+  const currentAssignment = rowState(port).assignment
   projectStore.setPinConstraint(projectStore.topFileId, {
+    ...currentAssignment,
     portName: port.bitName,
     pinId: value,
+    clockPeriodNs:
+      currentAssignment?.clockPeriodNs ??
+      (selectedPin?.role === 'clock' && isLikelyClockPort(port.baseName)
+        ? boardDescriptor.value.defaultClockPeriodNs
+        : null),
     boardFunction: selectedPin?.boardFunction ?? null,
+  })
+}
+
+function handleClockPeriodUpdate(port: SignalCatalogEntry, value: unknown) {
+  const assignment = rowState(port).assignment
+  if (!assignment || typeof value !== 'string') {
+    return
+  }
+
+  const parsed = Number(value)
+  projectStore.setPinConstraint(projectStore.topFileId, {
+    ...assignment,
+    clockPeriodNs: value.trim() !== '' && Number.isFinite(parsed) && parsed > 0 ? parsed : null,
   })
 }
 
@@ -451,6 +471,7 @@ function goToSynthesis() {
                     <TableHead class="bg-inherit">{{ t('direction') }}</TableHead>
                     <TableHead class="bg-inherit">{{ t('portName') }}</TableHead>
                     <TableHead class="bg-inherit">{{ t('pin') }}</TableHead>
+                    <TableHead class="bg-inherit">{{ t('clockPeriodNs') }}</TableHead>
                     <TableHead class="bg-inherit">{{ t('status') }}</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -483,6 +504,21 @@ function goToSynthesis() {
                         </option>
                       </select>
                     </TableCell>
+                    <TableCell class="w-[160px]">
+                      <Input
+                        v-if="isLikelyClockPort(port.baseName)"
+                        type="number"
+                        min="0.001"
+                        step="0.001"
+                        :disabled="!rowState(port).assignment"
+                        :value="rowState(port).assignment?.clockPeriodNs ?? ''"
+                        :placeholder="t('clockPeriodPlaceholder')"
+                        @change="
+                          handleClockPeriodUpdate(port, ($event.target as HTMLInputElement).value)
+                        "
+                      />
+                      <span v-else class="text-sm text-muted-foreground">—</span>
+                    </TableCell>
                     <TableCell>
                       <span
                         v-if="rowState(port).conflicted"
@@ -499,7 +535,7 @@ function goToSynthesis() {
                       <span v-else class="text-sm text-muted-foreground">{{ t('unbound') }}</span>
                     </TableCell>
                   </TableRow>
-                  <TableEmpty v-if="filteredPorts.length === 0" :colspan="4">
+                  <TableEmpty v-if="filteredPorts.length === 0" :colspan="5">
                     {{ emptyTableMessage }}
                   </TableEmpty>
                 </TableBody>
