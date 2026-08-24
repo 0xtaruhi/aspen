@@ -424,8 +424,12 @@ fn spawn_child_reaper(manager: Weak<HdlLspManager>, session_id: String, child: A
         let Some(manager) = manager.upgrade() else {
             break;
         };
+        let _lifecycle = manager
+            .lifecycle
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let session = {
-            let mut sessions = manager
+            let sessions = manager
                 .sessions
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -433,7 +437,7 @@ fn spawn_child_reaper(manager: Weak<HdlLspManager>, session_id: String, child: A
                 .get(&session_id)
                 .is_some_and(|session| Arc::ptr_eq(&session.child, &child))
             {
-                sessions.remove(&session_id)
+                sessions.get(&session_id).cloned()
             } else {
                 None
             }
@@ -442,6 +446,11 @@ fn spawn_child_reaper(manager: Weak<HdlLspManager>, session_id: String, child: A
             if let Err(err) = remove_workspace_root(&session.workspace_root) {
                 eprintln!("[slang-server] failed to remove exited session workspace: {err}");
             }
+            manager
+                .sessions
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .remove(&session_id);
         }
         break;
     });
