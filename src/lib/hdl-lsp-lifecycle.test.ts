@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const invoke = vi.hoisted(() => vi.fn())
+const transportState = vi.hoisted(() => ({ respond: true, requests: 0 }))
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke }))
 vi.mock('monaco-editor/editor/editor.api', () => ({
@@ -30,9 +31,12 @@ vi.mock('@/lib/hdl-lsp-transport', () => ({
         'id' in message &&
         typeof message.id === 'number'
       ) {
-        queueMicrotask(() => {
-          this.listener?.({ jsonrpc: '2.0', id: message.id, result: {} })
-        })
+        transportState.requests += 1
+        if (transportState.respond) {
+          queueMicrotask(() => {
+            this.listener?.({ jsonrpc: '2.0', id: message.id, result: {} })
+          })
+        }
       }
     }
 
@@ -52,6 +56,8 @@ function deferred<T>() {
 
 beforeEach(() => {
   invoke.mockReset()
+  transportState.respond = true
+  transportState.requests = 0
 })
 
 describe('HDL LSP session lifecycle', () => {
@@ -151,5 +157,32 @@ describe('HDL LSP session lifecycle', () => {
 
     await stopHdlLspSession('project:test')
     expect(stoppedSessionIds).toContain(startedSessionIds[1])
+  })
+
+  it('returns null when stopped during initialization', async () => {
+    transportState.respond = false
+    invoke.mockImplementation((command: string, payload?: { request: { sessionId: string } }) => {
+      if (command === 'hdl_lsp_start') {
+        return Promise.resolve({
+          session_id: payload?.request.sessionId ?? '',
+          root_uri: 'file:///tmp/aspen-hdl-lsp/project-test',
+          available: true,
+        })
+      }
+      if (command === 'hdl_lsp_stop') {
+        return Promise.resolve()
+      }
+      return Promise.reject(new Error(`unexpected command: ${command}`))
+    })
+
+    const start = ensureHdlLspSession({
+      sessionId: 'project:test',
+      filesKey: 'top.sv',
+      files: [{ path: 'top.sv', content: 'module top; endmodule' }],
+    })
+    await vi.waitFor(() => expect(transportState.requests).toBe(1))
+
+    await expect(stopHdlLspSession('project:test')).resolves.toBeUndefined()
+    await expect(start).resolves.toBeNull()
   })
 })

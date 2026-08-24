@@ -644,7 +644,15 @@ export async function ensureHdlLspSession(
       await initializeRuntime(nextRuntime)
     } catch (error) {
       await disposeRuntime(nextRuntime)
+      if (controller.signal.aborted) {
+        return null
+      }
       throw error
+    }
+
+    if (controller.signal.aborted) {
+      await disposeRuntime(nextRuntime)
+      return null
     }
 
     return response
