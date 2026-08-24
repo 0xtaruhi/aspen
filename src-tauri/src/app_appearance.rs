@@ -161,13 +161,12 @@ pub fn app_set_window_appearance(
 }
 
 #[tauri::command]
-pub fn app_perform_titlebar_double_click(app: tauri::AppHandle) -> Result<(), String> {
-    let Some(window) = app.get_webview_window("main") else {
-        return Ok(());
-    };
-
+pub fn app_perform_titlebar_double_click(_app: tauri::AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
+        let Some(window) = _app.get_webview_window("main") else {
+            return Ok(());
+        };
         let action = requested_titlebar_double_click_action();
         window
             .with_webview(move |webview| unsafe {
@@ -179,13 +178,6 @@ pub fn app_perform_titlebar_double_click(app: tauri::AppHandle) -> Result<(), St
                 }
             })
             .map_err(|err| format!("failed to perform native titlebar double click: {err}"))?;
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    if window.is_maximized().map_err(|err| err.to_string())? {
-        window.unmaximize().map_err(|err| err.to_string())?;
-    } else {
-        window.maximize().map_err(|err| err.to_string())?;
     }
 
     Ok(())

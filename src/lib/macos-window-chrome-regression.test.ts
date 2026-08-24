@@ -27,6 +27,8 @@ describe('macOS window chrome regression', () => {
     expect(appSource).toMatch(
       /\.app-shell-stage-native-frame\s*\{[^}]*padding:\s*0\.2rem 0\.5rem 0\.5rem 0;/s,
     )
+    expect(appSource).toMatch(/\.app-shell-header\s*\{[^}]*height:\s*4rem;/s)
+    expect(appSource).not.toMatch(/class="[^"]*app-shell-header[^"]*\bh-16\b/)
   })
 
   it('lets the native material follow window activation', () => {
@@ -39,9 +41,9 @@ describe('macOS window chrome regression', () => {
     expect(windowChromeSource).toContain("invoke('app_perform_titlebar_double_click')")
     expect(windowChromeSource).not.toContain("'toggleMaximize'")
     expect(appearanceSource).not.toContain('window.toggle_maximize()')
-    expect(appearanceSource).toContain('window.is_maximized()')
-    expect(appearanceSource).toContain('window.unmaximize()')
-    expect(appearanceSource).toContain('window.maximize()')
+    expect(appearanceSource).not.toContain('window.is_maximized()')
+    expect(appearanceSource).not.toContain('window.unmaximize()')
+    expect(appearanceSource).not.toContain('window.maximize()')
     expect(appearanceSource).toContain('AppleActionOnDoubleClick')
     expect(appearanceSource).toContain('AppleMiniaturizeOnDoubleClick')
     expect(appearanceSource).toContain('ns_window.zoom(None)')

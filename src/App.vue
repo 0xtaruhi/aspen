@@ -52,7 +52,7 @@ const {
       <SidebarInset class="relative flex h-full min-h-0 flex-col">
         <header
           v-window-chrome
-          class="app-shell-header app-navigation-glass z-10 flex h-16 shrink-0 items-center gap-2"
+          class="app-shell-header app-navigation-glass z-10 flex shrink-0 items-center gap-2"
         >
           <div class="flex w-full items-center gap-2 px-4">
             <div
@@ -142,6 +142,10 @@ const {
 </template>
 
 <style scoped>
+.app-shell-header {
+  height: 4rem;
+}
+
 .app-shell-root-native-frame {
   --app-titlebar-height: 3.25rem;
   overflow: clip;
