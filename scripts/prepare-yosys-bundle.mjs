@@ -20,6 +20,8 @@ import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { fileURLToPath } from 'node:url'
 
+import { parsePortableExecutableDependencyNames as parsePortableExecutableDependencyNamesFromBuffer } from './lib/portable-executable.mjs'
+
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 const repoRoot = dirname(scriptDir)
 const bundleTargetDir = join(repoRoot, 'src-tauri', 'vendor', 'yosys')
@@ -862,148 +864,7 @@ function getBundledFileIndex(bundleRoot) {
 }
 
 function parsePortableExecutableDependencyNames(filePath) {
-  const fileBuffer = readFileSync(filePath)
-  if (fileBuffer.length < 0x40 || fileBuffer.toString('ascii', 0, 2) !== 'MZ') {
-    return []
-  }
-
-  const peHeaderOffset = fileBuffer.readUInt32LE(0x3c)
-  if (
-    peHeaderOffset <= 0 ||
-    peHeaderOffset + 0x18 >= fileBuffer.length ||
-    fileBuffer.toString('ascii', peHeaderOffset, peHeaderOffset + 4) !== 'PE\u0000\u0000'
-  ) {
-    return []
-  }
-
-  const fileHeaderOffset = peHeaderOffset + 4
-  const numberOfSections = fileBuffer.readUInt16LE(fileHeaderOffset + 2)
-  const optionalHeaderSize = fileBuffer.readUInt16LE(fileHeaderOffset + 16)
-  const optionalHeaderOffset = fileHeaderOffset + 20
-  const sectionTableOffset = optionalHeaderOffset + optionalHeaderSize
-  if (sectionTableOffset > fileBuffer.length) {
-    return []
-  }
-
-  const optionalHeaderMagic = fileBuffer.readUInt16LE(optionalHeaderOffset)
-  let dataDirectoryOffset
-  if (optionalHeaderMagic === 0x10b) {
-    dataDirectoryOffset = optionalHeaderOffset + 96
-  } else if (optionalHeaderMagic === 0x20b) {
-    dataDirectoryOffset = optionalHeaderOffset + 112
-  } else {
-    return []
-  }
-
-  const sections = []
-  for (let index = 0; index < numberOfSections; index += 1) {
-    const offset = sectionTableOffset + index * 40
-    if (offset + 40 > fileBuffer.length) {
-      break
-    }
-
-    const virtualSize = fileBuffer.readUInt32LE(offset + 8)
-    const virtualAddress = fileBuffer.readUInt32LE(offset + 12)
-    const rawSize = fileBuffer.readUInt32LE(offset + 16)
-    const rawOffset = fileBuffer.readUInt32LE(offset + 20)
-    sections.push({
-      rawOffset,
-      rawSize,
-      virtualAddress,
-      virtualSize,
-    })
-  }
-
-  const importedNames = new Set()
-  collectPeImportedDllNames(
-    fileBuffer,
-    sections,
-    readPeDirectoryRva(fileBuffer, dataDirectoryOffset, 1),
-    20,
-    12,
-    importedNames,
-  )
-  collectPeImportedDllNames(
-    fileBuffer,
-    sections,
-    readPeDirectoryRva(fileBuffer, dataDirectoryOffset, 13),
-    32,
-    4,
-    importedNames,
-  )
-  return [...importedNames]
-}
-
-function readPeDirectoryRva(fileBuffer, dataDirectoryOffset, entryIndex) {
-  const entryOffset = dataDirectoryOffset + entryIndex * 8
-  if (entryOffset + 8 > fileBuffer.length) {
-    return 0
-  }
-  return fileBuffer.readUInt32LE(entryOffset)
-}
-
-function collectPeImportedDllNames(
-  fileBuffer,
-  sections,
-  tableRva,
-  descriptorSize,
-  nameFieldOffset,
-  importedNames,
-) {
-  if (!tableRva) {
-    return
-  }
-
-  const tableOffset = portableExecutableRvaToOffset(tableRva, sections)
-  if (tableOffset === null) {
-    return
-  }
-
-  for (
-    let descriptorOffset = tableOffset;
-    descriptorOffset + descriptorSize <= fileBuffer.length;
-    descriptorOffset += descriptorSize
-  ) {
-    const descriptor = fileBuffer.subarray(descriptorOffset, descriptorOffset + descriptorSize)
-    if (descriptor.every((byte) => byte === 0)) {
-      break
-    }
-
-    const nameRva = descriptor.readUInt32LE(nameFieldOffset)
-    const nameOffset = portableExecutableRvaToOffset(nameRva, sections)
-    if (nameOffset === null) {
-      continue
-    }
-
-    const dependencyName = readNullTerminatedAscii(fileBuffer, nameOffset)
-    if (dependencyName) {
-      importedNames.add(dependencyName)
-    }
-  }
-}
-
-function portableExecutableRvaToOffset(rva, sections) {
-  for (const section of sections) {
-    const sectionSize = Math.max(section.virtualSize, section.rawSize)
-    if (rva >= section.virtualAddress && rva < section.virtualAddress + sectionSize) {
-      return section.rawOffset + (rva - section.virtualAddress)
-    }
-  }
-
-  return null
-}
-
-function readNullTerminatedAscii(fileBuffer, offset) {
-  if (offset < 0 || offset >= fileBuffer.length) {
-    return ''
-  }
-
-  let endOffset = offset
-  while (endOffset < fileBuffer.length && fileBuffer[endOffset] !== 0) {
-    endOffset += 1
-  }
-
-  return fileBuffer.toString('ascii', offset, endOffset).trim()
+  return parsePortableExecutableDependencyNamesFromBuffer(readFileSync(filePath))
 }
 
 function resolveBundledDependency(filePath, dependency, bundleRoot) {

@@ -27,6 +27,12 @@ export default defineConfig({
         },
       },
       {
+        test: {
+          name: 'scripts',
+          include: ['scripts/**/*.{test,spec}.mjs'],
+        },
+      },
+      {
         resolve: {
           alias,
         },
@@ -44,6 +50,16 @@ export default defineConfig({
           name: 'lib',
           alias,
           include: ['src/lib/**/*.{test,spec}.{ts,tsx}'],
+        },
+      },
+      {
+        resolve: {
+          alias,
+        },
+        test: {
+          name: 'canvas',
+          alias,
+          include: ['src/components/canvas/**/*.{test,spec}.{ts,tsx}'],
         },
       },
       {

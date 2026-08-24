@@ -4,9 +4,15 @@ use std::{fs, path::PathBuf, time::Instant};
 
 use crate::hardware::types::{SynthesisRequestV1, SynthesisSourceFileV1};
 
-fn bundled_synthesis_toolchain() -> Option<toolchain::SynthesisToolchainPaths<'static>> {
+fn bundled_synthesis_toolchain() -> Result<toolchain::SynthesisToolchainPaths<'static>, String> {
     let bundle_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(BUNDLED_YOSYS_DIR);
-    let yosys_bin = toolchain::resolve_bundled_yosys_binary_from_root(&bundle_root)?;
+    let yosys_bin =
+        toolchain::resolve_bundled_yosys_binary_from_root(&bundle_root).ok_or_else(|| {
+            format!(
+                "bundled Yosys binary is missing from {}",
+                bundle_root.display()
+            )
+        })?;
     let fde_simlib = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join(FDE_RESOURCE_DIR)
         .join(FDE_SIMLIB_FILE);
@@ -30,7 +36,7 @@ fn bundled_synthesis_toolchain() -> Option<toolchain::SynthesisToolchainPaths<'s
         || !fde_techmap.is_file()
         || !fde_cells_map.is_file()
     {
-        return None;
+        return Err("bundled Yosys support resources are incomplete".to_string());
     }
 
     let toolchain = toolchain::SynthesisToolchainPaths {
@@ -42,7 +48,7 @@ fn bundled_synthesis_toolchain() -> Option<toolchain::SynthesisToolchainPaths<'s
         fde_cells_map: Box::leak(Box::new(fde_cells_map)).as_path(),
     };
 
-    Some(toolchain)
+    Ok(toolchain)
 }
 
 #[test]
@@ -96,10 +102,9 @@ fn frontend_and_backend_synthesis_artifact_flow_revisions_match() {
 }
 
 #[test]
-fn yosys_smoke_test_runs_when_bundled_toolchain_is_available() {
-    let Some(toolchain) = bundled_synthesis_toolchain() else {
-        return;
-    };
+#[ignore = "requires the bundled Yosys toolchain; CI runs ignored integration tests explicitly"]
+fn yosys_smoke_test_runs_with_bundled_toolchain() {
+    let toolchain = bundled_synthesis_toolchain().expect("bundled synthesis toolchain");
 
     let request = SynthesisRequestV1 {
         op_id: "test-op".to_string(),
@@ -192,10 +197,9 @@ endmodule
 }
 
 #[test]
+#[ignore = "requires the bundled Yosys toolchain; CI runs ignored integration tests explicitly"]
 fn yosys_smoke_test_supports_non_ascii_workdir_paths() {
-    let Some(toolchain) = bundled_synthesis_toolchain() else {
-        return;
-    };
+    let toolchain = bundled_synthesis_toolchain().expect("bundled synthesis toolchain");
 
     let request = SynthesisRequestV1 {
         op_id: "unicode-op".to_string(),
@@ -246,10 +250,9 @@ endmodule
 }
 
 #[test]
+#[ignore = "requires the bundled Yosys toolchain; CI runs ignored integration tests explicitly"]
 fn yosys_smoke_test_lowers_division_and_modulo_into_supported_cells() {
-    let Some(toolchain) = bundled_synthesis_toolchain() else {
-        return;
-    };
+    let toolchain = bundled_synthesis_toolchain().expect("bundled synthesis toolchain");
 
     let request = SynthesisRequestV1 {
         op_id: "test-div-mod-op".to_string(),
@@ -332,13 +335,12 @@ endmodule
 }
 
 #[test]
+#[ignore = "requires the bundled Yosys toolchain; CI runs ignored integration tests explicitly"]
 fn yosys_smoke_test_lowers_unary_negation_of_signed_signal() {
     // Regression: unary `-v` on a signed signal lowers to a `$neg`, which
     // alumacc turns into an ALU with a zero-width A operand. The FDE ALU
     // techmap used to emit a `$pos` with A_WIDTH==0 and abort synthesis.
-    let Some(toolchain) = bundled_synthesis_toolchain() else {
-        return;
-    };
+    let toolchain = bundled_synthesis_toolchain().expect("bundled synthesis toolchain");
 
     let request = SynthesisRequestV1 {
         op_id: "test-unary-neg-op".to_string(),
@@ -391,10 +393,9 @@ endmodule
 }
 
 #[test]
+#[ignore = "requires the bundled Yosys toolchain; CI runs ignored integration tests explicitly"]
 fn yosys_smoke_test_preserves_initialized_ff_properties() {
-    let Some(toolchain) = bundled_synthesis_toolchain() else {
-        return;
-    };
+    let toolchain = bundled_synthesis_toolchain().expect("bundled synthesis toolchain");
 
     let request = SynthesisRequestV1 {
         op_id: "test-ff-init-op".to_string(),
@@ -476,10 +477,9 @@ fn build_yosys_script_runs_bram_mapping_before_memory_map() {
 }
 
 #[test]
+#[ignore = "requires the bundled Yosys toolchain; CI runs ignored integration tests explicitly"]
 fn yosys_smoke_test_infers_bram_and_stages_memory_init_assets() {
-    let Some(toolchain) = bundled_synthesis_toolchain() else {
-        return;
-    };
+    let toolchain = bundled_synthesis_toolchain().expect("bundled synthesis toolchain");
 
     let request = SynthesisRequestV1 {
         op_id: "test-bram-op".to_string(),
@@ -553,10 +553,9 @@ endmodule
 }
 
 #[test]
+#[ignore = "requires the bundled Yosys toolchain; CI runs ignored integration tests explicitly"]
 fn yosys_smoke_test_preserves_explicit_ramb4_primitives() {
-    let Some(toolchain) = bundled_synthesis_toolchain() else {
-        return;
-    };
+    let toolchain = bundled_synthesis_toolchain().expect("bundled synthesis toolchain");
 
     let request = SynthesisRequestV1 {
         op_id: "test-explicit-bram-op".to_string(),

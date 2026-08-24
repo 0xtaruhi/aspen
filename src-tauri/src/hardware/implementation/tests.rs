@@ -176,6 +176,24 @@ fn test_resource_paths() -> toolchain::ImplementationResourcePaths {
     }
 }
 
+fn assert_implementation_resources_available(resources: &toolchain::ImplementationResourcePaths) {
+    for path in [
+        &resources.dc_cell,
+        &resources.pack_cell,
+        &resources.pack_dcp_lib,
+        &resources.pack_config,
+        &resources.arch,
+        &resources.delay,
+        &resources.cil,
+    ] {
+        assert!(
+            path.is_file(),
+            "bundled implementation resource is missing: {}",
+            path.display()
+        );
+    }
+}
+
 #[test]
 fn cargo_manifest_uses_semver_rust_fde_dependency() {
     let cargo_toml =
@@ -254,18 +272,10 @@ fn render_stage_log_includes_messages_warnings_metrics_and_artifacts() {
 }
 
 #[test]
-fn implementation_smoke_test_runs_with_in_process_rust_fde_when_yosys_is_available() {
+#[ignore = "requires the bundled Yosys toolchain; CI runs ignored integration tests explicitly"]
+fn implementation_smoke_test_runs_with_in_process_rust_fde() {
     let resources = test_resource_paths();
-    if !resources.dc_cell.is_file()
-        || !resources.pack_cell.is_file()
-        || !resources.pack_dcp_lib.is_file()
-        || !resources.pack_config.is_file()
-        || !resources.arch.is_file()
-        || !resources.delay.is_file()
-        || !resources.cil.is_file()
-    {
-        return;
-    }
+    assert_implementation_resources_available(&resources);
 
     let generated_at_ms = now_millis().unwrap();
     let workdir = resolve_workdir(
@@ -303,10 +313,8 @@ fn implementation_smoke_test_runs_with_in_process_rust_fde_when_yosys_is_availab
         generated_at_ms,
     )
     .unwrap();
-    let synthesized_edif_path = match prepare_test_synthesized_edif(&workdir) {
-        Ok(path) => path,
-        Err(_) => return,
-    };
+    let synthesized_edif_path =
+        prepare_test_synthesized_edif(&workdir).expect("prepare synthesized EDIF with Yosys");
 
     let request = ImplementationRequestV1 {
         op_id: "impl-smoke".to_string(),
@@ -372,18 +380,10 @@ fn implementation_smoke_test_runs_with_in_process_rust_fde_when_yosys_is_availab
 }
 
 #[test]
+#[ignore = "requires the bundled Yosys toolchain; CI runs ignored integration tests explicitly"]
 fn implementation_smoke_test_runs_with_division_logic_lowered_by_bundled_yosys() {
     let resources = test_resource_paths();
-    if !resources.dc_cell.is_file()
-        || !resources.pack_cell.is_file()
-        || !resources.pack_dcp_lib.is_file()
-        || !resources.pack_config.is_file()
-        || !resources.arch.is_file()
-        || !resources.delay.is_file()
-        || !resources.cil.is_file()
-    {
-        return;
-    }
+    assert_implementation_resources_available(&resources);
 
     let generated_at_ms = now_millis().unwrap();
     let workdir = resolve_workdir(
@@ -427,7 +427,7 @@ fn implementation_smoke_test_runs_with_division_logic_lowered_by_bundled_yosys()
         generated_at_ms,
     )
     .unwrap();
-    let synthesized_edif_path = match prepare_test_synthesized_edif_with_source(
+    let synthesized_edif_path = prepare_test_synthesized_edif_with_source(
         &workdir,
         [
             "module top(",
@@ -445,10 +445,8 @@ fn implementation_smoke_test_runs_with_division_logic_lowered_by_bundled_yosys()
         ]
         .join("\n")
         .as_str(),
-    ) {
-        Ok(path) => path,
-        Err(_) => return,
-    };
+    )
+    .expect("prepare synthesized division EDIF with Yosys");
 
     let request = ImplementationRequestV1 {
         op_id: "impl-div-smoke".to_string(),

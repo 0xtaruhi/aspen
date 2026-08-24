@@ -603,5 +603,6 @@
   "hardwareDeviceDisconnectedError": "The FPGA board was disconnected. Check the USB connection and reconnect it.",
   "viewLog": "View log",
   "viewReleases": "View releases",
-  "noLogAvailable": "No log available yet."
+  "noLogAvailable": "No log available yet.",
+  "canvasDevicePositionUpdateFailed": "Failed to save the device position: {message}"
 }

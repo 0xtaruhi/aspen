@@ -7,6 +7,7 @@ mod hdl_lsp;
 mod project_commands;
 
 use std::sync::Arc;
+use tauri::Manager;
 
 #[cfg(target_os = "macos")]
 use tauri::Emitter;
@@ -69,9 +70,17 @@ pub fn run() {
 
     let builder = attach_native_menu(builder);
 
-    builder
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+    let app = builder
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+    app.run(|app_handle, event| {
+        if matches!(event, tauri::RunEvent::Exit) {
+            let manager = app_handle.state::<Arc<hdl_lsp::HdlLspManager>>();
+            if let Err(err) = manager.shutdown_all() {
+                eprintln!("[slang-server] application exit cleanup failed: {err}");
+            }
+        }
+    });
 }
 
 #[cfg(target_os = "macos")]
