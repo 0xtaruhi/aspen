@@ -6,6 +6,7 @@ const tauriUnavailableError = new Error(
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn().mockRejectedValue(tauriUnavailableError),
+  isTauri: vi.fn(() => false),
 }))
 
 vi.mock('@tauri-apps/api/event', () => ({

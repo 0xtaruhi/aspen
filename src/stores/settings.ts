@@ -1,4 +1,5 @@
 import type { ThemeMode } from '@/lib/theme'
+import type { HardwareBoardSelectorV1 } from '@/lib/hardware-client'
 
 import { reactive } from 'vue'
 
@@ -20,6 +21,8 @@ type SettingsState = {
   editorFontSize: number
   editorMinimap: boolean
   confirmDelete: boolean
+  hardwareBoardSelector: HardwareBoardSelectorV1
+  vlfdCustomerId: number | null
 }
 
 const STORAGE_KEY = 'aspen-settings'
@@ -92,6 +95,34 @@ function normalizeEditorFontFamily(value: unknown): string {
   return normalized.slice(0, 200)
 }
 
+function normalizeHardwareBoardSelector(value: unknown): HardwareBoardSelectorV1 {
+  if (!value || typeof value !== 'object' || !('kind' in value)) {
+    return { kind: 'only' }
+  }
+
+  const selector = value as Partial<HardwareBoardSelectorV1>
+  if (selector.kind === 'serial_number' && 'serial_number' in selector) {
+    const serialNumber = String(selector.serial_number ?? '').trim()
+    return serialNumber ? { kind: 'serial_number', serial_number: serialNumber } : { kind: 'only' }
+  }
+  if (selector.kind === 'usb_location' && 'bus_id' in selector && 'port_chain' in selector) {
+    const busId = String(selector.bus_id ?? '').trim()
+    const portChain = Array.isArray(selector.port_chain)
+      ? selector.port_chain.filter((part): part is number => Number.isInteger(part) && part >= 0)
+      : []
+    if (busId && portChain.length > 0) {
+      return { kind: 'usb_location', bus_id: busId, port_chain: portChain }
+    }
+  }
+  return { kind: 'only' }
+}
+
+function normalizeVlfdCustomerId(value: unknown) {
+  return Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 0xffff
+    ? Number(value)
+    : null
+}
+
 const defaultLanguage = detectPreferredLanguage()
 
 const defaultSettings: SettingsState = {
@@ -102,6 +133,8 @@ const defaultSettings: SettingsState = {
   editorFontSize: 14,
   editorMinimap: true,
   confirmDelete: true,
+  hardwareBoardSelector: { kind: 'only' },
+  vlfdCustomerId: null,
 }
 
 function applyLanguage(language: AppLanguage) {
@@ -135,6 +168,8 @@ function readStoredSettings(): Partial<SettingsState> {
       themeMode: normalizeThemeMode(parsed.themeMode),
       themeAccent: normalizeThemeAccentColor(parsed.themeAccent),
       editorFontFamily: normalizeEditorFontFamily(parsed.editorFontFamily),
+      hardwareBoardSelector: normalizeHardwareBoardSelector(parsed.hardwareBoardSelector),
+      vlfdCustomerId: normalizeVlfdCustomerId(parsed.vlfdCustomerId),
     }
   } catch (_) {
     return {}
@@ -172,6 +207,8 @@ export const settingsStore = {
     state.themeMode = normalizeThemeMode(state.themeMode)
     state.themeAccent = normalizeThemeAccentColor(state.themeAccent)
     state.editorFontFamily = normalizeEditorFontFamily(state.editorFontFamily)
+    state.hardwareBoardSelector = normalizeHardwareBoardSelector(state.hardwareBoardSelector)
+    state.vlfdCustomerId = normalizeVlfdCustomerId(state.vlfdCustomerId)
     applyLanguage(state.language)
     setThemeMode(state.themeMode)
     applyThemeAccentColor(state.themeAccent)
@@ -207,5 +244,13 @@ export const settingsStore = {
 
   setConfirmDelete(confirmDelete: boolean) {
     this.update({ confirmDelete })
+  },
+
+  setHardwareBoardSelector(hardwareBoardSelector: HardwareBoardSelectorV1) {
+    this.update({ hardwareBoardSelector })
+  },
+
+  setVlfdCustomerId(vlfdCustomerId: number) {
+    this.update({ vlfdCustomerId })
   },
 }

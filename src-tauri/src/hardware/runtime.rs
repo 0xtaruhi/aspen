@@ -12,9 +12,10 @@ use tauri::{AppHandle, Emitter};
 
 use super::driver;
 use super::types::{
-    HardwareActionV1, HardwareArtifactSnapshot, HardwareDataStreamConfigV1,
-    HardwareDataStreamStatusV1, HardwareEventReason, HardwareEventV1, HardwarePhase,
-    HardwareStateV1, HardwareWaveformBatchBinaryV1,
+    HardwareAccessConfigV1, HardwareActionV1, HardwareArtifactSnapshot, HardwareBoardInfoV1,
+    HardwareBoardSelectorV1, HardwareDataStreamConfigV1, HardwareDataStreamStatusV1,
+    HardwareEventReason, HardwareEventV1, HardwarePhase, HardwareStateV1,
+    HardwareWaveformBatchBinaryV1,
 };
 
 mod canvas;
@@ -149,6 +150,7 @@ struct LatestWaveformBatch {
 
 pub struct HardwareRuntime {
     state: Mutex<HardwareStateV1>,
+    access_config: Mutex<HardwareAccessConfigV1>,
     data_stream: Mutex<Option<HardwareDataStreamSession>>,
     data_stream_config: Arc<Mutex<HardwareDataStreamConfigV1>>,
     waveform_config_generation: AtomicU64,
@@ -161,6 +163,7 @@ impl Default for HardwareRuntime {
     fn default() -> Self {
         Self {
             state: Mutex::new(HardwareStateV1::default()),
+            access_config: Mutex::new(HardwareAccessConfigV1::default()),
             data_stream: Mutex::new(None),
             data_stream_config: Arc::new(Mutex::new(HardwareDataStreamConfigV1::default())),
             waveform_config_generation: AtomicU64::new(1),
@@ -204,6 +207,43 @@ impl HardwareRuntime {
             .map_err(|_| "failed to acquire hardware state mutex".to_string())?
             .clone();
         Ok(state)
+    }
+
+    pub fn list_boards(&self) -> Result<Vec<HardwareBoardInfoV1>, String> {
+        driver::list_boards()
+    }
+
+    pub fn selected_board_available(&self) -> Result<bool, String> {
+        let selector = self.access_config()?.selector;
+        let boards = self.list_boards()?;
+        Ok(match selector {
+            HardwareBoardSelectorV1::Only => boards.len() == 1,
+            selector => boards.iter().any(|board| board.selector == selector),
+        })
+    }
+
+    pub fn configure_access(
+        &self,
+        config: HardwareAccessConfigV1,
+    ) -> Result<HardwareAccessConfigV1, String> {
+        driver::board_selector(&config.selector)?;
+        if self.access_config()? == config {
+            return Ok(config);
+        }
+        self.stop_data_stream()?;
+        *self
+            .access_config
+            .lock()
+            .map_err(|_| "failed to acquire hardware access config mutex".to_string())? =
+            config.clone();
+        Ok(config)
+    }
+
+    fn access_config(&self) -> Result<HardwareAccessConfigV1, String> {
+        self.access_config
+            .lock()
+            .map_err(|_| "failed to acquire hardware access config mutex".to_string())
+            .map(|config| config.clone())
     }
 
     pub fn data_stream_status(&self) -> Result<HardwareDataStreamStatusV1, String> {
@@ -334,6 +374,10 @@ impl HardwareRuntime {
                 .clone()
         };
         Self::validate_stream_config(&config)?;
+        let access = self.access_config()?;
+        if access.customer_id.is_none() {
+            return Err("VLFD customer ID is not configured".to_string());
+        }
 
         let stale_session = {
             let mut guard = self
@@ -376,7 +420,12 @@ impl HardwareRuntime {
             let handle = thread::Builder::new()
                 .name("aspen-hardware-data-stream".to_string())
                 .spawn(move || {
-                    runtime.run_data_stream_loop(app_handle, stop_for_thread, config_handle);
+                    runtime.run_data_stream_loop(
+                        app_handle,
+                        stop_for_thread,
+                        config_handle,
+                        access,
+                    );
                 })
                 .map_err(|err| err.to_string())?;
 
@@ -421,6 +470,7 @@ impl HardwareRuntime {
         app: &AppHandle,
         reason: HardwareEventReason,
     ) -> Result<HardwareStateV1, String> {
+        self.stop_data_stream()?;
         let state = self.apply_state_update(app, reason, |state| {
             state.phase = HardwarePhase::DeviceDisconnected;
             state.device = None;
@@ -439,14 +489,6 @@ impl HardwareRuntime {
     ) -> Result<HardwareStateV1, String> {
         match action {
             HardwareActionV1::Probe => self.dispatch_probe(app, reason).await,
-            HardwareActionV1::GenerateBitstream {
-                source_name,
-                source_code,
-                output_path,
-            } => {
-                self.dispatch_generate(app, reason, source_name, source_code, output_path)
-                    .await
-            }
             HardwareActionV1::ProgramBitstream { bitstream_path } => {
                 self.dispatch_program(app, reason, bitstream_path).await
             }
@@ -555,9 +597,11 @@ impl HardwareRuntime {
             state.last_error = None;
         })?;
 
-        let probe_result = tauri::async_runtime::spawn_blocking(driver::probe_device)
-            .await
-            .map_err(|err| err.to_string())?;
+        let selector = self.access_config()?.selector;
+        let probe_result =
+            tauri::async_runtime::spawn_blocking(move || driver::probe_device(&selector))
+                .await
+                .map_err(|err| err.to_string())?;
 
         match probe_result {
             Ok(device) => self.apply_state_update(app, reason, |state| {
@@ -565,8 +609,6 @@ impl HardwareRuntime {
                     HardwarePhase::DeviceDisconnected
                 } else if device.config.programmed {
                     HardwarePhase::Programmed
-                } else if state.artifact.is_some() {
-                    HardwarePhase::BitstreamReady
                 } else {
                     HardwarePhase::DeviceReady
                 };
@@ -589,60 +631,14 @@ impl HardwareRuntime {
         }
     }
 
-    async fn dispatch_generate(
-        &self,
-        app: &AppHandle,
-        reason: HardwareEventReason,
-        source_name: String,
-        source_code: String,
-        output_path: Option<String>,
-    ) -> Result<HardwareStateV1, String> {
-        if source_code.trim().is_empty() {
-            let message = "Cannot generate bitstream from empty source".to_string();
-            self.apply_state_update(app, reason, |state| {
-                state.phase = HardwarePhase::Error;
-                state.last_error = Some(message.clone());
-                state.op_id = None;
-            })?;
-            return Err(message);
-        }
-
-        self.apply_state_update(app, reason, |state| {
-            state.phase = HardwarePhase::Generating;
-            state.op_id = Some(Self::next_operation_id("generate"));
-            state.last_error = None;
-        })?;
-
-        let generated_result = tauri::async_runtime::spawn_blocking(move || {
-            driver::generate_bitstream(&source_name, &source_code, output_path.as_deref())
-        })
-        .await
-        .map_err(|err| err.to_string())?;
-
-        match generated_result {
-            Ok(artifact) => self.apply_state_update(app, reason, |state| {
-                state.phase = HardwarePhase::BitstreamReady;
-                state.artifact = Some(artifact);
-                state.last_error = None;
-                state.op_id = None;
-            }),
-            Err(message) => {
-                self.apply_state_update(app, reason, |state| {
-                    state.phase = HardwarePhase::Error;
-                    state.last_error = Some(message.clone());
-                    state.op_id = None;
-                })?;
-                Err(message)
-            }
-        }
-    }
-
     async fn dispatch_program(
         &self,
         app: &AppHandle,
         reason: HardwareEventReason,
         bitstream_path: Option<String>,
     ) -> Result<HardwareStateV1, String> {
+        self.stop_data_stream()?;
+        let selector = self.access_config()?.selector;
         let artifact_path = {
             let guard = self
                 .state
@@ -671,8 +667,8 @@ impl HardwareRuntime {
         })?;
 
         let program_result = tauri::async_runtime::spawn_blocking(move || {
-            driver::program_bitstream(&target_path)?;
-            driver::probe_device()
+            driver::program_bitstream(&selector, &target_path)?;
+            driver::probe_device(&selector)
         })
         .await
         .map_err(|err| err.to_string())?;
@@ -852,6 +848,7 @@ impl HardwareRuntime {
         if lowered.contains("not found")
             || lowered.contains("not connected")
             || lowered.contains("no device")
+            || lowered.contains("matched no")
             || lowered.contains("disconnected")
         {
             HardwarePhase::DeviceDisconnected

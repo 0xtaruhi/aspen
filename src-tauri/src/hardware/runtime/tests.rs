@@ -118,6 +118,34 @@ fn default_hardware_state_starts_with_empty_canvas() {
 }
 
 #[test]
+fn hardware_access_requires_explicit_credentials_and_preserves_board_selection() {
+    let runtime = HardwareRuntime::default();
+    assert_eq!(runtime.access_config().unwrap().customer_id, None);
+
+    let config = HardwareAccessConfigV1 {
+        selector: HardwareBoardSelectorV1::SerialNumber {
+            serial_number: "board-1".to_string(),
+        },
+        customer_id: Some(0x1234),
+    };
+    runtime.configure_access(config.clone()).unwrap();
+
+    assert_eq!(runtime.access_config().unwrap(), config);
+}
+
+#[test]
+fn board_selection_errors_distinguish_missing_and_ambiguous_devices() {
+    assert_eq!(
+        HardwareRuntime::probe_failure_phase("device selection matched no boards"),
+        HardwarePhase::DeviceDisconnected
+    );
+    assert_eq!(
+        HardwareRuntime::probe_failure_phase("device selection matched 2 boards"),
+        HardwarePhase::Error
+    );
+}
+
+#[test]
 fn aggregate_data_samples_tracks_latest_ratio_and_edges() {
     let mut queue = VecDeque::from([
         sample(&[(1, false), (2, true)]),
@@ -507,16 +535,19 @@ fn configure_data_stream_propagates_vericomm_clock_delays() {
 }
 
 #[test]
-fn io_config_uses_aspen_vlfd_customer_credentials() {
-    let config = HardwareRuntime::io_config_from_stream_config(&HardwareDataStreamConfigV1 {
-        vericomm_clock_high_delay: 7,
-        vericomm_clock_low_delay: 13,
-        ..HardwareDataStreamConfigV1::default()
-    });
+fn io_config_uses_configured_vlfd_customer_credentials() {
+    let config = HardwareRuntime::io_config_from_stream_config(
+        &HardwareDataStreamConfigV1 {
+            vericomm_clock_high_delay: 7,
+            vericomm_clock_low_delay: 13,
+            ..HardwareDataStreamConfigV1::default()
+        },
+        0x1234,
+    );
 
     assert_eq!(config.clock_high_delay, 7);
     assert_eq!(config.clock_low_delay, 13);
-    assert_eq!(config.licence, vlfd_rs::Licence::CustomerId(0xf805));
+    assert_eq!(config.licence, vlfd_rs::Licence::CustomerId(0x1234));
 }
 
 #[test]

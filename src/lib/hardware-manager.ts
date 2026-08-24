@@ -1,9 +1,17 @@
 import type { MessageKey } from '@/lib/i18n'
-import type { HardwareDeviceSnapshot, HardwarePhase } from '@/lib/hardware-client'
+import type {
+  HardwareBoardInfoV1,
+  HardwareBoardSelectorV1,
+  HardwareDeviceSnapshot,
+  HardwarePhase,
+} from '@/lib/hardware-client'
 
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { isTauri } from '@tauri-apps/api/core'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
 
+import { hardwareBoardSelectorKey, syncHardwareAccess } from '@/lib/hardware-access'
+import { hardwareListBoards } from '@/lib/hardware-client'
 import {
   getFpgaDeviceDescriptor,
   normalizeFpgaDeviceId,
@@ -14,6 +22,7 @@ import { useI18n } from '@/lib/i18n'
 import { hardwareStore } from '@/stores/hardware'
 import { programmingCatalogStore } from '@/stores/programming-catalog'
 import { projectStore } from '@/stores/project'
+import { settingsStore } from '@/stores/settings'
 
 export interface HardwareTarget {
   id: string
@@ -25,6 +34,27 @@ export interface HardwareTarget {
 }
 
 type Translate = (key: MessageKey, params?: Record<string, string | number>) => string
+
+export function parseVlfdCustomerId(value: string): number | null {
+  const normalized = value.trim()
+  const radix = normalized.toLowerCase().startsWith('0x') ? 16 : 10
+  const digits = radix === 16 ? normalized.slice(2) : normalized
+  if (!digits || !(radix === 16 ? /^[0-9a-f]+$/i : /^\d+$/.test(digits))) {
+    return null
+  }
+  const customerId = Number.parseInt(digits, radix)
+  return customerId <= 0xffff ? customerId : null
+}
+
+function boardLabel(board: HardwareBoardInfoV1) {
+  if (board.serial_number) {
+    return board.serial_number
+  }
+  if (board.selector.kind === 'usb_location') {
+    return `USB ${board.selector.bus_id}/${board.selector.port_chain.join('.')}`
+  }
+  return `USB #${board.address}`
+}
 
 export function buildHardwareTargets(
   status: HardwareDeviceSnapshot,
@@ -89,10 +119,6 @@ export function resolveHardwareFlowLabel(phase: HardwarePhase, t: Translate) {
       return t('probing')
     case 'device_ready':
       return t('ready')
-    case 'generating':
-      return t('generating')
-    case 'bitstream_ready':
-      return t('bitstreamReady')
     case 'programming':
       return t('programming')
     case 'error':
@@ -105,13 +131,10 @@ export function resolveHardwareFlowLabel(phase: HardwarePhase, t: Translate) {
 }
 
 export function resolveHardwareFlowBadgeClass(phase: HardwarePhase) {
-  if (phase === 'bitstream_ready') {
-    return 'text-green-600 bg-green-500/10 border-green-200'
-  }
   if (phase === 'error' || phase === 'device_disconnected') {
     return 'text-destructive bg-destructive/10 border-destructive/20'
   }
-  if (phase === 'generating' || phase === 'programming' || phase === 'probing') {
+  if (phase === 'programming' || phase === 'probing') {
     return 'text-blue-600 bg-blue-500/10 border-blue-200'
   }
   return ''
@@ -120,8 +143,6 @@ export function resolveHardwareFlowBadgeClass(phase: HardwarePhase) {
 export function shouldShowHardwareFlowBadge(phase: HardwarePhase) {
   return (
     phase === 'probing' ||
-    phase === 'generating' ||
-    phase === 'bitstream_ready' ||
     phase === 'programming' ||
     phase === 'error' ||
     phase === 'device_disconnected'
@@ -135,6 +156,12 @@ export function useHardwareManagerState() {
   const programMessage = ref('')
   const programMessageTone = ref<'success' | 'error'>('success')
   const bitstreamFile = ref('')
+  const availableBoards = ref<HardwareBoardInfoV1[]>([])
+  const customerIdInput = ref(
+    settingsStore.state.vlfdCustomerId === null
+      ? ''
+      : `0x${settingsStore.state.vlfdCustomerId.toString(16)}`,
+  )
 
   const hardwareState = hardwareStore.state
   const hotplugLog = hardwareStore.hotplugLog
@@ -147,11 +174,7 @@ export function useHardwareManagerState() {
     return message ? describeHardwareError(message, { phase: flowPhase.value }) : ''
   })
   const isBusy = computed(() => {
-    return (
-      flowPhase.value === 'probing' ||
-      flowPhase.value === 'generating' ||
-      flowPhase.value === 'programming'
-    )
+    return flowPhase.value === 'probing' || flowPhase.value === 'programming'
   })
   const isConnecting = computed(() => flowPhase.value === 'probing')
   const isProgramming = computed(() => flowPhase.value === 'programming')
@@ -188,6 +211,21 @@ export function useHardwareManagerState() {
   const flowLabel = computed(() => resolveHardwareFlowLabel(flowPhase.value, t))
   const showToolbarFlowBadge = computed(() => shouldShowHardwareFlowBadge(flowPhase.value))
   const flowBadgeClass = computed(() => resolveHardwareFlowBadgeClass(flowPhase.value))
+  const boardOptions = computed(() => [
+    {
+      key: 'only',
+      label: t('automaticSingleBoard'),
+      selector: { kind: 'only' } as HardwareBoardSelectorV1,
+    },
+    ...availableBoards.value.map((board) => ({
+      key: hardwareBoardSelectorKey(board.selector),
+      label: boardLabel(board),
+      selector: board.selector,
+    })),
+  ])
+  const selectedBoardKey = computed(() =>
+    hardwareBoardSelectorKey(settingsStore.state.hardwareBoardSelector),
+  )
 
   watch(
     targets,
@@ -217,10 +255,55 @@ export function useHardwareManagerState() {
     programMessageTone.value = 'success'
 
     try {
+      await refreshBoards()
       await hardwareStore.probe()
     } catch (error) {
       programMessageTone.value = 'error'
       programMessage.value = t('probeFailed', { message: describeHardwareError(error) })
+    }
+  }
+
+  async function refreshBoards() {
+    if (!isTauri()) {
+      availableBoards.value = []
+      return
+    }
+    availableBoards.value = await hardwareListBoards()
+  }
+
+  async function handleBoardSelection(value: unknown) {
+    if (typeof value !== 'string') {
+      return
+    }
+    const option = boardOptions.value.find((candidate) => candidate.key === value)
+    if (!option) {
+      return
+    }
+    settingsStore.setHardwareBoardSelector(option.selector)
+    try {
+      await syncHardwareAccess()
+      await autoConnect()
+    } catch (error) {
+      programMessageTone.value = 'error'
+      programMessage.value = t('probeFailed', { message: describeHardwareError(error) })
+    }
+  }
+
+  async function commitCustomerId() {
+    const customerId = parseVlfdCustomerId(customerIdInput.value)
+    if (customerId === null) {
+      programMessageTone.value = 'error'
+      programMessage.value = t('invalidVlfdCustomerId')
+      return
+    }
+    settingsStore.setVlfdCustomerId(customerId)
+    customerIdInput.value = `0x${customerId.toString(16)}`
+    try {
+      await syncHardwareAccess()
+      programMessage.value = ''
+    } catch (error) {
+      programMessageTone.value = 'error'
+      programMessage.value = describeHardwareError(error)
     }
   }
 
@@ -268,6 +351,13 @@ export function useHardwareManagerState() {
     isProgramDialogOpen.value = true
   }
 
+  onMounted(() => {
+    void refreshBoards().catch((error) => {
+      programMessageTone.value = 'error'
+      programMessage.value = describeHardwareError(error)
+    })
+  })
+
   async function pickBitstream() {
     const selected = await openDialog({
       multiple: false,
@@ -285,9 +375,12 @@ export function useHardwareManagerState() {
 
   return {
     autoConnect,
+    boardOptions,
     bitstreamFile,
     canOpenProgramDialog,
     canProgram,
+    commitCustomerId,
+    customerIdInput,
     defaultBitstreamPath,
     disconnect,
     errorMessage,
@@ -299,12 +392,14 @@ export function useHardwareManagerState() {
     isConnecting,
     isProgramDialogOpen,
     isProgramming,
+    handleBoardSelection,
     openProgramDialog,
     pickBitstream,
     programDevice,
     programMessage,
     programMessageTone,
     refreshStatus,
+    selectedBoardKey,
     selectedDevice,
     selectedTargetId,
     showToolbarFlowBadge,

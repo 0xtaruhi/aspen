@@ -10,6 +10,7 @@ import {
   listenHardwareDeviceSnapshot,
   listenHardwareStateChanged,
 } from '@/lib/hardware-client'
+import { syncHardwareAccess } from '@/lib/hardware-access'
 import { translate } from '@/lib/i18n'
 
 import { getErrorMessage, isTauriUnavailable } from './hardware-runtime-errors'
@@ -106,6 +107,7 @@ export async function start() {
 
   startPromise = (async () => {
     try {
+      await syncHardwareAccess()
       await syncState()
       await registerRuntimeListeners()
 

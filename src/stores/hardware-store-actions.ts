@@ -2,6 +2,8 @@ import type { HardwareActionV1, HardwareStateV1 } from '@/lib/hardware-client'
 
 import type { ComputedRef } from 'vue'
 
+import { syncHardwareAccess } from '@/lib/hardware-access'
+
 import {
   dispatch as dispatchRuntimeAction,
   hardwareRuntimeStore,
@@ -36,23 +38,12 @@ export function createHardwareStoreActions(state: ComputedRef<HardwareStateV1>) 
   }
 
   async function probe() {
+    await syncHardwareAccess()
     return dispatch({ type: 'probe' })
   }
 
-  async function generateBitstream(
-    sourceName: string,
-    sourceCode: string,
-    outputPath?: string | null,
-  ) {
-    return dispatch({
-      type: 'generate_bitstream',
-      source_name: sourceName,
-      source_code: sourceCode,
-      output_path: outputPath ?? null,
-    })
-  }
-
   async function programBitstream(bitstreamPath?: string | null) {
+    await syncHardwareAccess()
     return dispatch({
       type: 'program_bitstream',
       bitstream_path: bitstreamPath ?? null,
@@ -71,7 +62,6 @@ export function createHardwareStoreActions(state: ComputedRef<HardwareStateV1>) 
     probe,
     dispatch,
     syncState,
-    generateBitstream,
     programBitstream,
     ...canvasActions,
     clearError,

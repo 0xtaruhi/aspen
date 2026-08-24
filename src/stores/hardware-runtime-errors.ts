@@ -16,19 +16,13 @@ export function isTauriUnavailable(err: unknown): boolean {
 }
 
 export function isRuntimeOnlyAction(action: HardwareActionV1): boolean {
-  return (
-    action.type === 'probe' ||
-    action.type === 'generate_bitstream' ||
-    action.type === 'program_bitstream'
-  )
+  return action.type === 'probe' || action.type === 'program_bitstream'
 }
 
 export function runtimeUnavailableMessage(action: HardwareActionV1): string {
   switch (action.type) {
     case 'probe':
       return 'Hardware probing is unavailable in browser mode. Run the desktop app to connect to FPGA hardware.'
-    case 'generate_bitstream':
-      return 'Bitstream generation is unavailable in browser mode. Run the desktop app to build FPGA bitstreams.'
     case 'program_bitstream':
       return 'Bitstream programming is unavailable in browser mode. Run the desktop app to program FPGA hardware.'
     default:

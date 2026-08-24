@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use vlfd_rs::Config;
+use vlfd_rs::{BoardInfo, Config};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -7,8 +7,6 @@ pub enum HardwarePhase {
     Idle,
     Probing,
     DeviceReady,
-    Generating,
-    BitstreamReady,
     Programming,
     Programmed,
     DeviceDisconnected,
@@ -52,6 +50,57 @@ pub struct HardwareDeviceSnapshot {
     pub board: String,
     pub description: String,
     pub config: HardwareConfigSnapshot,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum HardwareBoardSelectorV1 {
+    #[default]
+    Only,
+    SerialNumber {
+        serial_number: String,
+    },
+    UsbLocation {
+        bus_id: String,
+        port_chain: Vec<u8>,
+    },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+pub struct HardwareAccessConfigV1 {
+    pub selector: HardwareBoardSelectorV1,
+    pub customer_id: Option<u16>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct HardwareBoardInfoV1 {
+    pub selector: HardwareBoardSelectorV1,
+    pub address: u8,
+    pub serial_number: Option<String>,
+    pub vendor_id: u16,
+    pub product_id: u16,
+}
+
+impl From<BoardInfo> for HardwareBoardInfoV1 {
+    fn from(board: BoardInfo) -> Self {
+        let selector = match &board.serial_number {
+            Some(serial_number) => HardwareBoardSelectorV1::SerialNumber {
+                serial_number: serial_number.clone(),
+            },
+            None => HardwareBoardSelectorV1::UsbLocation {
+                bus_id: board.location.bus_id.clone(),
+                port_chain: board.location.port_chain.clone(),
+            },
+        };
+
+        Self {
+            selector,
+            address: board.address,
+            serial_number: board.serial_number,
+            vendor_id: board.vendor_id,
+            product_id: board.product_id,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -547,11 +596,6 @@ impl Default for HardwareDataStreamConfigV1 {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum HardwareActionV1 {
     Probe,
-    GenerateBitstream {
-        source_name: String,
-        source_code: String,
-        output_path: Option<String>,
-    },
     ProgramBitstream {
         bitstream_path: Option<String>,
     },
@@ -581,12 +625,6 @@ pub enum HardwareActionV1 {
         is_on: bool,
     },
     ClearError,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct BitstreamGenerationResult {
-    pub path: String,
-    pub bytes: usize,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

@@ -1,4 +1,8 @@
 {
+  "automaticSingleBoard": "自動（單板）",
+  "selectVlfdBoard": "選擇 VLFD 板卡",
+  "vlfdCustomerId": "VLFD 客戶號",
+  "invalidVlfdCustomerId": "請輸入 0 到 0xffff 範圍內的客戶號。",
   "application": "應用程式",
   "implementation": "實作",
   "pinPlanning": "腳位規劃",

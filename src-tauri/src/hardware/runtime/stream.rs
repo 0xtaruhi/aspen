@@ -14,7 +14,8 @@ use tauri::{AppHandle, Emitter};
 use vlfd_rs::{Board, IoConfig, IoTransferWindow, Licence};
 
 use crate::hardware::types::{
-    HardwareDataSignalCatalogEntryV1, HardwareDataSignalCatalogV1, HardwareDataStreamConfigV1,
+    HardwareAccessConfigV1, HardwareDataSignalCatalogEntryV1, HardwareDataSignalCatalogV1,
+    HardwareDataStreamConfigV1,
 };
 
 use super::*;
@@ -27,10 +28,6 @@ use lifecycle::DecodeWorker;
 use schedule::{StreamRateWindowSample, StreamScheduleAnchor};
 
 pub(super) const UNMAPPED_SIGNAL_ID: u16 = u16::MAX;
-
-// Customer identifier issued for the VLFD boards used by Aspen. Historical
-// board credentials encode this value as the F805 serial-number segment.
-const VLFD_CUSTOMER_ID: u16 = 0xf805;
 
 struct PendingStreamTransfer {
     config_generation: u64,
@@ -47,11 +44,14 @@ struct PendingStreamTransfer {
 }
 
 impl HardwareRuntime {
-    pub(super) fn io_config_from_stream_config(config: &HardwareDataStreamConfigV1) -> IoConfig {
+    pub(super) fn io_config_from_stream_config(
+        config: &HardwareDataStreamConfigV1,
+        customer_id: u16,
+    ) -> IoConfig {
         IoConfig {
             clock_high_delay: config.vericomm_clock_high_delay,
             clock_low_delay: config.vericomm_clock_low_delay,
-            ..IoConfig::new(Licence::CustomerId(VLFD_CUSTOMER_ID))
+            ..IoConfig::new(Licence::CustomerId(customer_id))
         }
     }
 
@@ -60,6 +60,7 @@ impl HardwareRuntime {
         app: AppHandle,
         stop_flag: Arc<AtomicBool>,
         data_stream_config: Arc<Mutex<HardwareDataStreamConfigV1>>,
+        access: HardwareAccessConfigV1,
     ) {
         let (free_buffer_tx, free_buffer_rx) = mpsc::sync_channel(STREAM_BUFFER_POOL_CAPACITY);
         let decode_worker = match DecodeWorker::spawn(
@@ -86,7 +87,17 @@ impl HardwareRuntime {
             }
         };
 
-        let mut board = match Board::open() {
+        let selector = match driver::board_selector(&access.selector) {
+            Ok(selector) => selector,
+            Err(err) => {
+                self.record_data_stream_error(err);
+                if let Err(err) = decode_worker.shutdown() {
+                    self.record_data_stream_error(err);
+                }
+                return;
+            }
+        };
+        let mut board = match Board::open_selected(&selector) {
             Ok(board) => board,
             Err(err) => {
                 self.record_data_stream_error(err.to_string());
@@ -99,7 +110,14 @@ impl HardwareRuntime {
 
         let fifo_words =
             usize::from(board.config().fifo_size()).max(usize::from(DATA_DEFAULT_WORDS_PER_CYCLE));
-        let io_config = Self::io_config_from_stream_config(&initial_stream_config);
+        let Some(customer_id) = access.customer_id else {
+            self.record_data_stream_error("VLFD customer ID is not configured");
+            if let Err(err) = decode_worker.shutdown() {
+                self.record_data_stream_error(err);
+            }
+            return;
+        };
+        let io_config = Self::io_config_from_stream_config(&initial_stream_config, customer_id);
         let mut io = match board.configure_io(&io_config) {
             Ok(io) => io,
             Err(err) => {
