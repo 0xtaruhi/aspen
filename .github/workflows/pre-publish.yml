@@ -9,6 +9,8 @@ permissions:
 jobs:
   full-ci:
     name: Full release dry run
+    permissions:
+      contents: write
     uses: ./.github/workflows/ci.yml
     with:
       release_dry_run: true
