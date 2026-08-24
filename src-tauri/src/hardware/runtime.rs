@@ -191,9 +191,10 @@ impl Default for HardwareRuntime {
 
 impl HardwareRuntime {
     pub fn attach_app_handle(&self, app: AppHandle) {
-        if let Ok(mut guard) = self.app_handle.lock() {
-            *guard = Some(app);
-        }
+        *self
+            .app_handle
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(app);
     }
 
     pub fn snapshot(&self) -> Result<HardwareStateV1, String> {
@@ -280,19 +281,7 @@ impl HardwareRuntime {
         self.invalidate_waveform_snapshot()?;
 
         self.update_data_stream_status(|status| {
-            status.target_hz = config.target_hz;
-            status.words_per_cycle = config.words_per_cycle;
-            status.min_batch_cycles = config.min_batch_cycles;
-            status.max_wait_us = config.max_wait_us;
-            status.vericomm_clock_high_delay = config.vericomm_clock_high_delay;
-            status.vericomm_clock_low_delay = config.vericomm_clock_low_delay;
-            status.configured_signal_count = config
-                .input_signal_order
-                .iter()
-                .chain(config.output_signal_order.iter())
-                .filter(|signal| !signal.trim().is_empty())
-                .count()
-                .min(u16::MAX as usize) as u16;
+            Self::apply_stream_config(status, &config);
             status.last_error = None;
         })?;
 
@@ -360,7 +349,10 @@ impl HardwareRuntime {
         };
 
         if let Some(session) = stale_session {
-            let _ = session.handle.join();
+            session
+                .handle
+                .join()
+                .map_err(|_| "hardware data stream thread panicked".to_string())?;
         }
 
         self.invalidate_waveform_snapshot()?;
@@ -393,26 +385,8 @@ impl HardwareRuntime {
 
         self.update_data_stream_status(|status| {
             status.running = true;
-            status.target_hz = config.target_hz;
-            status.actual_hz = 0.0;
-            status.transfer_rate_hz = 0.0;
-            status.queue_fill = 0;
-            status.last_batch_at_ms = 0;
-            status.last_batch_cycles = 0;
-            status.sequence = 0;
-            status.dropped_samples = 0;
-            status.words_per_cycle = config.words_per_cycle;
-            status.min_batch_cycles = config.min_batch_cycles;
-            status.max_wait_us = config.max_wait_us;
-            status.vericomm_clock_high_delay = config.vericomm_clock_high_delay;
-            status.vericomm_clock_low_delay = config.vericomm_clock_low_delay;
-            status.configured_signal_count = config
-                .input_signal_order
-                .iter()
-                .chain(config.output_signal_order.iter())
-                .filter(|signal| !signal.trim().is_empty())
-                .count()
-                .min(u16::MAX as usize) as u16;
+            Self::apply_stream_config(status, &config);
+            Self::clear_stream_progress(status);
             status.last_error = None;
         })
     }
@@ -429,20 +403,17 @@ impl HardwareRuntime {
 
         if let Some(session) = session {
             session.stop_flag.store(true, Ordering::Relaxed);
-            let _ = session.handle.join();
+            session
+                .handle
+                .join()
+                .map_err(|_| "hardware data stream thread panicked".to_string())?;
         }
 
         self.invalidate_waveform_snapshot()?;
 
         self.update_data_stream_status(|status| {
             status.running = false;
-            status.actual_hz = 0.0;
-            status.transfer_rate_hz = 0.0;
-            status.sequence = 0;
-            status.dropped_samples = 0;
-            status.queue_fill = 0;
-            status.last_batch_at_ms = 0;
-            status.last_batch_cycles = 0;
+            Self::clear_stream_progress(status);
             status.last_error = None;
         })
     }
@@ -808,6 +779,35 @@ impl HardwareRuntime {
         }
 
         Ok(())
+    }
+
+    fn apply_stream_config(
+        status: &mut HardwareDataStreamStatusV1,
+        config: &HardwareDataStreamConfigV1,
+    ) {
+        status.target_hz = config.target_hz;
+        status.words_per_cycle = config.words_per_cycle;
+        status.min_batch_cycles = config.min_batch_cycles;
+        status.max_wait_us = config.max_wait_us;
+        status.vericomm_clock_high_delay = config.vericomm_clock_high_delay;
+        status.vericomm_clock_low_delay = config.vericomm_clock_low_delay;
+        status.configured_signal_count = config
+            .input_signal_order
+            .iter()
+            .chain(&config.output_signal_order)
+            .filter(|signal| !signal.trim().is_empty())
+            .count()
+            .min(u16::MAX as usize) as u16;
+    }
+
+    fn clear_stream_progress(status: &mut HardwareDataStreamStatusV1) {
+        status.actual_hz = 0.0;
+        status.transfer_rate_hz = 0.0;
+        status.sequence = 0;
+        status.dropped_samples = 0;
+        status.queue_fill = 0;
+        status.last_batch_at_ms = 0;
+        status.last_batch_cycles = 0;
     }
 
     fn emit_data_stream_status(

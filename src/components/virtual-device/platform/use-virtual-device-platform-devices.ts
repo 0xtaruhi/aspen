@@ -22,7 +22,6 @@ export function useVirtualDevicePlatformDevices({
   describeError,
 }: UseVirtualDevicePlatformDevicesOptions) {
   const { t } = useI18n()
-  const selectedDeviceId = ref<string | null>(null)
   const selectedDeviceIds = ref<string[]>([])
   const inspectorOpen = ref(false)
   const manualDialogOpen = ref(false)
@@ -31,11 +30,11 @@ export function useVirtualDevicePlatformDevices({
   const hasCanvasDevices = computed(() => canvasDevices.value.length > 0)
 
   const selectedDevice = computed(() => {
-    if (!selectedDeviceId.value) {
+    if (selectedDeviceIds.value.length !== 1) {
       return null
     }
 
-    return canvasDevices.value.find((device) => device.id === selectedDeviceId.value) ?? null
+    return canvasDevices.value.find((device) => device.id === selectedDeviceIds.value[0]) ?? null
   })
   const manualDevice = computed(() => {
     if (!manualDeviceId.value) {
@@ -47,7 +46,6 @@ export function useVirtualDevicePlatformDevices({
 
   function openInspectorForDevice(id: string) {
     selectedDeviceIds.value = [id]
-    selectedDeviceId.value = id
     inspectorOpen.value = true
   }
 
@@ -74,7 +72,6 @@ export function useVirtualDevicePlatformDevices({
   }
 
   function resetDeviceUiState() {
-    selectedDeviceId.value = null
     selectedDeviceIds.value = []
     inspectorOpen.value = false
     manualDialogOpen.value = false
@@ -213,7 +210,6 @@ export function useVirtualDevicePlatformDevices({
     openManualForSelectedDevice,
     resetDeviceUiState,
     selectedDevice,
-    selectedDeviceId,
     selectedDeviceIds,
   }
 }
