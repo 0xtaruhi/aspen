@@ -1,12 +1,12 @@
 <script setup lang="ts">
+import type { CanvasInteractionMode } from './types'
+
 import { Activity, Hand, LayoutGrid, Play, ScanSearch, Square } from '@lucide/vue'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useI18n } from '@/lib/i18n'
-
-import type { CanvasInteractionMode } from './types'
 
 const props = defineProps<{
   interactionMode: CanvasInteractionMode

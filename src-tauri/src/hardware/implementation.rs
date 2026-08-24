@@ -116,13 +116,22 @@ where
         )
     })?;
 
-    let constraint_set =
-        load_constraint_set(&artifacts.constraint_path).map_err(|err| err.to_string())?;
+    let constraint_set = load_constraint_set(&artifacts.constraint_path).map_err(|err| {
+        format!(
+            "Failed to load constraint set '{}': {err}",
+            artifacts.constraint_path.display()
+        )
+    })?;
     let constraints = Arc::<[_]>::from(constraint_set.pins);
     let sta_timing = StaTimingContext {
         clocks: Arc::from(constraint_set.clocks),
         cell_timing: Some(Arc::new(
-            load_cell_timing_model(&resource_paths.pack_cell).map_err(|err| err.to_string())?,
+            load_cell_timing_model(&resource_paths.pack_cell).map_err(|err| {
+                format!(
+                    "Failed to load cell timing model '{}': {err}",
+                    resource_paths.pack_cell.display()
+                )
+            })?,
         )),
     };
     let arch = Arc::new(load_arch(&resource_paths.arch).map_err(|err| err.to_string())?);
