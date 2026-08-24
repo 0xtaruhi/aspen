@@ -19,7 +19,6 @@ export function hardwareBoardSelectorKey(selector: HardwareBoardSelectorV1) {
 export function currentHardwareAccessConfig(): HardwareAccessConfigV1 {
   return {
     selector: settingsStore.state.hardwareBoardSelector,
-    customer_id: settingsStore.state.vlfdCustomerId,
   }
 }
 

@@ -276,8 +276,6 @@
   "autoConnect": "自动连接",
   "automaticSingleBoard": "自动（单板）",
   "selectVlfdBoard": "选择 VLFD 板卡",
-  "vlfdCustomerId": "VLFD 客户号",
-  "invalidVlfdCustomerId": "请输入 0 到 0xffff 范围内的客户号。",
   "disconnectHardware": "断开连接",
   "refreshTargets": "刷新目标",
   "programDeviceShort": "烧录...",

@@ -69,7 +69,6 @@ pub enum HardwareBoardSelectorV1 {
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
 pub struct HardwareAccessConfigV1 {
     pub selector: HardwareBoardSelectorV1,
-    pub customer_id: Option<u16>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]

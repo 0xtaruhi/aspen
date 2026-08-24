@@ -28,6 +28,7 @@ use lifecycle::DecodeWorker;
 use schedule::{StreamRateWindowSample, StreamScheduleAnchor};
 
 pub(super) const UNMAPPED_SIGNAL_ID: u16 = u16::MAX;
+const VLFD_CUSTOMER_ID: u16 = 0xf805;
 
 struct PendingStreamTransfer {
     config_generation: u64,
@@ -44,14 +45,11 @@ struct PendingStreamTransfer {
 }
 
 impl HardwareRuntime {
-    pub(super) fn io_config_from_stream_config(
-        config: &HardwareDataStreamConfigV1,
-        customer_id: u16,
-    ) -> IoConfig {
+    pub(super) fn io_config_from_stream_config(config: &HardwareDataStreamConfigV1) -> IoConfig {
         IoConfig {
             clock_high_delay: config.vericomm_clock_high_delay,
             clock_low_delay: config.vericomm_clock_low_delay,
-            ..IoConfig::new(Licence::CustomerId(customer_id))
+            ..IoConfig::new(Licence::CustomerId(VLFD_CUSTOMER_ID))
         }
     }
 
@@ -110,14 +108,7 @@ impl HardwareRuntime {
 
         let fifo_words =
             usize::from(board.config().fifo_size()).max(usize::from(DATA_DEFAULT_WORDS_PER_CYCLE));
-        let Some(customer_id) = access.customer_id else {
-            self.record_data_stream_error("VLFD customer ID is not configured");
-            if let Err(err) = decode_worker.shutdown() {
-                self.record_data_stream_error(err);
-            }
-            return;
-        };
-        let io_config = Self::io_config_from_stream_config(&initial_stream_config, customer_id);
+        let io_config = Self::io_config_from_stream_config(&initial_stream_config);
         let mut io = match board.configure_io(&io_config) {
             Ok(io) => io,
             Err(err) => {
