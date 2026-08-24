@@ -15,13 +15,15 @@ export default defineConfig(async () => ({
   plugins: [vue(), tailwindcss()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      '@': path.resolve(import.meta.dirname, './src'),
       '@wavedrom-render-any': path.join(wavedromRoot, 'lib', 'render-any.js'),
       '@wavedrom-skin-default': path.join(wavedromRoot, 'skins', 'default.js'),
       '@onml-stringify': path.join(onmlRoot, 'stringify.js'),
     },
   },
   build: {
+    // Monaco is intentionally isolated and loaded only with the editor route.
+    chunkSizeWarningLimit: 2700,
     rollupOptions: {
       output: {
         manualChunks(id) {
@@ -39,7 +41,7 @@ export default defineConfig(async () => ({
 
           if (
             id.includes('/node_modules/reka-ui/') ||
-            id.includes('/node_modules/lucide-vue-next/') ||
+            id.includes('/node_modules/@lucide/vue/') ||
             id.includes('/node_modules/@tanstack/')
           ) {
             return 'ui-vendor'

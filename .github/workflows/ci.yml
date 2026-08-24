@@ -185,6 +185,12 @@ jobs:
       - name: Frontend lint
         run: pnpm lint
 
+      - name: Frontend format
+        run: pnpm format:check
+
+      - name: Traditional Chinese locale consistency
+        run: pnpm check:zh-tw-locale
+
       - name: Frontend typecheck
         run: pnpm typecheck
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ChevronsUpDown, Plus, FolderOpen, FolderX, Save, Box, Settings2 } from 'lucide-vue-next'
+import { ChevronsUpDown, Plus, FolderOpen, FolderX, Save, Box, Settings2 } from '@lucide/vue'
 import {
   DropdownMenu,
   DropdownMenuContent,

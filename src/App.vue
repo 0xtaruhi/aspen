@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Settings2 } from 'lucide-vue-next'
+import { Settings2 } from '@lucide/vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 
 import AppSidebar from '@/components/AppSidebar.vue'

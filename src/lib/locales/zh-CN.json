@@ -246,6 +246,8 @@
   "conflicts": "冲突",
   "duplicatePinAssignments": "检测到重复引脚分配",
   "pin": "引脚",
+  "clockPeriodNs": "时钟周期（ns）",
+  "clockPeriodPlaceholder": "例如 33.333",
   "selectPin": "选择引脚",
   "status": "状态",
   "mapped": "已映射",

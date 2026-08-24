@@ -181,9 +181,32 @@ fn cargo_manifest_uses_semver_rust_fde_dependency() {
     let cargo_toml =
         fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml")).unwrap();
     assert!(
-        cargo_toml.contains("fde = \"1.0\""),
-        "Aspen should depend on crates.io fde via a semver-compatible 1.0 requirement"
+        cargo_toml.contains("fde = \"1.1.0\""),
+        "Aspen should require the latest compatible crates.io fde baseline"
     );
+}
+
+#[test]
+fn sta_timing_success_follows_the_fde_timing_metric() {
+    let mut met = fde::StageReport::new("sta");
+    met.metric("timing_met", true);
+    assert!(sta_report_meets_constraints(&met));
+
+    let mut violated = fde::StageReport::new("sta");
+    violated.metric("timing_met", false);
+    assert!(!sta_report_meets_constraints(&violated));
+
+    let unconstrained = fde::StageReport::new("sta");
+    assert!(sta_report_meets_constraints(&unconstrained));
+}
+
+#[test]
+fn bundled_cell_library_loads_with_fde_1_1_timing_data() {
+    let resources = test_resource_paths();
+    let model = fde::load_cell_timing_model(&resources.pack_cell).expect("cell timing model");
+
+    assert!((model.sequential.setup_ns - 0.5).abs() < f64::EPSILON);
+    assert!((model.sequential.clock_to_q_ns - 1.0).abs() < f64::EPSILON);
 }
 
 #[test]
@@ -375,6 +398,7 @@ fn implementation_smoke_test_runs_with_division_logic_lowered_by_bundled_yosys()
                 "<design name=\"top\">",
                 "  <port name=\"clk\" position=\"P77\"/>",
                 "  <port name=\"led\" position=\"P7\"/>",
+                "  <clock name=\"clk\" port=\"clk\" period=\"33.333333\"/>",
                 "</design>",
                 "",
             ]
@@ -437,6 +461,7 @@ fn implementation_smoke_test_runs_with_division_logic_lowered_by_bundled_yosys()
             "<design name=\"top\">",
             "  <port name=\"clk\" position=\"P77\"/>",
             "  <port name=\"led\" position=\"P7\"/>",
+            "  <clock name=\"clk\" port=\"clk\" period=\"33.333333\"/>",
             "</design>",
             "",
         ]
@@ -474,6 +499,9 @@ fn implementation_smoke_test_runs_with_division_logic_lowered_by_bundled_yosys()
     .unwrap();
 
     assert!(report.success, "{}", report.log);
+    assert!(report.timing_success, "{}", report.timing_report);
+    assert!(report.timing_report.contains("Clock: clk on clk"));
+    assert!(report.timing_report.contains("Worst Slack:"));
     assert!(report.log.contains(">>> starting route"), "{}", report.log);
     assert!(report.log.contains(">>> starting bitgen"), "{}", report.log);
     assert!(report

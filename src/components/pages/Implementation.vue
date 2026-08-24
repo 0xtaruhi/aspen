@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ImplementationReportV1, ImplementationRequestV1 } from '@/lib/hardware-client'
 
-import { ArrowRight } from 'lucide-vue-next'
+import { ArrowRight } from '@lucide/vue'
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, Copy, X } from 'lucide-vue-next'
+import { Check, Copy, X } from '@lucide/vue'
 import { computed, ref } from 'vue'
 
 import { Button } from '@/components/ui/button'
@@ -105,8 +105,7 @@ async function copyReportContent() {
         <div class="min-h-0 min-w-0 flex-1 overflow-hidden px-4 py-4">
           <pre
             class="allow-text-select h-full min-h-0 min-w-0 max-w-full overflow-x-hidden overflow-y-auto whitespace-pre-wrap [overflow-wrap:anywhere] rounded-md border border-border bg-white px-3 py-3 font-mono text-[12px] leading-5 text-slate-950 dark:bg-black dark:text-white"
-            >{{ displayContent }}</pre
-          >
+            >{{ displayContent }}</pre>
         </div>
       </div>
     </DialogScrollContent>

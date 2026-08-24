@@ -32,8 +32,7 @@ function submit() {
     <div class="min-h-0 flex-1 overflow-hidden rounded-md border border-zinc-800 bg-[#0a0a0a]">
       <pre
         class="h-full overflow-auto whitespace-pre-wrap break-words px-3 py-2 font-mono text-[12px] leading-5 text-zinc-100"
-        >{{ props.textLog || t('uartTerminalIdle') }}</pre
-      >
+        >{{ props.textLog || t('uartTerminalIdle') }}</pre>
     </div>
     <div class="flex gap-2">
       <input

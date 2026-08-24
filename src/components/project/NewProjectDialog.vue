@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
-import { FolderOpen, FilePlus2, X } from 'lucide-vue-next'
+import { FolderOpen, FilePlus2, X } from '@lucide/vue'
 
 import {
   Dialog,

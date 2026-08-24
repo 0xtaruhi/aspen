@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import type { HTMLAttributes } from 'vue'
-import { MoreHorizontal } from 'lucide-vue-next'
+import { MoreHorizontal } from '@lucide/vue'
 
 import { useI18n } from '@/lib/i18n'
 import { cn } from '@/lib/utils'

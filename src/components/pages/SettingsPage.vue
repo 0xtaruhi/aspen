@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowDownToLine, Globe, MonitorCog, ShieldCheck } from 'lucide-vue-next'
+import { ArrowDownToLine, Globe, MonitorCog, ShieldCheck } from '@lucide/vue'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'

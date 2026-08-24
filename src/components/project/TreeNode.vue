@@ -10,7 +10,7 @@ import {
   FolderPlus,
   Trash2,
   Edit2,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import { useRouter } from 'vue-router'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'

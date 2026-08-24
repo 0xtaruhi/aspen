@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Activity, Hand, LayoutGrid, Play, ScanSearch, Square } from 'lucide-vue-next'
+import { Activity, Hand, LayoutGrid, Play, ScanSearch, Square } from '@lucide/vue'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'

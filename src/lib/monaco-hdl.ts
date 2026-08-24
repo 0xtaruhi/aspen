@@ -1,6 +1,6 @@
-import type * as Monaco from 'monaco-editor/esm/vs/editor/editor.api'
+import type * as Monaco from 'monaco-editor/editor/editor.api'
 
-import 'monaco-editor/esm/vs/basic-languages/systemverilog/systemverilog.contribution'
+import 'monaco-editor/languages/definitions/systemverilog/register'
 
 const HDL_LANGUAGE_IDS = ['verilog', 'systemverilog'] as const
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { HTMLAttributes } from 'vue'
-import { PanelLeft } from 'lucide-vue-next'
+import { PanelLeft } from '@lucide/vue'
 
 import { useI18n } from '@/lib/i18n'
 import { cn } from '@/lib/utils'

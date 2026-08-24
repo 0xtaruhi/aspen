@@ -20,7 +20,7 @@ The goal is simple: keep the full student and lab workflow in one place without 
 ## Highlights
 
 - Full desktop flow in one app: source editing, synthesis, pin planning, implementation, programming, and live hardware interaction.
-- Native Rust backend: Aspen links `fde = "1.0"` directly from crates.io instead of shelling out to a legacy monolith.
+- Native Rust backend: Aspen links `fde = "1.1.0"` directly from crates.io instead of shelling out to a legacy monolith.
 - Virtual device platform: test designs against interactive switches, buttons, displays, UART, VGA, audio PWM, and more.
 - Hardware-aware workflow: board discovery, programming, data streaming, and hotplug handling are built into the app.
 - Signed release updates: official tagged releases publish updater metadata so Aspen can check for updates in-app.
@@ -141,8 +141,8 @@ Aspen uses a protected `main` branch:
 
 - Aspen bundles its Yosys toolchain with `pnpm prepare:yosys-bundle`.
 - Aspen bundles `slang-server` with `pnpm prepare:slang-server-bundle`.
-- Implementation is provided by `fde = "1.0"` from crates.io.
-- USB communication is provided by `vlfd-rs = "3"`.
+- Implementation is provided by `fde = "1.1.0"` from crates.io.
+- USB communication is provided by `vlfd-rs = "4"`.
 
 ### HDL editor language server
 

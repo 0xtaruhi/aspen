@@ -13,7 +13,10 @@ use std::{
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
-use fde::{load_arch, load_cil, load_constraints, load_delay_model};
+use fde::{
+    load_arch, load_cell_timing_model, load_cil, load_constraint_set, load_delay_model,
+    StaTimingContext,
+};
 use tauri::AppHandle;
 
 use self::{
@@ -113,9 +116,15 @@ where
         )
     })?;
 
-    let constraints = Arc::<[_]>::from(
-        load_constraints(&artifacts.constraint_path).map_err(|err| err.to_string())?,
-    );
+    let constraint_set =
+        load_constraint_set(&artifacts.constraint_path).map_err(|err| err.to_string())?;
+    let constraints = Arc::<[_]>::from(constraint_set.pins);
+    let sta_timing = StaTimingContext {
+        clocks: Arc::from(constraint_set.clocks),
+        cell_timing: Some(Arc::new(
+            load_cell_timing_model(&resource_paths.pack_cell).map_err(|err| err.to_string())?,
+        )),
+    };
     let arch = Arc::new(load_arch(&resource_paths.arch).map_err(|err| err.to_string())?);
     let delay = Arc::new(
         load_delay_model(Some(&resource_paths.delay))
@@ -260,9 +269,11 @@ where
             &artifacts,
             &arch,
             &delay,
+            &sta_timing,
             &mut reporter,
         ) {
             Ok((artifact, report)) => {
+                let timing_success = sta_report_meets_constraints(&report);
                 let result = finish_success_stage(
                     stage,
                     true,
@@ -273,7 +284,7 @@ where
                     &mut sink,
                 )?;
                 stage_results.push(result);
-                (artifact.design, artifact.report_text, true)
+                (artifact.design, artifact.report_text, timing_success)
             }
             Err(err) => {
                 let result = finish_failed_stage(
@@ -342,6 +353,14 @@ where
         timing_report,
         generated_at_ms,
     })
+}
+
+fn sta_report_meets_constraints(report: &fde::StageReport) -> bool {
+    report
+        .metrics
+        .get("timing_met")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(true)
 }
 
 fn validate_request(request: &ImplementationRequestV1) -> Result<(), String> {

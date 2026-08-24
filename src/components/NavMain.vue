@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { LucideIcon } from 'lucide-vue-next'
-import { ChevronRight, LoaderCircle } from 'lucide-vue-next'
+import type { LucideIcon } from '@lucide/vue'
+import { ChevronRight, LoaderCircle } from '@lucide/vue'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   SidebarGroup,

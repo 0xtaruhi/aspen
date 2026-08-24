@@ -2,8 +2,8 @@ use std::{fs, sync::Arc};
 
 use fde::{
     load_map_input, run_bitgen_with_reporter, run_map_with_reporter, run_pack_with_reporter,
-    run_place_with_reporter, run_sta_with_reporter, BitgenOptions, Design, PlaceMode, PlaceOptions,
-    RouteOptions, StaArtifact, StaOptions, StageReporter,
+    run_place_with_reporter, run_sta_with_timing_and_reporter, BitgenOptions, Design, PlaceMode,
+    PlaceOptions, RouteOptions, StaArtifact, StaOptions, StaTimingContext, StageReporter,
 };
 
 use super::super::types::ImplementationPlaceModeV1;
@@ -165,14 +165,16 @@ pub(super) fn run_sta_stage(
     artifacts: &PlannedArtifacts,
     arch: &Arc<fde::Arch>,
     delay: &Arc<fde::DelayModel>,
+    timing: &StaTimingContext,
     reporter: &mut dyn StageReporter,
 ) -> Result<(StaArtifact, fde::StageReport), String> {
-    let mut result = run_sta_with_reporter(
+    let mut result = run_sta_with_timing_and_reporter(
         design,
         &StaOptions {
             arch: Some(Arc::clone(arch)),
             delay: Some(Arc::clone(delay)),
         },
+        timing,
         reporter,
     )
     .map_err(|err| err.to_string())?;

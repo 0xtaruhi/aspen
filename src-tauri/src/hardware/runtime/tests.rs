@@ -507,6 +507,19 @@ fn configure_data_stream_propagates_vericomm_clock_delays() {
 }
 
 #[test]
+fn io_config_uses_aspen_vlfd_customer_credentials() {
+    let config = HardwareRuntime::io_config_from_stream_config(&HardwareDataStreamConfigV1 {
+        vericomm_clock_high_delay: 7,
+        vericomm_clock_low_delay: 13,
+        ..HardwareDataStreamConfigV1::default()
+    });
+
+    assert_eq!(config.clock_high_delay, 7);
+    assert_eq!(config.clock_low_delay, 13);
+    assert_eq!(config.licence, vlfd_rs::Licence::CustomerId(0xf805));
+}
+
+#[test]
 fn set_waveform_enabled_updates_stream_config() {
     let runtime = HardwareRuntime::default();
     runtime

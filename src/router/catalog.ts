@@ -1,9 +1,5 @@
 export type AppModule =
-  | 'project-management'
-  | 'fpga-flow'
-  | 'hardware-manager'
-  | 'virtual-device-platform'
-  | 'settings'
+  'project-management' | 'fpga-flow' | 'hardware-manager' | 'virtual-device-platform' | 'settings'
 
 export type Page =
   | 'project-editor'

@@ -246,6 +246,8 @@
   "conflicts": "Conflicts",
   "duplicatePinAssignments": "Duplicate pin assignments detected",
   "pin": "Pin",
+  "clockPeriodNs": "Clock Period (ns)",
+  "clockPeriodPlaceholder": "e.g. 33.333",
   "selectPin": "Select a pin",
   "status": "Status",
   "mapped": "Mapped",
