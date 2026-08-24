@@ -38,6 +38,10 @@ describe('macOS window chrome regression', () => {
   it('delegates titlebar double-click behavior to AppKit and the user preference', () => {
     expect(windowChromeSource).toContain("invoke('app_perform_titlebar_double_click')")
     expect(windowChromeSource).not.toContain("'toggleMaximize'")
+    expect(appearanceSource).not.toContain('window.toggle_maximize()')
+    expect(appearanceSource).toContain('window.is_maximized()')
+    expect(appearanceSource).toContain('window.unmaximize()')
+    expect(appearanceSource).toContain('window.maximize()')
     expect(appearanceSource).toContain('AppleActionOnDoubleClick')
     expect(appearanceSource).toContain('AppleMiniaturizeOnDoubleClick')
     expect(appearanceSource).toContain('ns_window.zoom(None)')

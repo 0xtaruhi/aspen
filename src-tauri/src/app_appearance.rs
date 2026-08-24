@@ -182,7 +182,11 @@ pub fn app_perform_titlebar_double_click(app: tauri::AppHandle) -> Result<(), St
     }
 
     #[cfg(not(target_os = "macos"))]
-    window.toggle_maximize().map_err(|err| err.to_string())?;
+    if window.is_maximized().map_err(|err| err.to_string())? {
+        window.unmaximize().map_err(|err| err.to_string())?;
+    } else {
+        window.maximize().map_err(|err| err.to_string())?;
+    }
 
     Ok(())
 }
