@@ -35,17 +35,6 @@ export interface HardwareTarget {
 
 type Translate = (key: MessageKey, params?: Record<string, string | number>) => string
 
-export function parseVlfdCustomerId(value: string): number | null {
-  const normalized = value.trim()
-  const radix = normalized.toLowerCase().startsWith('0x') ? 16 : 10
-  const digits = radix === 16 ? normalized.slice(2) : normalized
-  if (!digits || !(radix === 16 ? /^[0-9a-f]+$/i : /^\d+$/.test(digits))) {
-    return null
-  }
-  const customerId = Number.parseInt(digits, radix)
-  return customerId <= 0xffff ? customerId : null
-}
-
 function boardLabel(board: HardwareBoardInfoV1) {
   if (board.serial_number) {
     return board.serial_number
@@ -157,11 +146,6 @@ export function useHardwareManagerState() {
   const programMessageTone = ref<'success' | 'error'>('success')
   const bitstreamFile = ref('')
   const availableBoards = ref<HardwareBoardInfoV1[]>([])
-  const customerIdInput = ref(
-    settingsStore.state.vlfdCustomerId === null
-      ? ''
-      : `0x${settingsStore.state.vlfdCustomerId.toString(16)}`,
-  )
 
   const hardwareState = hardwareStore.state
   const hotplugLog = hardwareStore.hotplugLog
@@ -289,24 +273,6 @@ export function useHardwareManagerState() {
     }
   }
 
-  async function commitCustomerId() {
-    const customerId = parseVlfdCustomerId(customerIdInput.value)
-    if (customerId === null) {
-      programMessageTone.value = 'error'
-      programMessage.value = t('invalidVlfdCustomerId')
-      return
-    }
-    settingsStore.setVlfdCustomerId(customerId)
-    customerIdInput.value = `0x${customerId.toString(16)}`
-    try {
-      await syncHardwareAccess()
-      programMessage.value = ''
-    } catch (error) {
-      programMessageTone.value = 'error'
-      programMessage.value = describeHardwareError(error)
-    }
-  }
-
   async function refreshStatus() {
     await autoConnect()
   }
@@ -379,8 +345,6 @@ export function useHardwareManagerState() {
     bitstreamFile,
     canOpenProgramDialog,
     canProgram,
-    commitCustomerId,
-    customerIdInput,
     defaultBitstreamPath,
     disconnect,
     errorMessage,

@@ -118,15 +118,13 @@ fn default_hardware_state_starts_with_empty_canvas() {
 }
 
 #[test]
-fn hardware_access_requires_explicit_credentials_and_preserves_board_selection() {
+fn hardware_access_preserves_board_selection() {
     let runtime = HardwareRuntime::default();
-    assert_eq!(runtime.access_config().unwrap().customer_id, None);
 
     let config = HardwareAccessConfigV1 {
         selector: HardwareBoardSelectorV1::SerialNumber {
             serial_number: "board-1".to_string(),
         },
-        customer_id: Some(0x1234),
     };
     runtime.configure_access(config.clone()).unwrap();
 
@@ -535,19 +533,16 @@ fn configure_data_stream_propagates_vericomm_clock_delays() {
 }
 
 #[test]
-fn io_config_uses_configured_vlfd_customer_credentials() {
-    let config = HardwareRuntime::io_config_from_stream_config(
-        &HardwareDataStreamConfigV1 {
-            vericomm_clock_high_delay: 7,
-            vericomm_clock_low_delay: 13,
-            ..HardwareDataStreamConfigV1::default()
-        },
-        0x1234,
-    );
+fn io_config_uses_aspen_vlfd_customer_id() {
+    let config = HardwareRuntime::io_config_from_stream_config(&HardwareDataStreamConfigV1 {
+        vericomm_clock_high_delay: 7,
+        vericomm_clock_low_delay: 13,
+        ..HardwareDataStreamConfigV1::default()
+    });
 
     assert_eq!(config.clock_high_delay, 7);
     assert_eq!(config.clock_low_delay, 13);
-    assert_eq!(config.licence, vlfd_rs::Licence::CustomerId(0x1234));
+    assert_eq!(config.licence, vlfd_rs::Licence::CustomerId(0xf805));
 }
 
 #[test]

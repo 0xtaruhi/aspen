@@ -375,9 +375,6 @@ impl HardwareRuntime {
         };
         Self::validate_stream_config(&config)?;
         let access = self.access_config()?;
-        if access.customer_id.is_none() {
-            return Err("VLFD customer ID is not configured".to_string());
-        }
 
         let stale_session = {
             let mut guard = self

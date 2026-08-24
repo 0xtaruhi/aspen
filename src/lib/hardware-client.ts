@@ -34,7 +34,6 @@ export type HardwareBoardSelectorV1 =
 
 export interface HardwareAccessConfigV1 {
   selector: HardwareBoardSelectorV1
-  customer_id: number | null
 }
 
 export interface HardwareBoardInfoV1 {

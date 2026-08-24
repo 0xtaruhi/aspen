@@ -5,7 +5,6 @@ import type { MessageKey } from '@/lib/i18n'
 
 import {
   buildHardwareTargets,
-  parseVlfdCustomerId,
   resolveHardwareFlowBadgeClass,
   resolveHardwareFlowLabel,
   shouldShowHardwareFlowBadge,
@@ -95,12 +94,5 @@ describe('hardware manager helpers', () => {
 
     expect(shouldShowHardwareFlowBadge('idle')).toBe(false)
     expect(shouldShowHardwareFlowBadge('device_ready')).toBe(false)
-  })
-
-  it('accepts decimal and hexadecimal VLFD customer IDs', () => {
-    expect(parseVlfdCustomerId('0x1234')).toBe(0x1234)
-    expect(parseVlfdCustomerId('4660')).toBe(0x1234)
-    expect(parseVlfdCustomerId('0x10000')).toBeNull()
-    expect(parseVlfdCustomerId('invalid')).toBeNull()
   })
 })

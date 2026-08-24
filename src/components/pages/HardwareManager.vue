@@ -30,8 +30,6 @@ const {
   bitstreamFile,
   canOpenProgramDialog,
   canProgram,
-  commitCustomerId,
-  customerIdInput,
   defaultBitstreamPath,
   disconnect,
   errorMessage,
@@ -134,19 +132,6 @@ const {
                 </SelectItem>
               </SelectContent>
             </Select>
-            <div class="grid gap-1">
-              <label for="vlfd-customer-id" class="text-xs text-muted-foreground">
-                {{ t('vlfdCustomerId') }}
-              </label>
-              <Input
-                id="vlfd-customer-id"
-                v-model="customerIdInput"
-                class="h-8 font-mono"
-                placeholder="0x0000"
-                @blur="commitCustomerId"
-                @keydown.enter.prevent="commitCustomerId"
-              />
-            </div>
           </div>
           <div class="p-2 font-medium text-xs text-muted-foreground uppercase tracking-wider mb-2">
             {{ t('hardwareTargets') }}

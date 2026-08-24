@@ -22,7 +22,6 @@ type SettingsState = {
   editorMinimap: boolean
   confirmDelete: boolean
   hardwareBoardSelector: HardwareBoardSelectorV1
-  vlfdCustomerId: number | null
 }
 
 const STORAGE_KEY = 'aspen-settings'
@@ -117,12 +116,6 @@ function normalizeHardwareBoardSelector(value: unknown): HardwareBoardSelectorV1
   return { kind: 'only' }
 }
 
-function normalizeVlfdCustomerId(value: unknown) {
-  return Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 0xffff
-    ? Number(value)
-    : null
-}
-
 const defaultLanguage = detectPreferredLanguage()
 
 const defaultSettings: SettingsState = {
@@ -134,7 +127,6 @@ const defaultSettings: SettingsState = {
   editorMinimap: true,
   confirmDelete: true,
   hardwareBoardSelector: { kind: 'only' },
-  vlfdCustomerId: null,
 }
 
 function applyLanguage(language: AppLanguage) {
@@ -169,7 +161,6 @@ function readStoredSettings(): Partial<SettingsState> {
       themeAccent: normalizeThemeAccentColor(parsed.themeAccent),
       editorFontFamily: normalizeEditorFontFamily(parsed.editorFontFamily),
       hardwareBoardSelector: normalizeHardwareBoardSelector(parsed.hardwareBoardSelector),
-      vlfdCustomerId: normalizeVlfdCustomerId(parsed.vlfdCustomerId),
     }
   } catch (_) {
     return {}
@@ -208,7 +199,6 @@ export const settingsStore = {
     state.themeAccent = normalizeThemeAccentColor(state.themeAccent)
     state.editorFontFamily = normalizeEditorFontFamily(state.editorFontFamily)
     state.hardwareBoardSelector = normalizeHardwareBoardSelector(state.hardwareBoardSelector)
-    state.vlfdCustomerId = normalizeVlfdCustomerId(state.vlfdCustomerId)
     applyLanguage(state.language)
     setThemeMode(state.themeMode)
     applyThemeAccentColor(state.themeAccent)
@@ -248,9 +238,5 @@ export const settingsStore = {
 
   setHardwareBoardSelector(hardwareBoardSelector: HardwareBoardSelectorV1) {
     this.update({ hardwareBoardSelector })
-  },
-
-  setVlfdCustomerId(vlfdCustomerId: number) {
-    this.update({ vlfdCustomerId })
   },
 }

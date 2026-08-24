@@ -276,8 +276,6 @@
   "autoConnect": "Auto Connect",
   "automaticSingleBoard": "Automatic (single board)",
   "selectVlfdBoard": "Select VLFD board",
-  "vlfdCustomerId": "VLFD customer ID",
-  "invalidVlfdCustomerId": "Enter a customer ID from 0 to 0xffff.",
   "disconnectHardware": "Disconnect",
   "refreshTargets": "Refresh Targets",
   "programDeviceShort": "Program...",
