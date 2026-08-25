@@ -10,10 +10,24 @@ vi.mock('monaco-editor/editor/editor.api', () => ({
   Uri: { parse: (value: string) => ({ toString: () => value }) },
   editor: {
     getModel: vi.fn(() => null),
+    createModel: vi.fn((value, language, uri) => ({
+      uri,
+      dispose: vi.fn(),
+      getLanguageId: () => language,
+      getValue: () => value,
+      getVersionId: () => 1,
+      isDisposed: () => false,
+      onDidChangeContent: () => ({ dispose() {} }),
+      onWillDispose: () => ({ dispose() {} }),
+    })),
     setModelMarkers: vi.fn(),
   },
   languages: {
+    registerCompletionItemProvider: vi.fn(),
+    registerDefinitionProvider: vi.fn(),
     registerHoverProvider: vi.fn(),
+    registerReferenceProvider: vi.fn(),
+    registerRenameProvider: vi.fn(),
   },
 }))
 vi.mock('@/lib/hdl-lsp-transport', () => ({

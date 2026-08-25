@@ -32,6 +32,7 @@ import {
   markProjectSessionSaved,
 } from './project-session'
 import { getActiveProjectFile } from './project-store-view'
+import { findNodeInTree } from './project-tree'
 
 interface ProjectStoreLifecycleLike extends ProjectSessionStoreLike, ProjectStoreState {
   sessionId: number
@@ -94,6 +95,15 @@ export function updateProjectCode(store: ProjectStoreLifecycleLike, newCode: str
   if (file && file.type === 'file') {
     file.content = newCode
   }
+}
+
+export function updateProjectFileCode(
+  store: ProjectStoreLifecycleLike,
+  id: string,
+  newCode: string,
+) {
+  const file = findNodeInTree(id, store.files)
+  if (file?.type === 'file') file.content = newCode
 }
 
 export function setActiveProjectFile(store: ProjectStoreLifecycleLike, id: string) {

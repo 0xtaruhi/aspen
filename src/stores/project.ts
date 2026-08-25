@@ -48,6 +48,7 @@ export type ProjectStoreLike = ProjectStoreState &
     toSnapshot(): ProjectSnapshot
     loadFromSnapshot(snapshot: unknown, options?: { projectPath?: string | null }): void
     updateCode(newCode: string): void
+    updateFileCode(id: string, newCode: string): void
     setActiveFile(id: string): void
     setSelectedNode(id: string): void
     clearCreatingNodeState(): void

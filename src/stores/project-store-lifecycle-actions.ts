@@ -8,6 +8,7 @@ import {
   setActiveProjectFile,
   setSelectedProjectNode,
   updateProjectCode,
+  updateProjectFileCode,
 } from './project-store-lifecycle'
 import {
   isFileDirty as isProjectFileDirty,
@@ -24,6 +25,7 @@ export function createProjectStoreLifecycleActions(
   | 'toSnapshot'
   | 'loadFromSnapshot'
   | 'updateCode'
+  | 'updateFileCode'
   | 'setActiveFile'
   | 'setSelectedNode'
   | 'setSynthesisCache'
@@ -44,6 +46,11 @@ export function createProjectStoreLifecycleActions(
 
     updateCode(newCode) {
       updateProjectCode(store, newCode)
+      invalidateProjectContentSnapshotCache(store)
+    },
+
+    updateFileCode(id, newCode) {
+      updateProjectFileCode(store, id, newCode)
       invalidateProjectContentSnapshotCache(store)
     },
 

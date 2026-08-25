@@ -65,6 +65,23 @@ describe('project save-state regression', () => {
     expect(toSnapshotSpy).not.toHaveBeenCalled()
   })
 
+  it('updates an inactive file without changing the editor selection', () => {
+    projectStore.createNewProject('WorkspaceEditProject', 'empty')
+    projectStore.createFile('root', 'top.v')
+    projectStore.createFile('root', 'helper.v')
+    projectStore.markSaved(null)
+    const activeFileId = projectStore.activeFileId
+    const helper = projectStore.files[0]?.children?.find((file) => file.name === 'helper.v')
+
+    expect(helper).toBeDefined()
+    if (!helper) throw new Error('helper.v was not created')
+    projectStore.updateFileCode(helper.id, 'module helper; endmodule')
+
+    expect(projectStore.activeFileId).toBe(activeFileId)
+    expect(helper?.content).toBe('module helper; endmodule')
+    expect(projectStore.isFileDirty(helper.id)).toBe(true)
+  })
+
   it('tracks waveform view changes as project content and restores them from snapshots', () => {
     projectStore.createNewProject('WaveformViewProject', 'blinky')
 

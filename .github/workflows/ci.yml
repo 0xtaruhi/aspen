@@ -526,6 +526,21 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm tauri build --ci -v -b deb,rpm,appimage -c ${{ steps.tauri_config.outputs.path }}
 
+      - name: Verify packaged LSP handshake
+        shell: bash
+        run: |
+          set -euo pipefail
+          appimage=$(find src-tauri/target/release/bundle/appimage -name '*.AppImage' -print -quit)
+          test -n "$appimage"
+          extract_dir=$(mktemp -d)
+          trap 'rm -rf "$extract_dir"' EXIT
+          cp "$appimage" "$extract_dir/aspen.AppImage"
+          chmod +x "$extract_dir/aspen.AppImage"
+          (cd "$extract_dir" && ./aspen.AppImage --appimage-extract >/dev/null)
+          slang=$(find "$extract_dir/squashfs-root" -type f -path '*/vendor/slang-server/slang-server' -print -quit)
+          test -n "$slang"
+          node scripts/test-slang-server-handshake.mjs "$slang"
+
       - name: Record updater target metadata
         if: startsWith(github.ref, 'refs/tags/v') || inputs.release_dry_run
         shell: bash
@@ -667,6 +682,7 @@ jobs:
           test -f "$mount_dir/aspen.app/Contents/_CodeSignature/CodeResources"
           test -f "$mount_dir/aspen.app/Contents/Resources/vendor/yosys/bin/yosys"
           test -f "$mount_dir/aspen.app/Contents/Resources/vendor/slang-server/slang-server"
+          node scripts/test-slang-server-handshake.mjs "$mount_dir/aspen.app/Contents/Resources/vendor/slang-server/slang-server"
           codesign --verify --deep --strict --verbose=4 "$mount_dir/aspen.app"
 
       - name: Upload Aspen package artifacts
@@ -730,6 +746,25 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm tauri build --ci -v -c ${{ steps.tauri_config.outputs.path }}
+
+      - name: Verify packaged LSP handshake
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem src-tauri/target/release/bundle -Recurse -Filter '*-setup.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'No NSIS installer found.' }
+          $extractDir = Join-Path $env:RUNNER_TEMP 'aspen-package'
+          7z x $installer.FullName "-o$extractDir" -y | Out-Null
+          $slang = Get-ChildItem $extractDir -Recurse -Filter 'slang-server.exe' | Select-Object -First 1
+          if (-not $slang) {
+            $payload = Get-ChildItem $extractDir -Recurse -Filter 'app-*.7z' | Select-Object -First 1
+            if ($payload) {
+              $payloadDir = Join-Path $extractDir 'payload'
+              7z x $payload.FullName "-o$payloadDir" -y | Out-Null
+              $slang = Get-ChildItem $payloadDir -Recurse -Filter 'slang-server.exe' | Select-Object -First 1
+            }
+          }
+          if (-not $slang) { throw 'Packaged slang-server.exe was not found.' }
+          node scripts/test-slang-server-handshake.mjs $slang.FullName
 
       - name: Record updater target metadata
         if: startsWith(github.ref, 'refs/tags/v') || inputs.release_dry_run

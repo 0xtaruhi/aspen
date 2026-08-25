@@ -17,6 +17,7 @@ export function createProjectStoreActions(store: ProjectStoreLike) {
     | 'toSnapshot'
     | 'loadFromSnapshot'
     | 'updateCode'
+    | 'updateFileCode'
     | 'setActiveFile'
     | 'setSelectedNode'
     | 'clearCreatingNodeState'

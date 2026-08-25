@@ -3,13 +3,16 @@ import type { JsonRpcId, JsonRpcMessage } from '@/lib/hdl-json-rpc'
 
 import { invoke } from '@tauri-apps/api/core'
 import * as monaco from 'monaco-editor/editor/editor.api'
+import { readonly, ref } from 'vue'
 
 import {
   buildEditorFileUri,
   normalizeEditorLanguage,
   normalizeEditorPath,
+  resolveEditorLanguage,
 } from '@/lib/editor-language'
-import { JsonRpcRequestManager } from '@/lib/hdl-json-rpc'
+import { JsonRpcRequestManager, JsonRpcResponseError } from '@/lib/hdl-json-rpc'
+import { registerHdlLspFeatures } from '@/lib/hdl-lsp-features'
 import { TauriMessageTransport } from '@/lib/hdl-lsp-transport'
 
 type HdlProjectSourceFile = {
@@ -47,24 +50,12 @@ type PublishDiagnosticsParams = {
   diagnostics: LspDiagnostic[]
 }
 
-type HoverResponse = {
-  contents?:
-    | string
-    | { language: string; value: string }
-    | { kind: 'markdown' | 'plaintext'; value: string }
-    | Array<
-        | string
-        | { language: string; value: string }
-        | { kind: 'markdown' | 'plaintext'; value: string }
-      >
-  range?: LspRange
-}
-
 type HdlLspSessionConfig = {
   sessionId: string
   rootUri?: string | null
   filesKey?: string
   files: HdlProjectSourceFile[]
+  onFileChange?: (path: string, content: string) => void
 }
 
 type HdlTextModelSpec = {
@@ -88,6 +79,8 @@ type HdlLspRuntime = {
   requests: JsonRpcRequestManager
   diagnosticsByUri: Map<string, monaco.editor.IMarkerData[]>
   openDocuments: Map<string, OpenDocumentBinding>
+  pathsByUri: Map<string, string>
+  onFileChange?: (path: string, content: string) => void
 }
 
 type PendingHdlLspSession = {
@@ -104,23 +97,24 @@ let featuresRegistered = false
 const HDL_LSP_MARKER_OWNER = 'slang-server'
 const HDL_LSP_REQUEST_TIMEOUT_MS = 15_000
 
+export type HdlLspStatus = {
+  state: 'idle' | 'starting' | 'ready' | 'unavailable' | 'error'
+  detail?: string
+}
+
+const mutableHdlLspStatus = ref<HdlLspStatus>({ state: 'idle' })
+export const hdlLspStatus = readonly(mutableHdlLspStatus)
+
+function setHdlLspStatus(state: HdlLspStatus['state'], detail?: string) {
+  mutableHdlLspStatus.value = { state, detail }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
 function isHdlLanguage(language: EditorLanguage): boolean {
   return language === 'verilog' || language === 'systemverilog'
-}
-
-function escapeMarkdown(text: string): string {
-  return text.replace(/[\\`*_{}[\]()#+\-.!|>]/g, '\\$&')
-}
-
-function toLspPosition(position: monaco.Position): LspPosition {
-  return {
-    line: position.lineNumber - 1,
-    character: position.column - 1,
-  }
 }
 
 function toMonacoRange(range?: LspRange): monaco.IRange | undefined {
@@ -187,52 +181,6 @@ function toMonacoMarkers(diagnostics: LspDiagnostic[]): monaco.editor.IMarkerDat
   })
 }
 
-function isMarkedString(value: unknown): value is { language: string; value: string } {
-  return isRecord(value) && typeof value.language === 'string' && typeof value.value === 'string'
-}
-
-function isMarkupContent(
-  value: unknown,
-): value is { kind: 'markdown' | 'plaintext'; value: string } {
-  return (
-    isRecord(value) &&
-    (value.kind === 'markdown' || value.kind === 'plaintext') &&
-    typeof value.value === 'string'
-  )
-}
-
-function toMonacoHoverContents(contents: HoverResponse['contents']): monaco.IMarkdownString[] {
-  if (!contents) {
-    return []
-  }
-
-  const normalized = Array.isArray(contents) ? contents : [contents]
-
-  return normalized.flatMap((entry) => {
-    if (typeof entry === 'string') {
-      return [{ value: escapeMarkdown(entry) }]
-    }
-
-    if (isMarkedString(entry)) {
-      return [
-        {
-          value: `\`\`\`${entry.language}\n${entry.value}\n\`\`\``,
-        },
-      ]
-    }
-
-    if (isMarkupContent(entry) && entry.kind === 'markdown') {
-      return [{ value: entry.value }]
-    }
-
-    if (isMarkupContent(entry)) {
-      return [{ value: escapeMarkdown(entry.value) }]
-    }
-
-    return []
-  })
-}
-
 function ensureHdlLspFeaturesRegistered() {
   if (featuresRegistered) {
     return
@@ -240,40 +188,22 @@ function ensureHdlLspFeaturesRegistered() {
 
   featuresRegistered = true
 
-  for (const language of ['verilog', 'systemverilog'] as const) {
-    monaco.languages.registerHoverProvider(language, {
-      async provideHover(model, position) {
-        const current = runtime
-        if (!current) {
-          return null
-        }
-
-        const uri = model.uri.toString()
-        if (!current.openDocuments.has(uri)) {
-          return null
-        }
-
-        const response = (await requestLsp(current, 'textDocument/hover', {
-          textDocument: { uri },
-          position: toLspPosition(position),
-        }).catch(() => null)) as HoverResponse | null
-
-        if (!response) {
-          return null
-        }
-
-        const contents = toMonacoHoverContents(response.contents)
-        if (contents.length === 0) {
-          return null
-        }
-
-        return {
-          contents,
-          range: toMonacoRange(response.range),
-        }
-      },
-    })
-  }
+  registerHdlLspFeatures(monaco, async (model, method, params) => {
+    const current = runtime
+    if (!current || !current.openDocuments.has(model.uri.toString())) return null
+    try {
+      const response = await requestLsp(current, method, params)
+      if (runtime === current && mutableHdlLspStatus.value.state === 'error') {
+        setHdlLspStatus('ready')
+      }
+      return response
+    } catch (error) {
+      if (runtime === current && !(error instanceof JsonRpcResponseError)) {
+        setHdlLspStatus('error', error instanceof Error ? error.message : String(error))
+      }
+      throw error
+    }
+  })
 }
 
 function getWorkspaceFolderName(rootUri: string): string {
@@ -358,10 +288,19 @@ async function initializeRuntime(current: HdlLspRuntime) {
         workspaceFolders: true,
       },
       textDocument: {
+        completion: {
+          completionItem: {
+            documentationFormat: ['markdown', 'plaintext'],
+            snippetSupport: true,
+          },
+        },
+        definition: {},
         hover: {
           contentFormat: ['markdown', 'plaintext'],
         },
         publishDiagnostics: {},
+        references: {},
+        rename: {},
       },
     },
   })
@@ -496,6 +435,9 @@ function bindModelToRuntime(
             }))
           : [{ text: model.getValue() }],
     })
+
+    const path = current.pathsByUri.get(uri)
+    if (path) current.onFileChange?.(path, model.getValue())
   })
 
   const disposeDisposable = model.onWillDispose(() => {
@@ -535,6 +477,7 @@ async function disposeRuntime(target: HdlLspRuntime | null = runtime) {
     }
   }
 
+  const models = [...target.openDocuments.values()].map((binding) => binding.model)
   for (const binding of target.openDocuments.values()) {
     binding.changeDisposable.dispose()
     binding.disposeDisposable.dispose()
@@ -542,6 +485,10 @@ async function disposeRuntime(target: HdlLspRuntime | null = runtime) {
 
   target.openDocuments.clear()
   target.diagnosticsByUri.clear()
+  target.pathsByUri.clear()
+  for (const model of models) {
+    if (!model.isDisposed()) model.dispose()
+  }
 
   target.requests.dispose(new Error('HDL LSP session stopped'))
 
@@ -571,6 +518,7 @@ export async function ensureHdlLspSession(
   const filesKey = config.filesKey ?? ''
 
   if (runtime?.sessionId === config.sessionId && runtime.filesKey === filesKey) {
+    runtime.onFileChange = config.onFileChange
     return {
       session_id: runtime.sessionId,
       root_uri: runtime.rootUri,
@@ -592,6 +540,7 @@ export async function ensureHdlLspSession(
       return null
     }
 
+    setHdlLspStatus('starting')
     await disposeRuntime()
     if (controller.signal.aborted) {
       return null
@@ -606,6 +555,7 @@ export async function ensureHdlLspSession(
     })
 
     if (!response.available || !response.root_uri) {
+      setHdlLspStatus('unavailable', 'Bundled slang-server was not found')
       return null
     }
 
@@ -632,6 +582,8 @@ export async function ensureHdlLspSession(
       requests,
       diagnosticsByUri: new Map(),
       openDocuments: new Map(),
+      pathsByUri: new Map(),
+      onFileChange: config.onFileChange,
     }
 
     transport.setListener((message) => {
@@ -655,6 +607,18 @@ export async function ensureHdlLspSession(
       return null
     }
 
+    for (const file of config.files) {
+      const language = resolveEditorLanguage(file.path)
+      if (!isHdlLanguage(language)) continue
+      const uri = buildEditorFileUri(nextRuntime.rootUri, file.path)
+      nextRuntime.pathsByUri.set(uri, file.path)
+      ensureHdlTextModel(
+        { path: file.path, content: file.content, language },
+        { rootUri: nextRuntime.rootUri },
+      )
+    }
+
+    setHdlLspStatus('ready')
     return response
   })()
   const nextSession: PendingHdlLspSession = {
@@ -667,6 +631,11 @@ export async function ensureHdlLspSession(
 
   try {
     return await nextSession.promise
+  } catch (error) {
+    if (!controller.signal.aborted) {
+      setHdlLspStatus('error', error instanceof Error ? error.message : String(error))
+    }
+    throw error
   } finally {
     if (pendingSession === nextSession) {
       pendingSession = null
@@ -716,6 +685,9 @@ export async function stopHdlLspSession(sessionId?: string | null) {
   const current = runtime
   if (current && (!sessionId || current.sessionId === sessionId)) {
     await disposeRuntime(current)
+  }
+  if (!sessionId || current?.sessionId === sessionId || pending?.sessionId === sessionId) {
+    setHdlLspStatus('idle')
   }
 }
 
