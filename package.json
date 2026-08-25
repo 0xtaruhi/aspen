@@ -26,6 +26,8 @@
     "test": "vitest",
     "test:ci": "vitest run --passWithNoTests",
     "test:lsp-handshake": "node scripts/test-slang-server-handshake.mjs",
+    "release:check": "node scripts/prepare-release.mjs --check",
+    "release:prepare": "node scripts/prepare-release.mjs",
     "generate:zh-tw-locale": "node scripts/generate-zh-tw-locale.mjs",
     "check:zh-tw-locale": "node scripts/generate-zh-tw-locale.mjs --check",
     "generate:ipc-contract": "cargo test --manifest-path src-tauri/Cargo.toml export_typescript_contract -- --ignored && prettier src/generated/tauri-contract.ts --write",

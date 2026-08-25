@@ -75,6 +75,8 @@ Follow repository facts first, then these conventions.
 - Tauri production build: `pnpm tauri build`
 - Tauri build with bundled FPGA toolchains/resources: `pnpm tauri build --no-bundle -c src-tauri/tauri.yosys.conf.json`
 - Release dry run: manually run the `Pre-publish` GitHub Actions workflow from the release commit.
+- Prepare a release branch and synchronize version files: `pnpm release:prepare X.Y.Z`
+- Check that all Aspen version files agree: `pnpm release:check`
 - Updater manifest helper: `python3 scripts/generate_updater_manifest.py --assets-dir <dir> --repo 0xtaruhi/aspen --tag vX.Y.Z --out <latest.json>`
 - Standalone typecheck: `pnpm exec vue-tsc --noEmit`
 - Rust formatting: `cargo fmt --manifest-path src-tauri/Cargo.toml`
