@@ -34,6 +34,33 @@ function createFixture(version = '0.5.1') {
   return root
 }
 
+function createGitFixture() {
+  const root = createFixture()
+  const remote = mkdtempSync(resolve(tmpdir(), 'aspen-release-remote-'))
+  fixtures.push(remote)
+  mkdirSync(resolve(root, 'scripts'))
+  copyFileSync(
+    fileURLToPath(new URL('./prepare-release.mjs', import.meta.url)),
+    resolve(root, 'scripts/prepare-release.mjs'),
+  )
+  const git = (...args) =>
+    execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: 'pipe' }).trim()
+  git('init', '-b', 'main')
+  git('add', '.')
+  git(
+    '-c',
+    'user.name=Aspen Tests',
+    '-c',
+    'user.email=aspen@example.invalid',
+    'commit',
+    '-m',
+    'fixture',
+  )
+  git('init', '--bare', remote)
+  git('remote', 'add', 'origin', remote)
+  return { root, git }
+}
+
 afterEach(() => {
   for (const fixture of fixtures.splice(0)) rmSync(fixture, { recursive: true, force: true })
 })
@@ -54,25 +81,7 @@ describe('release preparation', () => {
   })
 
   it('creates a release branch from a clean default branch', () => {
-    const root = createFixture()
-    mkdirSync(resolve(root, 'scripts'))
-    copyFileSync(
-      fileURLToPath(new URL('./prepare-release.mjs', import.meta.url)),
-      resolve(root, 'scripts/prepare-release.mjs'),
-    )
-    const git = (...args) =>
-      execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: 'pipe' }).trim()
-    git('init', '-b', 'main')
-    git('add', '.')
-    git(
-      '-c',
-      'user.name=Aspen Tests',
-      '-c',
-      'user.email=aspen@example.invalid',
-      'commit',
-      '-m',
-      'fixture',
-    )
+    const { root, git } = createGitFixture()
 
     execFileSync(process.execPath, ['scripts/prepare-release.mjs', '0.6.0'], {
       cwd: root,
@@ -81,6 +90,21 @@ describe('release preparation', () => {
 
     expect(git('branch', '--show-current')).toBe('release/v0.6.0')
     expect(new Set(Object.values(readProjectVersions(root)))).toEqual(new Set(['0.6.0']))
+  })
+
+  it.each(['branch', 'tag'])('rejects a remote-only release %s', (kind) => {
+    const { root, git } = createGitFixture()
+    const ref = kind === 'branch' ? 'release/v0.6.0' : 'v0.6.0'
+    git(kind, ref)
+    git('push', 'origin', ref)
+    git(kind, '-d', ref)
+
+    expect(() =>
+      execFileSync(process.execPath, ['scripts/prepare-release.mjs', '0.6.0'], {
+        cwd: root,
+        stdio: 'pipe',
+      }),
+    ).toThrow()
   })
 
   it('rejects inconsistent or older versions', () => {

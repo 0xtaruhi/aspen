@@ -116,6 +116,16 @@ function refExists(ref) {
   return spawnSync('git', ['show-ref', '--verify', '--quiet', ref], { cwd: repoRoot }).status === 0
 }
 
+function remoteRefExists(ref) {
+  const result = spawnSync('git', ['ls-remote', '--exit-code', 'origin', ref], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+  })
+  if (result.status === 0) return true
+  if (result.status === 2) return false
+  throw new Error(result.stderr.trim() || `Could not query origin for ${ref}`)
+}
+
 function prepareRelease(version) {
   if (git('status', '--porcelain')) throw new Error('Working tree must be clean')
 
@@ -125,8 +135,12 @@ function prepareRelease(version) {
   }
 
   const branch = `release/v${version}`
-  if (refExists(`refs/heads/${branch}`)) throw new Error(`Branch '${branch}' already exists`)
-  if (refExists(`refs/tags/v${version}`)) throw new Error(`Tag 'v${version}' already exists`)
+  if (refExists(`refs/heads/${branch}`) || remoteRefExists(`refs/heads/${branch}`)) {
+    throw new Error(`Branch '${branch}' already exists`)
+  }
+  if (refExists(`refs/tags/v${version}`) || remoteRefExists(`refs/tags/v${version}`)) {
+    throw new Error(`Tag 'v${version}' already exists`)
+  }
 
   const updates = planVersionUpdate(version)
   git('switch', '-c', branch)
