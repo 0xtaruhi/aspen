@@ -201,6 +201,9 @@ jobs:
       - name: Frontend format
         run: pnpm format:check
 
+      - name: Release version consistency
+        run: pnpm release:check
+
       - name: Traditional Chinese locale consistency
         run: pnpm check:zh-tw-locale
 

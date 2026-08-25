@@ -156,6 +156,8 @@ Aspen uses a protected `main` branch:
 - Aspen checks signed GitHub Release metadata from `latest.json`.
 - In-app updates are enabled only for official tagged release builds.
 - Release packaging uses `src-tauri/tauri.release.conf.json`.
+- Start a release with `pnpm release:prepare X.Y.Z`; it creates `release/vX.Y.Z` and synchronizes every Aspen version file.
+- After the release PR and the `Pre-publish` workflow pass, push tag `vX.Y.Z` to build, sign, and publish all platform packages.
 
 ### Windows driver packaging
 
