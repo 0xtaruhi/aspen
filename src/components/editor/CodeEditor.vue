@@ -31,6 +31,7 @@ const emit = defineEmits<{
 const container = ref<HTMLElement | null>(null)
 let editor: monaco.editor.IStandaloneCodeEditor | null = null
 let fallbackModel: monaco.editor.ITextModel | null = null
+let overflowWidgetsHost: HTMLDivElement | null = null
 
 const themeState = useThemeState()
 
@@ -63,12 +64,16 @@ onMounted(() => {
   ensureMonacoHdlSupport(monaco)
 
   const model = props.model ?? ensureFallbackModel()
+  const theme = themeState.value ? 'vs-dark' : 'vs'
+  overflowWidgetsHost = document.body.appendChild(document.createElement('div'))
+  overflowWidgetsHost.className = `monaco-editor ${theme}`
 
   editor = monaco.editor.create(container.value, {
     model,
-    theme: themeState.value ? 'vs-dark' : 'vs',
+    theme,
     automaticLayout: true,
     fixedOverflowWidgets: true,
+    overflowWidgetsDomNode: overflowWidgetsHost,
     minimap: { enabled: settingsStore.state.editorMinimap },
     fontSize: settingsStore.state.editorFontSize,
     fontFamily: settingsStore.state.editorFontFamily,
@@ -89,7 +94,9 @@ onMounted(() => {
 watch(
   () => themeState.value,
   (isDark) => {
-    monaco.editor.setTheme(isDark ? 'vs-dark' : 'vs')
+    const theme = isDark ? 'vs-dark' : 'vs'
+    monaco.editor.setTheme(theme)
+    overflowWidgetsHost?.classList.replace(isDark ? 'vs' : 'vs-dark', theme)
   },
 )
 
@@ -163,6 +170,8 @@ watch(
 
 onUnmounted(() => {
   editor?.dispose()
+  overflowWidgetsHost?.remove()
+  overflowWidgetsHost = null
   fallbackModel?.dispose()
   fallbackModel = null
 })

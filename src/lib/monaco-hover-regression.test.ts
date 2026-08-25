@@ -14,4 +14,10 @@ describe('Monaco hover regression', () => {
       "import 'monaco-editor/editor/contrib/hover/browser/hoverContribution'",
     )
   })
+
+  it('keeps hover widgets correctly positioned outside clipped editor containers', () => {
+    expect(editorSource).toContain('fixedOverflowWidgets: true')
+    expect(editorSource).toContain('overflowWidgetsDomNode: overflowWidgetsHost')
+    expect(editorSource).toContain('overflowWidgetsHost?.remove()')
+  })
 })
