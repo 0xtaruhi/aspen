@@ -10,7 +10,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
@@ -54,20 +54,18 @@ async function main() {
   console.log(`Bundled slang-server ${release.tag_name} (${asset.name}) into ${bundleTargetDir}.`)
 }
 
-function resolveTargetAssetName() {
-  const platform = process.env.SLANG_SERVER_PLATFORM?.trim() || process.platform
-  const arch = process.env.SLANG_SERVER_ARCH?.trim() || process.arch
-
-  if (platform === 'darwin') {
-    return 'slang-server-macos.tar.gz'
+export function resolveTargetAssetName(
+  platform = process.env.SLANG_SERVER_PLATFORM?.trim() || process.platform,
+  arch = process.env.SLANG_SERVER_ARCH?.trim() || process.arch,
+) {
+  if (platform === 'darwin') return 'slang-server-macos.tar.gz'
+  if (platform === 'linux' && ['x64', 'amd64'].includes(arch)) {
+    return 'slang-server-old-linux-x64-gcc.tar.gz'
   }
-  if (platform === 'linux' && (arch === 'x64' || arch === 'amd64')) {
-    return 'slang-server-linux-x64-gcc.tar.gz'
-  }
-  if (platform === 'linux' && (arch === 'arm64' || arch === 'aarch64')) {
+  if (platform === 'linux' && ['arm64', 'aarch64'].includes(arch)) {
     return 'slang-server-linux-arm64-clang.tar.gz'
   }
-  if (platform === 'win32' && (arch === 'x64' || arch === 'amd64')) {
+  if (platform === 'win32' && ['x64', 'amd64'].includes(arch)) {
     return 'slang-server-windows-x64.zip'
   }
 
@@ -264,13 +262,14 @@ function writeReadme(version, assetName) {
   )
 }
 
-main().catch((error) => {
-  const message =
-    error instanceof Error
-      ? error.message
-      : typeof error === 'string'
-        ? error
-        : JSON.stringify(error)
-  console.error(message)
-  process.exit(1)
-})
+if (resolve(process.argv[1] || '') === fileURLToPath(import.meta.url))
+  main().catch((error) => {
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : JSON.stringify(error)
+    console.error(message)
+    process.exit(1)
+  })

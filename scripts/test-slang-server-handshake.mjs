@@ -35,6 +35,7 @@ try {
   })
   void childClosed.catch(() => {})
   child.stderr.on('data', (chunk) => stderr.push(chunk.toString()))
+  child.stdin.on('error', () => {})
 
   let buffer = Buffer.alloc(0)
   const messages = []
@@ -62,18 +63,23 @@ try {
     child.stdin.write(`Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`)
   }
   const receive = () =>
-    messages.length
-      ? Promise.resolve(messages.shift())
-      : new Promise((resolveMessage, reject) => {
-          const timeout = setTimeout(
-            () => reject(new Error('Timed out waiting for LSP response')),
-            15_000,
-          )
-          waiters.push((message) => {
-            clearTimeout(timeout)
-            resolveMessage(message)
-          })
-        })
+    Promise.race([
+      messages.length
+        ? Promise.resolve(messages.shift())
+        : new Promise((resolveMessage, reject) => {
+            const timeout = setTimeout(
+              () => reject(new Error('Timed out waiting for LSP response')),
+              15_000,
+            )
+            waiters.push((message) => {
+              clearTimeout(timeout)
+              resolveMessage(message)
+            })
+          }),
+      childClosed.then((code) => {
+        throw new Error(`LSP server exited before responding (code ${code})`)
+      }),
+    ])
   const response = async (id) => {
     while (true) {
       const message = await receive()
