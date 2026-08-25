@@ -3,6 +3,7 @@ mod implementation;
 mod runtime;
 mod synthesis;
 mod types;
+mod vcd_export;
 
 pub use implementation::run_fde_implementation;
 pub use runtime::HardwareRuntime;
@@ -13,3 +14,4 @@ pub use types::{
     HardwareWaveformBatchBinaryV1, ImplementationReportV1, ImplementationRequestV1,
     SynthesisReportV1, SynthesisRequestV1,
 };
+pub use vcd_export::VcdExport;

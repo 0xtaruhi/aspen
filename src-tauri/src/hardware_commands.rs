@@ -7,7 +7,7 @@ use crate::hardware::{
     HardwareAccessConfigV1, HardwareActionV1, HardwareBoardInfoV1, HardwareDataStreamConfigV1,
     HardwareDataStreamStatusV1, HardwareEventReason, HardwareRuntime, HardwareStateV1,
     HardwareStatus, HardwareWaveformBatchBinaryV1, ImplementationReportV1, ImplementationRequestV1,
-    SynthesisReportV1, SynthesisRequestV1,
+    SynthesisReportV1, SynthesisRequestV1, VcdExport,
 };
 
 #[derive(Default)]
@@ -64,6 +64,18 @@ pub fn hardware_get_waveform_snapshot(
     after_sequence: Option<u64>,
 ) -> Result<Option<HardwareWaveformBatchBinaryV1>, String> {
     runtime.waveform_snapshot(after_sequence)
+}
+
+#[tauri::command]
+pub async fn export_hardware_waveform_vcd(request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("waveform export requires a binary payload".into());
+    };
+    let export = VcdExport::decode(bytes)?;
+
+    tauri::async_runtime::spawn_blocking(move || export.write())
+        .await
+        .map_err(|err| err.to_string())?
 }
 
 #[tauri::command]
