@@ -10,10 +10,30 @@ if (!executable) throw new Error('Usage: node scripts/test-slang-server-handshak
 const workspace = await mkdtemp(resolve(tmpdir(), 'aspen-lsp-handshake-'))
 const stderr = []
 let child
+let childClosed
+
+async function waitForClose(timeoutMs = 5_000) {
+  let timeout
+  try {
+    await Promise.race([
+      childClosed,
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(new Error('LSP server ignored exit')), timeoutMs)
+      }),
+    ])
+  } finally {
+    clearTimeout(timeout)
+  }
+}
 
 try {
   await writeFile(resolve(workspace, 'top.sv'), 'module top; endmodule\n')
   child = spawn(resolve(executable), [], { cwd: workspace, stdio: ['pipe', 'pipe', 'pipe'] })
+  childClosed = new Promise((resolveClose, rejectClose) => {
+    child.once('close', resolveClose)
+    child.once('error', rejectClose)
+  })
+  void childClosed.catch(() => {})
   child.stderr.on('data', (chunk) => stderr.push(chunk.toString()))
 
   let buffer = Buffer.alloc(0)
@@ -98,6 +118,7 @@ try {
   if (shutdown.error) throw new Error(`LSP shutdown failed: ${shutdown.error.message}`)
   send({ method: 'exit', params: null })
   child.stdin.end()
+  await waitForClose()
 
   console.log(
     `slang-server handshake passed (${initialized.result?.serverInfo?.version?.trim() ?? 'unknown version'})`,
@@ -110,5 +131,6 @@ try {
   )
 } finally {
   if (child && child.exitCode === null) child.kill()
-  await rm(workspace, { recursive: true, force: true })
+  await childClosed?.catch(() => {})
+  await rm(workspace, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
 }

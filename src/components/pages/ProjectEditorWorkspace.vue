@@ -43,6 +43,7 @@ const projectFilesKey = computed(() => projectSources.value.map((entry) => entry
 const activeModel = shallowRef<monaco.editor.ITextModel | null>(null)
 const lspRootUri = ref('')
 let syncVersion = 0
+let lspSessionKey = ''
 
 const lspStatusMessageKeys = {
   idle: 'lspStatusIdle',
@@ -83,6 +84,7 @@ watch(
     () => projectStore.activeFileId,
     () => projectStore.activeFile?.content ?? '',
     () => projectStore.activeFile?.name ?? '',
+    () => projectFilesKey.value,
   ],
   async () => {
     const language = activeEditorLanguage.value
@@ -98,6 +100,8 @@ watch(
     }
 
     const sessionId = buildHdlProjectSessionId(projectStore.projectPath, projectStore.sessionId)
+    const nextSessionKey = `${sessionId}:${projectFilesKey.value}`
+    if (nextSessionKey !== lspSessionKey) activeModel.value = null
     const response = await ensureHdlLspSession({
       sessionId,
       rootUri: null,
@@ -114,6 +118,7 @@ watch(
     }
 
     lspRootUri.value = response.root_uri
+    lspSessionKey = nextSessionKey
 
     activeModel.value = markRaw(
       ensureHdlTextModel(
@@ -149,6 +154,7 @@ watch(
 
 onUnmounted(() => {
   syncVersion += 1
+  activeModel.value = null
   const sessionId = buildHdlProjectSessionId(projectStore.projectPath, projectStore.sessionId)
   void stopHdlLspSession(sessionId).catch((error) => {
     console.error('[HDL LSP] Failed to stop session:', error)
