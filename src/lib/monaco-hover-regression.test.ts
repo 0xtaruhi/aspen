@@ -9,10 +9,16 @@ const editorSource = readFileSync(
 )
 
 describe('Monaco hover regression', () => {
-  it('loads the hover contribution used by registered HDL hover providers', () => {
-    expect(editorSource).toContain(
-      "import 'monaco-editor/editor/contrib/hover/browser/hoverContribution'",
-    )
+  it('loads the Monaco UI contributions used by HDL language providers', () => {
+    for (const contribution of [
+      'editor/contrib/gotoSymbol/browser/link/goToDefinitionAtPosition',
+      'editor/contrib/hover/browser/hoverContribution',
+      'editor/contrib/rename/browser/rename',
+      'editor/contrib/suggest/browser/suggestController',
+      'editor/standalone/browser/referenceSearch/standaloneReferenceSearch',
+    ]) {
+      expect(editorSource).toContain(`import 'monaco-editor/${contribution}'`)
+    }
   })
 
   it('keeps hover widgets correctly positioned outside clipped editor containers', () => {

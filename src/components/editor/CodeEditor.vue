@@ -2,7 +2,11 @@
 import type { EditorLanguage } from '@/lib/editor-language'
 
 import * as monaco from 'monaco-editor/editor/editor.api'
+import 'monaco-editor/editor/contrib/gotoSymbol/browser/link/goToDefinitionAtPosition'
 import 'monaco-editor/editor/contrib/hover/browser/hoverContribution'
+import 'monaco-editor/editor/contrib/rename/browser/rename'
+import 'monaco-editor/editor/contrib/suggest/browser/suggestController'
+import 'monaco-editor/editor/standalone/browser/referenceSearch/standaloneReferenceSearch'
 import editorWorker from 'monaco-editor/editor/editor.worker?worker'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
@@ -26,6 +30,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'update:value', val: string): void
+  (e: 'change:model', uri: string): void
 }>()
 
 const container = ref<HTMLElement | null>(null)
@@ -88,6 +93,11 @@ onMounted(() => {
   editor.onDidChangeModelContent(() => {
     const val = editor?.getValue() || ''
     emit('update:value', val)
+  })
+
+  editor.onDidChangeModel(() => {
+    const uri = editor?.getModel()?.uri.toString()
+    if (uri) emit('change:model', uri)
   })
 })
 

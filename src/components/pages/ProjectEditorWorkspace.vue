@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { computed, markRaw, onUnmounted, shallowRef, watch } from 'vue'
+import { computed, markRaw, onUnmounted, ref, shallowRef, watch } from 'vue'
 import * as monaco from 'monaco-editor/editor/editor.api'
 
 import CodeEditor from '@/components/editor/CodeEditor.vue'
 import { Badge } from '@/components/ui/badge'
-import { resolveEditorLanguage } from '@/lib/editor-language'
+import { buildEditorFileUri, resolveEditorLanguage } from '@/lib/editor-language'
 import {
   buildHdlProjectSessionId,
   ensureHdlLspSession,
   ensureHdlTextModel,
+  hdlLspStatus,
   stopHdlLspSession,
 } from '@/lib/hdl-lsp'
 import { useI18n } from '@/lib/i18n'
@@ -40,7 +41,42 @@ const projectSources = computed<ProjectSourceFileSnapshot[]>(() =>
 const projectFilesKey = computed(() => projectSources.value.map((entry) => entry.path).join('\n'))
 
 const activeModel = shallowRef<monaco.editor.ITextModel | null>(null)
+const lspRootUri = ref('')
 let syncVersion = 0
+let lspSessionKey = ''
+
+const lspStatusMessageKeys = {
+  idle: 'lspStatusIdle',
+  starting: 'lspStatusStarting',
+  ready: 'lspStatusReady',
+  unavailable: 'lspStatusUnavailable',
+  error: 'lspStatusError',
+} as const
+const lspStatusLabel = computed(() => t(lspStatusMessageKeys[hdlLspStatus.value.state]))
+const lspStatusDotClass = computed(
+  () =>
+    ({
+      idle: 'bg-muted-foreground/50',
+      starting: 'bg-amber-500 animate-pulse',
+      ready: 'bg-emerald-500',
+      unavailable: 'bg-rose-500',
+      error: 'bg-rose-500',
+    })[hdlLspStatus.value.state],
+)
+
+function updateProjectFile(path: string, content: string) {
+  const entry = projectFileEntries.value.find((candidate) => candidate.path === path)
+  if (entry && entry.node.content !== content) projectStore.updateFileCode(entry.node.id, content)
+}
+
+function handleModelChange(uri: string) {
+  if (!lspRootUri.value) return
+  const entry = projectFileEntries.value.find(
+    (candidate) => buildEditorFileUri(lspRootUri.value, candidate.path) === uri,
+  )
+  if (entry && entry.node.id !== projectStore.activeFileId)
+    projectStore.setActiveFile(entry.node.id)
+}
 
 watch(
   [
@@ -48,6 +84,7 @@ watch(
     () => projectStore.activeFileId,
     () => projectStore.activeFile?.content ?? '',
     () => projectStore.activeFile?.name ?? '',
+    () => projectFilesKey.value,
   ],
   async () => {
     const language = activeEditorLanguage.value
@@ -63,11 +100,14 @@ watch(
     }
 
     const sessionId = buildHdlProjectSessionId(projectStore.projectPath, projectStore.sessionId)
+    const nextSessionKey = `${sessionId}:${projectFilesKey.value}`
+    if (nextSessionKey !== lspSessionKey) activeModel.value = null
     const response = await ensureHdlLspSession({
       sessionId,
       rootUri: null,
       filesKey: projectFilesKey.value,
       files: projectSources.value,
+      onFileChange: updateProjectFile,
     }).catch((error) => {
       console.error('[HDL LSP] Failed to initialize session:', error)
       return null
@@ -76,6 +116,9 @@ watch(
     if (currentVersion !== syncVersion || !response?.root_uri) {
       return
     }
+
+    lspRootUri.value = response.root_uri
+    lspSessionKey = nextSessionKey
 
     activeModel.value = markRaw(
       ensureHdlTextModel(
@@ -111,6 +154,7 @@ watch(
 
 onUnmounted(() => {
   syncVersion += 1
+  activeModel.value = null
   const sessionId = buildHdlProjectSessionId(projectStore.projectPath, projectStore.sessionId)
   void stopHdlLspSession(sessionId).catch((error) => {
     console.error('[HDL LSP] Failed to stop session:', error)
@@ -129,6 +173,15 @@ onUnmounted(() => {
       <Badge variant="outline"
         >{{ signalCatalogStore.signals.value.length }} {{ t('portsUnit') }}</Badge
       >
+      <Badge
+        variant="outline"
+        class="ml-auto gap-1.5 font-normal text-muted-foreground"
+        :title="hdlLspStatus.detail || lspStatusLabel"
+        aria-live="polite"
+      >
+        <span class="size-1.5 rounded-full" :class="lspStatusDotClass" />
+        {{ lspStatusLabel }}
+      </Badge>
     </div>
 
     <div class="project-editor-surface flex-1 min-h-0 overflow-hidden">
@@ -136,6 +189,7 @@ onUnmounted(() => {
         :value="projectStore.code"
         :language="activeEditorLanguage"
         :model="activeModel"
+        @change:model="handleModelChange"
         @update:value="projectStore.updateCode($event)"
       />
     </div>
