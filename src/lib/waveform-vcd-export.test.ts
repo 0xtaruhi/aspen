@@ -32,6 +32,8 @@ describe('buildWaveformVcdPayload', () => {
     const pathLength = view.getUint32(20, true)
     let offset = 24 + pathLength
     for (let index = 0; index < 2; index += 1) {
+      expect(payload[offset]).toBe(index === 0 ? 1 : 0)
+      offset += 1
       const length = view.getUint16(offset, true)
       offset += 2 + length
     }

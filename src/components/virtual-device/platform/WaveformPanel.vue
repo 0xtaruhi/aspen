@@ -70,8 +70,7 @@ const panelBodyRef = ref<HTMLElement | null>(null)
 const panelHeight = ref(272)
 const signalListWidth = ref(180)
 const waveformExporting = ref(false)
-const waveformExportStatus = ref<string | null>(null)
-const waveformExportFailed = ref(false)
+const waveformExportError = ref<string | null>(null)
 
 const SIGNAL_LANE_HEIGHT = 42
 const SIGNAL_LIST_VERTICAL_PADDING = 16
@@ -203,21 +202,16 @@ function clearCursors() {
 
 async function exportVcd() {
   waveformExporting.value = true
-  waveformExportStatus.value = null
-  waveformExportFailed.value = false
+  waveformExportError.value = null
   try {
-    const path = await exportWaveformVcd({
+    await exportWaveformVcd({
       signals: orderedSignals.value,
       tracks: waveformTracks.value,
       sampleRateHz: waveformSampleRateHz.value,
     })
-    if (path) {
-      waveformExportStatus.value = t('waveformVcdExported', { path })
-    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    waveformExportStatus.value = t('waveformVcdExportFailed', { message })
-    waveformExportFailed.value = true
+    waveformExportError.value = t('waveformVcdExportFailed', { message })
   } finally {
     waveformExporting.value = false
   }
@@ -441,13 +435,12 @@ onBeforeUnmount(() => {
     </div>
 
     <p
-      v-if="waveformExportStatus"
-      class="mb-2 truncate text-xs"
-      :class="waveformExportFailed ? 'text-destructive' : 'text-muted-foreground'"
-      :title="waveformExportStatus"
+      v-if="waveformExportError"
+      class="mb-2 truncate text-xs text-destructive"
+      :title="waveformExportError"
       aria-live="polite"
     >
-      {{ waveformExportStatus }}
+      {{ waveformExportError }}
     </p>
 
     <div

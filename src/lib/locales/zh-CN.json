@@ -329,7 +329,6 @@
   "waveformClearCursors": "清除游标",
   "waveformExportVcd": "导出 VCD",
   "waveformExportingVcd": "正在导出...",
-  "waveformVcdExported": "已导出到 {path}",
   "waveformVcdExportFailed": "VCD 导出失败：{message}",
   "waveformCompressedVcdFile": "压缩 VCD",
   "waveformVcdFile": "VCD",

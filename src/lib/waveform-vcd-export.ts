@@ -1,13 +1,15 @@
 import { invoke } from '@tauri-apps/api/core'
 import { save } from '@tauri-apps/plugin-dialog'
+import { revealItemInDir } from '@tauri-apps/plugin-opener'
 
 import { getProjectOutputDirectory, joinPath } from '@/lib/project-layout'
 import { translate } from '@/lib/i18n'
+import { isLikelyClockPort } from '@/lib/project-constraints'
 import type { WaveformTrackBuffer } from '@/stores/hardware-runtime-waveform'
 import { projectStore } from '@/stores/project'
 
 const MAGIC = new Uint8Array([0x41, 0x56, 0x43, 0x44])
-const VERSION = 1
+const VERSION = 2
 
 type WaveformSnapshot = {
   signals: readonly string[]
@@ -37,7 +39,7 @@ export function buildWaveformVcdPayload(snapshot: WaveformSnapshot, path: string
     throw new Error('Waveform signal metadata is too large')
   }
 
-  const headerSize = 24 + pathBytes.length + names.reduce((size, name) => size + 2 + name.length, 0)
+  const headerSize = 24 + pathBytes.length + names.reduce((size, name) => size + 3 + name.length, 0)
   const bytesPerSample = Math.ceil(signals.length / 8)
   const payload = new Uint8Array(headerSize + sampleCount * bytesPerSample)
   const view = new DataView(payload.buffer)
@@ -51,12 +53,14 @@ export function buildWaveformVcdPayload(snapshot: WaveformSnapshot, path: string
   let offset = 24
   payload.set(pathBytes, offset)
   offset += pathBytes.length
-  for (const name of names) {
+  names.forEach((name, index) => {
+    payload[offset] = isLikelyClockPort(signals[index] ?? '') ? 1 : 0
+    offset += 1
     view.setUint16(offset, name.length, true)
     offset += 2
     payload.set(name, offset)
     offset += name.length
-  }
+  })
 
   signals.forEach((signal, signalIndex) => {
     const track = snapshot.tracks[signal]
@@ -85,5 +89,6 @@ export async function exportWaveformVcd(snapshot: WaveformSnapshot) {
   if (!path) return null
 
   await invoke('export_hardware_waveform_vcd', buildWaveformVcdPayload(snapshot, path))
+  await revealItemInDir(path)
   return path
 }

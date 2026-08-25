@@ -8,7 +8,7 @@ use std::{
 use flate2::{write::GzEncoder, Compression};
 
 const MAGIC: &[u8; 4] = b"AVCD";
-const VERSION: u16 = 1;
+const VERSION: u16 = 2;
 const MAX_SAMPLES: usize = 262_144;
 const MAX_SIGNALS: usize = 4_096;
 const MAX_TEXT_BYTES: usize = 1 << 20;
@@ -18,6 +18,7 @@ pub struct VcdExport {
     sample_rate_hz: f64,
     sample_count: usize,
     signals: Vec<String>,
+    clock_signals: Vec<bool>,
     samples: Vec<u8>,
 }
 
@@ -44,7 +45,9 @@ impl VcdExport {
         let path_length = input.u32()? as usize;
         let path = PathBuf::from(input.string(path_length)?);
         let mut signals = Vec::with_capacity(signal_count);
+        let mut clock_signals = Vec::with_capacity(signal_count);
         for _ in 0..signal_count {
+            clock_signals.push(input.u8()? & 1 != 0);
             let name_length = input.u16()? as usize;
             signals.push(input.string(name_length)?);
         }
@@ -62,6 +65,7 @@ impl VcdExport {
             sample_rate_hz,
             sample_count,
             signals,
+            clock_signals,
             samples,
         })
     }
@@ -115,6 +119,7 @@ impl VcdExport {
 
         let names = unique_signal_names(&self.signals);
         let ids: Vec<_> = (0..names.len()).map(vcd_id).collect();
+        let has_clock = self.clock_signals.iter().any(|clock| *clock);
         for (name, id) in names.iter().zip(&ids) {
             writeln!(output, "$var wire 1 {id} {name} $end")
                 .map_err(io_error("write VCD signal"))?;
@@ -122,36 +127,58 @@ impl VcdExport {
         writeln!(output, "$upscope $end\n$enddefinitions $end\n$dumpvars")
             .map_err(io_error("write VCD header"))?;
         for (signal_index, id) in ids.iter().enumerate() {
-            writeln!(output, "{}{id}", bit(self, 0, signal_index))
-                .map_err(io_error("write VCD sample"))?;
+            let value = if self.clock_signals[signal_index] {
+                1
+            } else {
+                bit(self, 0, signal_index)
+            };
+            writeln!(output, "{value}{id}").map_err(io_error("write VCD sample"))?;
         }
         writeln!(output, "$end").map_err(io_error("write VCD sample"))?;
 
-        for sample_index in 1..self.sample_count {
-            let mut timestamp_written = false;
-            for (signal_index, id) in ids.iter().enumerate() {
-                let value = bit(self, sample_index, signal_index);
-                if value == bit(self, sample_index - 1, signal_index) {
-                    continue;
+        for sample_index in 0..self.sample_count {
+            if sample_index > 0 {
+                let mut timestamp_written = false;
+                for (signal_index, id) in ids.iter().enumerate() {
+                    let is_clock = self.clock_signals[signal_index];
+                    let value = if is_clock {
+                        1
+                    } else {
+                        bit(self, sample_index, signal_index)
+                    };
+                    if !is_clock && value == bit(self, sample_index - 1, signal_index) {
+                        continue;
+                    }
+                    if !timestamp_written {
+                        writeln!(output, "#{}", self.timestamp(sample_index, false))
+                            .map_err(io_error("write VCD timestamp"))?;
+                        timestamp_written = true;
+                    }
+                    writeln!(output, "{value}{id}").map_err(io_error("write VCD sample"))?;
                 }
-                if !timestamp_written {
-                    writeln!(output, "#{}", self.timestamp(sample_index))
-                        .map_err(io_error("write VCD timestamp"))?;
-                    timestamp_written = true;
+            }
+
+            if has_clock {
+                writeln!(output, "#{}", self.timestamp(sample_index, true))
+                    .map_err(io_error("write VCD timestamp"))?;
+                for (signal_index, id) in ids.iter().enumerate() {
+                    if self.clock_signals[signal_index] {
+                        writeln!(output, "0{id}").map_err(io_error("write VCD sample"))?;
+                    }
                 }
-                writeln!(output, "{value}{id}").map_err(io_error("write VCD sample"))?;
             }
         }
 
         Ok(())
     }
 
-    fn timestamp(&self, sample_index: usize) -> u64 {
+    fn timestamp(&self, sample_index: usize, half_cycle: bool) -> u64 {
+        let phase = sample_index as u64 * 2 + u64::from(half_cycle);
         if self.sample_rate_hz.is_finite() && self.sample_rate_hz > 0.0 {
-            ((sample_index as f64 * 1_000_000_000_000.0 / self.sample_rate_hz).round() as u64)
-                .max(sample_index as u64)
+            ((phase as f64 * 1_000_000_000_000.0 / (self.sample_rate_hz * 2.0)).round() as u64)
+                .max(phase)
         } else {
-            sample_index as u64 * 1_000
+            phase * 500
         }
     }
 }
@@ -230,6 +257,10 @@ impl<'a> PacketReader<'a> {
         ))
     }
 
+    fn u8(&mut self) -> Result<u8, String> {
+        Ok(self.take(1)?[0])
+    }
+
     fn u32(&mut self) -> Result<u32, String> {
         Ok(u32::from_le_bytes(
             self.take(4)?.try_into().expect("fixed-size read"),
@@ -268,6 +299,7 @@ mod tests {
             sample_rate_hz: 100_000_000.0,
             sample_count: samples.len(),
             signals: vec!["clk".into(), "data value".into()],
+            clock_signals: vec![false, false],
             samples,
         }
     }
@@ -288,6 +320,19 @@ mod tests {
     }
 
     #[test]
+    fn writes_reference_clock_when_the_input_slot_is_low() {
+        let mut output = Vec::new();
+        let mut export = export(vec![0, 0]);
+        export.clock_signals[0] = true;
+        export.write_vcd(&mut output).unwrap();
+        let text = String::from_utf8(output).unwrap();
+
+        assert!(text.contains("#5000\n0!"));
+        assert!(text.contains("#10000\n1!"));
+        assert!(text.contains("#15000\n0!"));
+    }
+
+    #[test]
     fn gzip_round_trip() {
         let mut compressed = Vec::new();
         {
@@ -305,7 +350,7 @@ mod tests {
     #[test]
     fn rejects_truncated_payloads() {
         assert_eq!(
-            VcdExport::decode(b"AVCD\x01\0").err().as_deref(),
+            VcdExport::decode(b"AVCD\x02\0").err().as_deref(),
             Some("truncated waveform export payload")
         );
     }
@@ -319,8 +364,10 @@ mod tests {
         packet.extend(2_u16.to_le_bytes());
         packet.extend(8_u32.to_le_bytes());
         packet.extend(b"test.vcd");
+        packet.push(1);
         packet.extend(3_u16.to_le_bytes());
         packet.extend(b"clk");
+        packet.push(0);
         packet.extend(4_u16.to_le_bytes());
         packet.extend(b"data");
         packet.extend([0b01, 0b10]);
@@ -328,6 +375,7 @@ mod tests {
         let export = VcdExport::decode(&packet).unwrap();
         assert_eq!(export.path, PathBuf::from("test.vcd"));
         assert_eq!(export.signals, ["clk", "data"]);
+        assert_eq!(export.clock_signals, [true, false]);
         assert_eq!(export.sample_count, 2);
         assert_eq!(export.samples, [0b01, 0b10]);
     }

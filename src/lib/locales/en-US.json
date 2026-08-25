@@ -329,7 +329,6 @@
   "waveformClearCursors": "Clear Cursors",
   "waveformExportVcd": "Export VCD",
   "waveformExportingVcd": "Exporting...",
-  "waveformVcdExported": "Exported to {path}",
   "waveformVcdExportFailed": "VCD export failed: {message}",
   "waveformCompressedVcdFile": "Compressed VCD",
   "waveformVcdFile": "VCD",
