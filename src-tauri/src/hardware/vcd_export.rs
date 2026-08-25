@@ -33,6 +33,9 @@ impl VcdExport {
         }
 
         let sample_rate_hz = input.f64()?;
+        if !sample_rate_hz.is_finite() || sample_rate_hz <= 0.0 {
+            return Err("waveform sample rate is out of range".into());
+        }
         let sample_count = input.u32()? as usize;
         let signal_count = input.u16()? as usize;
         if sample_count == 0 || sample_count > MAX_SAMPLES {
@@ -174,12 +177,8 @@ impl VcdExport {
 
     fn timestamp(&self, sample_index: usize, half_cycle: bool) -> u64 {
         let phase = sample_index as u64 * 2 + u64::from(half_cycle);
-        if self.sample_rate_hz.is_finite() && self.sample_rate_hz > 0.0 {
-            ((phase as f64 * 1_000_000_000_000.0 / (self.sample_rate_hz * 2.0)).round() as u64)
-                .max(phase)
-        } else {
-            phase * 500
-        }
+        ((phase as f64 * 1_000_000_000_000.0 / (self.sample_rate_hz * 2.0)).round() as u64)
+            .max(phase)
     }
 }
 
@@ -352,6 +351,18 @@ mod tests {
         assert_eq!(
             VcdExport::decode(b"AVCD\x02\0").err().as_deref(),
             Some("truncated waveform export payload")
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_sample_rate() {
+        let mut packet = b"AVCD".to_vec();
+        packet.extend(VERSION.to_le_bytes());
+        packet.extend(0.0_f64.to_le_bytes());
+
+        assert_eq!(
+            VcdExport::decode(&packet).err().as_deref(),
+            Some("waveform sample rate is out of range")
         );
     }
 

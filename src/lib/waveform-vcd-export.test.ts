@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
-
 import type { WaveformTrackBuffer } from '@/stores/hardware-runtime-waveform'
+
+import { describe, expect, it } from 'vitest'
 
 import { buildWaveformVcdPayload } from './waveform-vcd-export'
 

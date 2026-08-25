@@ -1,3 +1,5 @@
+import type { WaveformTrackBuffer } from '@/stores/hardware-runtime-waveform'
+
 import { invoke } from '@tauri-apps/api/core'
 import { save } from '@tauri-apps/plugin-dialog'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
@@ -5,7 +7,6 @@ import { revealItemInDir } from '@tauri-apps/plugin-opener'
 import { getProjectOutputDirectory, joinPath } from '@/lib/project-layout'
 import { translate } from '@/lib/i18n'
 import { isLikelyClockPort } from '@/lib/project-constraints'
-import type { WaveformTrackBuffer } from '@/stores/hardware-runtime-waveform'
 import { projectStore } from '@/stores/project'
 
 const MAGIC = new Uint8Array([0x41, 0x56, 0x43, 0x44])
