@@ -82,6 +82,21 @@ Follow repository facts first, then these conventions.
 - Rust formatting: `cargo fmt --manifest-path src-tauri/Cargo.toml`
 - Rust tests: `cargo test --manifest-path src-tauri/Cargo.toml`
 
+## Release Process
+
+Agents may publish a release only when the maintainer explicitly asks for it. Use this sequence:
+
+1. Start from a clean, current `main` branch. Choose a version greater than the current version and run `pnpm release:prepare X.Y.Z`. Do not create the release branch manually or edit version files separately.
+2. Confirm the command created `release/vX.Y.Z` and changed only `package.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json`, plus intentional release notes or documentation. Run `pnpm release:check`.
+3. Commit the release preparation as `chore: release X.Y.Z`, push the branch, open a PR, address every valid review comment, and wait for all required CI checks before merging.
+4. From the merged `main` commit, manually dispatch the `Pre-publish` workflow with `gh workflow run pre-publish.yml --ref main`. Wait for the full dry run to pass on Linux, macOS, and Windows. It must build signed updater artifacts and pass packaged LSP handshakes; never tag a failed dry run.
+5. Synchronize local `main` with `origin/main`, rerun `pnpm release:check`, and verify the checked-out version is exactly `X.Y.Z`.
+6. Create and push the immutable annotated tag: `git tag -a vX.Y.Z -m "Aspen vX.Y.Z"`, then `git push origin vX.Y.Z`. Do not move or reuse an existing release tag.
+7. Wait for the tag-triggered `CI` workflow. It must pass frontend, Rust, toolchain, and all three package jobs before `Publish GitHub Release` succeeds.
+8. Verify the GitHub Release exists and contains `latest.json`, platform installers, updater archives, and signatures. Check that `latest.json` reports `vX.Y.Z`. A release is not complete until these checks pass.
+
+If any post-tag job fails, diagnose and fix it through a new PR. Do not delete or repoint the published tag unless the maintainer explicitly authorizes that destructive recovery.
+
 ### Lint/Format Status
 
 - ESLint is configured via `eslint.config.mjs`; use `pnpm lint` and `pnpm lint:fix`.
