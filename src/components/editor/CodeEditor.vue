@@ -2,6 +2,7 @@
 import type { EditorLanguage } from '@/lib/editor-language'
 
 import * as monaco from 'monaco-editor/editor/editor.api'
+import 'monaco-editor/editor/contrib/hover/browser/hoverContribution'
 import editorWorker from 'monaco-editor/editor/editor.worker?worker'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
