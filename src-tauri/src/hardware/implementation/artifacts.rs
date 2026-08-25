@@ -127,21 +127,20 @@ impl PlannedArtifacts {
 }
 
 fn sanitize_file_stem(value: &str) -> String {
-    let sanitized = value
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
-                ch
-            } else {
-                '_'
-            }
-        })
-        .collect::<String>();
+    let mut sanitized = String::with_capacity(value.len());
+    for ch in value.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '-' {
+            sanitized.push(ch);
+        } else if !sanitized.ends_with('_') {
+            sanitized.push('_');
+        }
+    }
 
-    if sanitized.trim_matches('_').is_empty() {
+    let sanitized = sanitized.trim_matches('_');
+    if sanitized.is_empty() {
         "design".to_string()
     } else {
-        sanitized
+        sanitized.to_string()
     }
 }
 
@@ -160,4 +159,14 @@ pub(super) fn path_argument(path: &Path, workdir: &Path) -> Result<String, Strin
 
     let absolute = workdir.join(path);
     Ok(absolute.to_string_lossy().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sanitize_file_stem;
+
+    #[test]
+    fn artifact_name_drops_unsupported_project_name_prefix() {
+        assert_eq!(sanitize_file_stem("中文工程_top"), "top");
+    }
 }
