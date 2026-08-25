@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Download } from '@lucide/vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 
 import { Badge } from '@/components/ui/badge'
@@ -13,6 +14,7 @@ import {
 } from '@/components/ui/context-menu'
 import { useI18n } from '@/lib/i18n'
 import { equalStringArrays, normalizeUniqueSignalNames } from '@/lib/signal-names'
+import { exportWaveformVcd } from '@/lib/waveform-vcd-export'
 import { hardwareStore } from '@/stores/hardware'
 import { projectWaveformStore } from '@/stores/project-waveform'
 
@@ -67,6 +69,8 @@ const waveformMetrics = ref<WaveformCanvasMetrics>({
 const panelBodyRef = ref<HTMLElement | null>(null)
 const panelHeight = ref(272)
 const signalListWidth = ref(180)
+const waveformExporting = ref(false)
+const waveformExportError = ref<string | null>(null)
 
 const SIGNAL_LANE_HEIGHT = 42
 const SIGNAL_LIST_VERTICAL_PADDING = 16
@@ -194,6 +198,23 @@ function resetView() {
 
 function clearCursors() {
   waveformCanvasRef.value?.clearCursors()
+}
+
+async function exportVcd() {
+  waveformExporting.value = true
+  waveformExportError.value = null
+  try {
+    await exportWaveformVcd({
+      signals: orderedSignals.value,
+      tracks: waveformTracks.value,
+      sampleRateHz: waveformSampleRateHz.value,
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    waveformExportError.value = t('waveformVcdExportFailed', { message })
+  } finally {
+    waveformExporting.value = false
+  }
 }
 
 function setSignalColor(signal: string, color: string) {
@@ -374,6 +395,16 @@ onBeforeUnmount(() => {
         <Button
           type="button"
           size="sm"
+          variant="outline"
+          :disabled="waveformMetrics.maxTrackLength === 0 || waveformExporting"
+          @click="exportVcd"
+        >
+          <Download class="h-3.5 w-3.5" />
+          {{ waveformExporting ? t('waveformExportingVcd') : t('waveformExportVcd') }}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
           :variant="waveformMetrics.followLatest ? 'default' : 'outline'"
           :disabled="waveformMetrics.maxTrackLength === 0"
           @click="followLatest"
@@ -402,6 +433,15 @@ onBeforeUnmount(() => {
         </Button>
       </div>
     </div>
+
+    <p
+      v-if="waveformExportError"
+      class="mb-2 truncate text-xs text-destructive"
+      :title="waveformExportError"
+      aria-live="polite"
+    >
+      {{ waveformExportError }}
+    </p>
 
     <div
       v-if="orderedSignals.length === 0"
