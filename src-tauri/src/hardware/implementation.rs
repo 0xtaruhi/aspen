@@ -123,18 +123,15 @@ where
         )
     })?;
     let constraints = Arc::<[_]>::from(constraint_set.pins);
-    let sta_timing = StaTimingContext {
-        clocks: Arc::from(constraint_set.clocks),
-        cell_timing: Some(Arc::new(
-            load_cell_timing_model(&resource_paths.pack_cell).map_err(|err| {
-                format!(
-                    "Failed to load cell timing model '{}': {err}",
-                    resource_paths.pack_cell.display()
-                )
-            })?,
-        )),
-        ..StaTimingContext::default()
-    };
+    let clocks = Arc::<[_]>::from(constraint_set.clocks);
+    let cell_timing = Arc::new(load_cell_timing_model(&resource_paths.pack_cell).map_err(
+        |err| {
+            format!(
+                "Failed to load cell timing model '{}': {err}",
+                resource_paths.pack_cell.display()
+            )
+        },
+    )?);
     let arch = Arc::new(load_arch(&resource_paths.arch).map_err(|err| err.to_string())?);
     let delay = Arc::new(
         load_delay_model(Some(&resource_paths.delay))
@@ -266,6 +263,15 @@ where
         Ok(routed) => routed,
         Err(report) => return Ok(*report),
     };
+    let (input_delays, output_delays) = default_zero_io_delays(&routed_design, &clocks);
+    let defaulted_io_delays = (input_delays.len(), output_delays.len());
+    let sta_timing = StaTimingContext {
+        clocks,
+        input_delays: Arc::from(input_delays),
+        output_delays: Arc::from(output_delays),
+        cell_timing: Some(cell_timing),
+        ..StaTimingContext::default()
+    };
 
     let (design_for_bitgen, timing_report, timing_success) = {
         let stage = ImplementationStageKindV1::Sta;
@@ -282,7 +288,13 @@ where
             &sta_timing,
             &mut reporter,
         ) {
-            Ok((artifact, report)) => {
+            Ok((artifact, mut report)) => {
+                if defaulted_io_delays != (0, 0) {
+                    report.push(format!(
+                        "Aspen applied 0 ns default I/O delays to {} input(s) and {} output(s).",
+                        defaulted_io_delays.0, defaulted_io_delays.1
+                    ));
+                }
                 let timing_success = sta_report_meets_constraints(&report);
                 let result = finish_success_stage(
                     stage,
@@ -371,6 +383,33 @@ fn sta_report_meets_constraints(report: &fde::StageReport) -> bool {
         .get("timing_met")
         .and_then(serde_json::Value::as_bool)
         .unwrap_or(true)
+}
+
+fn default_zero_io_delays(
+    design: &fde::Design,
+    clocks: &[fde::ClockConstraint],
+) -> (Vec<fde::IoDelayConstraint>, Vec<fde::IoDelayConstraint>) {
+    let [clock] = clocks else {
+        return (Vec::new(), Vec::new());
+    };
+    let constraint_for = |port: &fde::ir::Port| fde::IoDelayConstraint {
+        port_name: port.name.clone(),
+        clock_name: clock.name.clone(),
+        delay_ns: 0.0,
+    };
+    let inputs = design
+        .ports
+        .iter()
+        .filter(|port| port.direction.is_input_like() && port.name != clock.port_name)
+        .map(&constraint_for)
+        .collect::<Vec<_>>();
+    let outputs = design
+        .ports
+        .iter()
+        .filter(|port| port.direction.is_output_like())
+        .map(constraint_for)
+        .collect::<Vec<_>>();
+    (inputs, outputs)
 }
 
 fn validate_request(request: &ImplementationRequestV1) -> Result<(), String> {
