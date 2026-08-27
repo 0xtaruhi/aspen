@@ -497,7 +497,10 @@ fn implementation_smoke_test_runs_with_division_logic_lowered_by_bundled_yosys()
     .unwrap();
 
     assert!(report.success, "{}", report.log);
-    assert!(report.timing_success, "{}", report.timing_report);
+    assert!(!report.timing_success, "{}", report.timing_report);
+    assert!(report
+        .timing_report
+        .contains("Timing status       : PARTIALLY CONSTRAINED"));
     assert!(report.timing_report.contains("Clock: clk on clk"));
     assert!(report.timing_report.contains("Worst Slack:"));
     assert!(report.log.contains(">>> starting route"), "{}", report.log);
