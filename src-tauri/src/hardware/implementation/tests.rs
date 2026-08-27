@@ -199,7 +199,7 @@ fn cargo_manifest_uses_semver_rust_fde_dependency() {
     let cargo_toml =
         fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml")).unwrap();
     assert!(
-        cargo_toml.contains("fde = \"1.1.0\""),
+        cargo_toml.contains("fde = \"1.1.1\""),
         "Aspen should require the latest compatible crates.io fde baseline"
     );
 }

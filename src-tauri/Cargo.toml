@@ -24,7 +24,7 @@ tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ts-rs = { version = "12.0.1", features = ["no-serde-warnings"] }
-fde = "1.1.0"
+fde = "1.1.1"
 vlfd-rs = "4"
 flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }
 tauri-plugin-updater = "2.10.1"
