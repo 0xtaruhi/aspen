@@ -219,6 +219,32 @@ fn sta_timing_success_follows_the_fde_timing_metric() {
 }
 
 #[test]
+fn sta_defaults_unmodeled_io_to_the_board_clock() {
+    let design = fde::Design {
+        ports: vec![
+            fde::ir::Port::input("clk"),
+            fde::ir::Port::input("button"),
+            fde::ir::Port::output("led"),
+        ],
+        ..fde::Design::default()
+    };
+    let clocks = [fde::ClockConstraint {
+        name: "clk".to_string(),
+        port_name: "clk".to_string(),
+        period_ns: 10.0,
+    }];
+
+    let (inputs, outputs) = default_zero_io_delays(&design, &clocks);
+
+    assert_eq!(inputs.len(), 1);
+    assert_eq!(inputs[0].port_name, "button");
+    assert_eq!(inputs[0].clock_name, "clk");
+    assert_eq!(outputs.len(), 1);
+    assert_eq!(outputs[0].port_name, "led");
+    assert_eq!(outputs[0].clock_name, "clk");
+}
+
+#[test]
 fn bundled_cell_library_loads_with_fde_1_1_timing_data() {
     let resources = test_resource_paths();
     let model = fde::load_cell_timing_model(&resources.pack_cell).expect("cell timing model");
@@ -497,10 +523,17 @@ fn implementation_smoke_test_runs_with_division_logic_lowered_by_bundled_yosys()
     .unwrap();
 
     assert!(report.success, "{}", report.log);
-    assert!(!report.timing_success, "{}", report.timing_report);
-    assert!(report
-        .timing_report
-        .contains("Timing status       : PARTIALLY CONSTRAINED"));
+    assert!(report.timing_success, "{}", report.timing_report);
+    assert!(report.timing_report.contains("Timing status       : MET"));
+    assert!(!report.timing_report.contains("FDE-STA-0004"));
+    assert_eq!(
+        report
+            .stages
+            .iter()
+            .find(|stage| stage.stage == ImplementationStageKindV1::Sta)
+            .map(|stage| stage.warning_count),
+        Some(0)
+    );
     assert!(report.timing_report.contains("Clock Summary"));
     assert!(report.timing_report.contains("Worst Slack:"));
     assert!(report.log.contains(">>> starting route"), "{}", report.log);
