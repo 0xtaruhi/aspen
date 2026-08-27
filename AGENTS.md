@@ -9,7 +9,7 @@ Follow repository facts first, then these conventions.
 - Desktop shell: Tauri v2 (Rust in `src-tauri/`).
 - Desktop self-updates: Tauri updater against signed GitHub Releases metadata.
 - FPGA synthesis: Yosys, invoked from the Tauri backend for the Synthesis page.
-- FPGA implementation/bitstream: Rust `fde` from crates.io (`fde = "1.1.0"`), invoked directly from the Tauri backend through staged function calls.
+- FPGA implementation/bitstream: Rust `fde` from crates.io (`fde = "1.1.1"`), invoked directly from the Tauri backend through staged function calls.
 - HDL language services: bundled `slang-server` prebuilt binaries, invoked from the Tauri backend for Verilog/SystemVerilog editing features.
 - Runtime synthesis must use Aspen's bundled Yosys toolchain; do not fall back to a system `yosys` on `PATH`.
 - Runtime implementation must use Aspen's Cargo-linked Rust `fde` dependency; do not shell out to a system-installed `fde`.

@@ -133,6 +133,7 @@ where
                 )
             })?,
         )),
+        ..StaTimingContext::default()
     };
     let arch = Arc::new(load_arch(&resource_paths.arch).map_err(|err| err.to_string())?);
     let delay = Arc::new(
