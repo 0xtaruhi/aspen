@@ -452,7 +452,7 @@ endmodule
 }
 
 #[test]
-fn build_yosys_script_runs_bram_mapping_before_memory_map() {
+fn build_yosys_script_orders_mapping_naming_and_exports() {
     let script = process::build_yosys_script(process::YosysScriptInput {
         workdir: PathBuf::from("/tmp").as_path(),
         fde_simlib: PathBuf::from("/tmp/fdesimlib.v").as_path(),
@@ -474,6 +474,19 @@ fn build_yosys_script_runs_bram_mapping_before_memory_map() {
     assert!(memory_nomap < memory_libmap);
     assert!(memory_libmap < bram_techmap);
     assert!(bram_techmap < memory_map);
+
+    let splitnets = script.find("splitnets\n").expect("split internal buses");
+    let autoname = script
+        .find("autoname t:*DFF*\n")
+        .expect("selectively name registers");
+    let check = script.find("check\n").expect("check design");
+    let write_edif = script.find("write_edif").expect("write EDIF");
+    let write_json = script.find("write_json").expect("write JSON");
+
+    assert!(splitnets < autoname);
+    assert!(autoname < check);
+    assert!(check < write_edif);
+    assert!(write_edif < write_json);
 }
 
 #[test]

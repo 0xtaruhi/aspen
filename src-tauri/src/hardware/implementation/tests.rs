@@ -124,6 +124,8 @@ wreduce\n\
 clean\n\
 techmap -map {}\n\
 opt\n\
+splitnets\n\
+autoname t:*DFF*\n\
 check\n\
 write_edif {}\n",
             quote_test_yosys_path(&fde_simlib),
