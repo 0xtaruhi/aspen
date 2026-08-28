@@ -175,7 +175,7 @@ describe('project io regressions', () => {
     expect(
       await createProjectAtDirectory({
         name: 'Demo',
-        template: 'empty',
+        starter: { kind: 'template', template: 'empty' },
         parentDirectoryPath: '/tmp',
       }),
     ).toBe(true)

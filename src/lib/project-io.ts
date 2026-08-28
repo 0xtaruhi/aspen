@@ -18,6 +18,7 @@ import {
   validateCreateProjectAtDirectoryInput,
   type CreateProjectAtDirectoryOptions,
 } from '@/lib/project-io-service'
+import { initializeProjectFromStarter } from '@/lib/project-starters'
 import { hardwareStore } from '@/stores/hardware'
 import { projectStore } from '@/stores/project'
 import { requestProjectUnsavedChanges } from '@/stores/project-unsaved-changes'
@@ -416,7 +417,7 @@ export async function createProjectAtDirectory(options: CreateProjectAtDirectory
 
   if (prepared.kind === 'failure') {
     if (isProjectIoTauriUnavailable(prepared.error)) {
-      projectStore.createNewProject(options.name.trim(), options.template)
+      initializeProjectFromStarter(options.name.trim(), options.starter)
       return true
     }
 
@@ -425,12 +426,12 @@ export async function createProjectAtDirectory(options: CreateProjectAtDirectory
   }
 
   const result = await finalizeCreateProjectDirectory(prepared.value, {
-    template: options.template,
+    starter: options.starter,
     importPaths: options.importPaths,
   })
   if (result.kind === 'failure') {
     if (isProjectIoTauriUnavailable(result.error)) {
-      projectStore.createNewProject(options.name.trim(), options.template)
+      initializeProjectFromStarter(options.name.trim(), options.starter)
       return true
     }
 

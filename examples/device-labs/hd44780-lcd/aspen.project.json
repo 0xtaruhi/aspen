@@ -6,7 +6,7 @@
     "files": [
       {
         "id": "root",
-        "name": "src",
+        "name": "HD44780 LCD Lab",
         "type": "folder",
         "isOpen": true,
         "children": [{ "id": "top", "name": "hd44780_hello.v", "type": "file" }]

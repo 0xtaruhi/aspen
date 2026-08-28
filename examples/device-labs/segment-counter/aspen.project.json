@@ -6,7 +6,7 @@
     "files": [
       {
         "id": "root",
-        "name": "src",
+        "name": "Seven-Segment Counter Lab",
         "type": "folder",
         "isOpen": true,
         "children": [{ "id": "top", "name": "segment_counter.v", "type": "file" }]

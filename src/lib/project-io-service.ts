@@ -1,13 +1,14 @@
 import type { ImportFilesResult } from '@/stores/project-file-operations'
-
-import { projectStore } from '@/stores/project'
-import { projectCanvasStore } from '@/stores/project-canvas'
-import { projectWaveformStore } from '@/stores/project-waveform'
-import { recentProjectsStore } from '@/stores/recent-projects'
+import type { ProjectStarter } from '@/lib/project-starters'
 
 import { cloneImplementationSettings } from '@/lib/implementation-settings'
 import { cloneProjectConstraintSnapshot } from '@/lib/project-constraints'
 import { ASPEN_PROJECT_FILENAME, joinPath } from '@/lib/project-layout'
+import { initializeProjectFromStarter } from '@/lib/project-starters'
+import { projectStore } from '@/stores/project'
+import { projectCanvasStore } from '@/stores/project-canvas'
+import { projectWaveformStore } from '@/stores/project-waveform'
+import { recentProjectsStore } from '@/stores/recent-projects'
 import {
   inspectProjectDirectory,
   loadProjectFromPath,
@@ -32,7 +33,7 @@ import {
 
 export type CreateProjectAtDirectoryOptions = {
   name: string
-  template: 'empty' | 'blinky' | 'uart'
+  starter: ProjectStarter
   parentDirectoryPath: string
   importPaths?: readonly string[]
 }
@@ -392,12 +393,12 @@ export async function saveProjectBundleToPath(
 
 export async function finalizeCreateProjectDirectory(
   prepared: PreparedCreateProjectDirectory,
-  options: Pick<CreateProjectAtDirectoryOptions, 'template' | 'importPaths'>,
+  options: Pick<CreateProjectAtDirectoryOptions, 'starter' | 'importPaths'>,
 ): Promise<ProjectIoServiceResult<{ metadataPath: string }>> {
   const rollbackState = captureProjectCreationRollbackState()
 
   try {
-    projectStore.createNewProject(prepared.projectName, options.template)
+    initializeProjectFromStarter(prepared.projectName, options.starter)
 
     let message: ProjectIoMessageDescriptor | undefined
     const importPaths = options.importPaths ?? []

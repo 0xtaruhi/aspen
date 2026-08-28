@@ -6,7 +6,7 @@
     "files": [
       {
         "id": "root",
-        "name": "src",
+        "name": "UART Terminal Lab",
         "type": "folder",
         "isOpen": true,
         "children": [{ "id": "top", "name": "uart_echo.v", "type": "file" }]

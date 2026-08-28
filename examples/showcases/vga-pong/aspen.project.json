@@ -6,7 +6,7 @@
     "files": [
       {
         "id": "root",
-        "name": "src",
+        "name": "VGA Pong",
         "type": "folder",
         "isOpen": true,
         "children": [{ "id": "top", "name": "vga_pong.v", "type": "file" }]

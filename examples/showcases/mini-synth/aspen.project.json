@@ -6,7 +6,7 @@
     "files": [
       {
         "id": "root",
-        "name": "src",
+        "name": "Mini Synth",
         "type": "folder",
         "isOpen": true,
         "children": [{ "id": "top", "name": "mini_synth.v", "type": "file" }]

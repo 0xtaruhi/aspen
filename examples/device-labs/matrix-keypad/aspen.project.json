@@ -6,7 +6,7 @@
     "files": [
       {
         "id": "root",
-        "name": "src",
+        "name": "Matrix Keypad Lab",
         "type": "folder",
         "isOpen": true,
         "children": [{ "id": "top", "name": "keypad_display.v", "type": "file" }]

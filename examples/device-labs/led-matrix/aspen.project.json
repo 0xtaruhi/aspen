@@ -6,7 +6,7 @@
     "files": [
       {
         "id": "root",
-        "name": "src",
+        "name": "LED Matrix Lab",
         "type": "folder",
         "isOpen": true,
         "children": [{ "id": "top", "name": "led_matrix_demo.v", "type": "file" }]

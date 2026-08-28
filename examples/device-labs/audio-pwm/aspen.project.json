@@ -6,7 +6,7 @@
     "files": [
       {
         "id": "root",
-        "name": "src",
+        "name": "Audio PWM Lab",
         "type": "folder",
         "isOpen": true,
         "children": [{ "id": "top", "name": "selectable_tone.v", "type": "file" }]

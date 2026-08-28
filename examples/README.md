@@ -1,8 +1,9 @@
 # Aspen example projects
 
-Each directory below is a complete Aspen project. Open its `aspen.project.json`, run synthesis and
-implementation, program the board, then open the Virtual Device workspace. Pin assignments, device
-placement, and signal bindings are already included.
+Each directory below is a complete Aspen project. In Aspen, choose **New Project → Example
+Projects** to create an editable copy, or open its `aspen.project.json` directly from this repository.
+Run synthesis and implementation, program the board, then open the Virtual Device workspace. Pin
+assignments, device placement, and signal bindings are already included.
 
 The designs assume the FDP3P7 reference board's 30 MHz clock.
 

@@ -6,7 +6,7 @@
     "files": [
       {
         "id": "root",
-        "name": "src",
+        "name": "GPIO Controls Lab",
         "type": "folder",
         "isOpen": true,
         "children": [{ "id": "top", "name": "gpio_controls.v", "type": "file" }]
