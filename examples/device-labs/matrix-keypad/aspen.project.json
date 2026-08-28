@@ -1,0 +1,121 @@
+{
+  "version": 3,
+  "layout": "directory",
+  "content": {
+    "name": "Matrix Keypad Lab",
+    "files": [
+      {
+        "id": "root",
+        "name": "src",
+        "type": "folder",
+        "isOpen": true,
+        "children": [{ "id": "top", "name": "keypad_display.v", "type": "file" }]
+      }
+    ],
+    "topFileId": "top",
+    "topModuleName": "keypad_display",
+    "targetDeviceId": "FDP3P7",
+    "targetBoardId": "FDP3P7_REFERENCE",
+    "pinConstraints": {
+      "version": 1,
+      "topFileId": "top",
+      "assignments": [
+        { "portName": "clk", "pinId": "P77", "clockPeriodNs": 33.333333, "boardFunction": "CLK" },
+        { "portName": "reset", "pinId": "P151" },
+        { "portName": "keypad_columns[0]", "pinId": "P148" },
+        { "portName": "keypad_columns[1]", "pinId": "P150" },
+        { "portName": "keypad_columns[2]", "pinId": "P152" },
+        { "portName": "keypad_columns[3]", "pinId": "P160" },
+        { "portName": "keypad_rows[0]", "pinId": "P7" },
+        { "portName": "keypad_rows[1]", "pinId": "P6" },
+        { "portName": "keypad_rows[2]", "pinId": "P5" },
+        { "portName": "keypad_rows[3]", "pinId": "P4" },
+        { "portName": "segments[0]", "pinId": "P9" },
+        { "portName": "segments[1]", "pinId": "P8" },
+        { "portName": "segments[2]", "pinId": "P16" },
+        { "portName": "segments[3]", "pinId": "P15" },
+        { "portName": "segments[4]", "pinId": "P11" },
+        { "portName": "segments[5]", "pinId": "P10" },
+        { "portName": "segments[6]", "pinId": "P20" },
+        { "portName": "segments[7]", "pinId": "P18" }
+      ]
+    },
+    "implementationSettings": { "version": 1, "placeMode": "timing_driven" },
+    "synthesisCache": null,
+    "implementationCache": null,
+    "canvasDevices": [
+      {
+        "id": "reset-button",
+        "type": "button",
+        "x": 80,
+        "y": 120,
+        "label": "Reset",
+        "state": {
+          "is_on": false,
+          "color": null,
+          "binding": { "kind": "single", "signal": "reset" },
+          "config": { "kind": "button", "active_low": false },
+          "data": { "kind": "none" }
+        }
+      },
+      {
+        "id": "keypad",
+        "type": "matrix_keypad",
+        "x": 260,
+        "y": 100,
+        "label": "Hex Keypad",
+        "state": {
+          "is_on": false,
+          "color": null,
+          "binding": {
+            "kind": "slots",
+            "signals": [
+              "keypad_rows[0]",
+              "keypad_rows[1]",
+              "keypad_rows[2]",
+              "keypad_rows[3]",
+              "keypad_columns[0]",
+              "keypad_columns[1]",
+              "keypad_columns[2]",
+              "keypad_columns[3]"
+            ]
+          },
+          "config": { "kind": "matrix_keypad", "rows": 4, "columns": 4, "active_low": true },
+          "data": { "kind": "matrix_keypad", "pressed_row": null, "pressed_column": null }
+        }
+      },
+      {
+        "id": "key-display",
+        "type": "segment_display",
+        "x": 540,
+        "y": 140,
+        "label": "Last Key",
+        "state": {
+          "is_on": false,
+          "color": "#ef4444",
+          "binding": {
+            "kind": "slots",
+            "signals": [
+              "segments[0]",
+              "segments[1]",
+              "segments[2]",
+              "segments[3]",
+              "segments[4]",
+              "segments[5]",
+              "segments[6]",
+              "segments[7]"
+            ]
+          },
+          "config": { "kind": "segment_display", "digits": 1, "active_low": false },
+          "data": { "kind": "none" }
+        }
+      }
+    ],
+    "waveformView": {
+      "version": 1,
+      "signalOrder": ["clk", "keypad_rows[0]", "keypad_columns[0]", "segments[0]"],
+      "signalColorOverrides": {}
+    }
+  },
+  "workspaceView": { "activeFileId": "top" }
+}

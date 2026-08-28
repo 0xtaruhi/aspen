@@ -1,0 +1,151 @@
+{
+  "version": 3,
+  "layout": "directory",
+  "content": {
+    "name": "GPIO Controls Lab",
+    "files": [
+      {
+        "id": "root",
+        "name": "src",
+        "type": "folder",
+        "isOpen": true,
+        "children": [{ "id": "top", "name": "gpio_controls.v", "type": "file" }]
+      }
+    ],
+    "topFileId": "top",
+    "topModuleName": "gpio_controls",
+    "targetDeviceId": "FDP3P7",
+    "targetBoardId": "FDP3P7_REFERENCE",
+    "pinConstraints": {
+      "version": 1,
+      "topFileId": "top",
+      "assignments": [
+        { "portName": "clk", "pinId": "P77", "clockPeriodNs": 33.333333, "boardFunction": "CLK" },
+        { "portName": "mode_switch", "pinId": "P151" },
+        { "portName": "invert_button", "pinId": "P148" },
+        { "portName": "dip[0]", "pinId": "P150" },
+        { "portName": "dip[1]", "pinId": "P152" },
+        { "portName": "dip[2]", "pinId": "P160" },
+        { "portName": "dip[3]", "pinId": "P161" },
+        { "portName": "dip[4]", "pinId": "P162" },
+        { "portName": "dip[5]", "pinId": "P163" },
+        { "portName": "dip[6]", "pinId": "P164" },
+        { "portName": "dip[7]", "pinId": "P165" },
+        { "portName": "status_led", "pinId": "P7" },
+        { "portName": "led_bar[0]", "pinId": "P6" },
+        { "portName": "led_bar[1]", "pinId": "P5" },
+        { "portName": "led_bar[2]", "pinId": "P4" },
+        { "portName": "led_bar[3]", "pinId": "P9" },
+        { "portName": "led_bar[4]", "pinId": "P8" },
+        { "portName": "led_bar[5]", "pinId": "P16" },
+        { "portName": "led_bar[6]", "pinId": "P15" },
+        { "portName": "led_bar[7]", "pinId": "P11" }
+      ]
+    },
+    "implementationSettings": { "version": 1, "placeMode": "timing_driven" },
+    "synthesisCache": null,
+    "implementationCache": null,
+    "canvasDevices": [
+      {
+        "id": "mode-switch",
+        "type": "switch",
+        "x": 80,
+        "y": 80,
+        "label": "Mode",
+        "state": {
+          "is_on": false,
+          "color": null,
+          "binding": { "kind": "single", "signal": "mode_switch" },
+          "config": { "kind": "none" },
+          "data": { "kind": "none" }
+        }
+      },
+      {
+        "id": "invert-button",
+        "type": "button",
+        "x": 220,
+        "y": 100,
+        "label": "Invert",
+        "state": {
+          "is_on": false,
+          "color": null,
+          "binding": { "kind": "single", "signal": "invert_button" },
+          "config": { "kind": "button", "active_low": false },
+          "data": { "kind": "none" }
+        }
+      },
+      {
+        "id": "dip-bank",
+        "type": "dip_switch_bank",
+        "x": 80,
+        "y": 300,
+        "label": "Input Value",
+        "state": {
+          "is_on": false,
+          "color": null,
+          "binding": {
+            "kind": "slots",
+            "signals": [
+              "dip[0]",
+              "dip[1]",
+              "dip[2]",
+              "dip[3]",
+              "dip[4]",
+              "dip[5]",
+              "dip[6]",
+              "dip[7]"
+            ]
+          },
+          "config": { "kind": "dip_switch_bank", "width": 8 },
+          "data": { "kind": "bitset", "bits": [true, false, true, false, false, true, false, true] }
+        }
+      },
+      {
+        "id": "status-led",
+        "type": "led",
+        "x": 430,
+        "y": 100,
+        "label": "Status",
+        "state": {
+          "is_on": false,
+          "color": "#ef4444",
+          "binding": { "kind": "single", "signal": "status_led" },
+          "config": { "kind": "none" },
+          "data": { "kind": "none" }
+        }
+      },
+      {
+        "id": "led-bar",
+        "type": "led_bar",
+        "x": 430,
+        "y": 300,
+        "label": "Output Value",
+        "state": {
+          "is_on": false,
+          "color": "#4ade80",
+          "binding": {
+            "kind": "slots",
+            "signals": [
+              "led_bar[0]",
+              "led_bar[1]",
+              "led_bar[2]",
+              "led_bar[3]",
+              "led_bar[4]",
+              "led_bar[5]",
+              "led_bar[6]",
+              "led_bar[7]"
+            ]
+          },
+          "config": { "kind": "led_bar", "width": 8, "active_low": false },
+          "data": { "kind": "none" }
+        }
+      }
+    ],
+    "waveformView": {
+      "version": 1,
+      "signalOrder": ["clk", "mode_switch", "invert_button", "status_led", "led_bar[0]"],
+      "signalColorOverrides": {}
+    }
+  },
+  "workspaceView": { "activeFileId": "top" }
+}

@@ -1,0 +1,103 @@
+{
+  "version": 3,
+  "layout": "directory",
+  "content": {
+    "name": "LED Matrix Lab",
+    "files": [
+      {
+        "id": "root",
+        "name": "src",
+        "type": "folder",
+        "isOpen": true,
+        "children": [{ "id": "top", "name": "led_matrix_demo.v", "type": "file" }]
+      }
+    ],
+    "topFileId": "top",
+    "topModuleName": "led_matrix_demo",
+    "targetDeviceId": "FDP3P7",
+    "targetBoardId": "FDP3P7_REFERENCE",
+    "pinConstraints": {
+      "version": 1,
+      "topFileId": "top",
+      "assignments": [
+        { "portName": "clk", "pinId": "P77", "clockPeriodNs": 33.333333, "boardFunction": "CLK" },
+        { "portName": "reset", "pinId": "P151" },
+        { "portName": "matrix_rows[0]", "pinId": "P7" },
+        { "portName": "matrix_rows[1]", "pinId": "P6" },
+        { "portName": "matrix_rows[2]", "pinId": "P5" },
+        { "portName": "matrix_rows[3]", "pinId": "P4" },
+        { "portName": "matrix_rows[4]", "pinId": "P9" },
+        { "portName": "matrix_rows[5]", "pinId": "P8" },
+        { "portName": "matrix_rows[6]", "pinId": "P16" },
+        { "portName": "matrix_rows[7]", "pinId": "P15" },
+        { "portName": "matrix_columns[0]", "pinId": "P11" },
+        { "portName": "matrix_columns[1]", "pinId": "P10" },
+        { "portName": "matrix_columns[2]", "pinId": "P20" },
+        { "portName": "matrix_columns[3]", "pinId": "P18" },
+        { "portName": "matrix_columns[4]", "pinId": "P17" },
+        { "portName": "matrix_columns[5]", "pinId": "P22" },
+        { "portName": "matrix_columns[6]", "pinId": "P21" },
+        { "portName": "matrix_columns[7]", "pinId": "P23" }
+      ]
+    },
+    "implementationSettings": { "version": 1, "placeMode": "timing_driven" },
+    "synthesisCache": null,
+    "implementationCache": null,
+    "canvasDevices": [
+      {
+        "id": "reset-button",
+        "type": "button",
+        "x": 80,
+        "y": 180,
+        "label": "Reset",
+        "state": {
+          "is_on": false,
+          "color": null,
+          "binding": { "kind": "single", "signal": "reset" },
+          "config": { "kind": "button", "active_low": false },
+          "data": { "kind": "none" }
+        }
+      },
+      {
+        "id": "matrix-display",
+        "type": "led_matrix",
+        "x": 300,
+        "y": 80,
+        "label": "Animated Matrix",
+        "state": {
+          "is_on": false,
+          "color": "#4ade80",
+          "binding": {
+            "kind": "slots",
+            "signals": [
+              "matrix_rows[0]",
+              "matrix_rows[1]",
+              "matrix_rows[2]",
+              "matrix_rows[3]",
+              "matrix_rows[4]",
+              "matrix_rows[5]",
+              "matrix_rows[6]",
+              "matrix_rows[7]",
+              "matrix_columns[0]",
+              "matrix_columns[1]",
+              "matrix_columns[2]",
+              "matrix_columns[3]",
+              "matrix_columns[4]",
+              "matrix_columns[5]",
+              "matrix_columns[6]",
+              "matrix_columns[7]"
+            ]
+          },
+          "config": { "kind": "led_matrix", "rows": 8, "columns": 8 },
+          "data": { "kind": "none" }
+        }
+      }
+    ],
+    "waveformView": {
+      "version": 1,
+      "signalOrder": ["clk", "matrix_rows[0]", "matrix_columns[0]"],
+      "signalColorOverrides": {}
+    }
+  },
+  "workspaceView": { "activeFileId": "top" }
+}

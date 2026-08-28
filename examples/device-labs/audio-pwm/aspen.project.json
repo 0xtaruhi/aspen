@@ -1,0 +1,95 @@
+{
+  "version": 3,
+  "layout": "directory",
+  "content": {
+    "name": "Audio PWM Lab",
+    "files": [
+      {
+        "id": "root",
+        "name": "src",
+        "type": "folder",
+        "isOpen": true,
+        "children": [{ "id": "top", "name": "selectable_tone.v", "type": "file" }]
+      }
+    ],
+    "topFileId": "top",
+    "topModuleName": "selectable_tone",
+    "targetDeviceId": "FDP3P7",
+    "targetBoardId": "FDP3P7_REFERENCE",
+    "pinConstraints": {
+      "version": 1,
+      "topFileId": "top",
+      "assignments": [
+        { "portName": "clk", "pinId": "P77", "clockPeriodNs": 33.333333, "boardFunction": "CLK" },
+        { "portName": "enable", "pinId": "P151" },
+        { "portName": "note_select[0]", "pinId": "P148" },
+        { "portName": "note_select[1]", "pinId": "P150" },
+        { "portName": "note_select[2]", "pinId": "P152" },
+        { "portName": "audio_pwm", "pinId": "P7" }
+      ]
+    },
+    "implementationSettings": { "version": 1, "placeMode": "timing_driven" },
+    "synthesisCache": null,
+    "implementationCache": null,
+    "canvasDevices": [
+      {
+        "id": "audio-enable",
+        "type": "switch",
+        "x": 80,
+        "y": 100,
+        "label": "Audio Enable",
+        "state": {
+          "is_on": false,
+          "color": null,
+          "binding": { "kind": "single", "signal": "enable" },
+          "config": { "kind": "none" },
+          "data": { "kind": "none" }
+        }
+      },
+      {
+        "id": "note-select",
+        "type": "dip_switch_bank",
+        "x": 80,
+        "y": 300,
+        "label": "Note Select",
+        "state": {
+          "is_on": false,
+          "color": null,
+          "binding": {
+            "kind": "slots",
+            "signals": ["note_select[0]", "note_select[1]", "note_select[2]"]
+          },
+          "config": { "kind": "dip_switch_bank", "width": 3 },
+          "data": { "kind": "bitset", "bits": [false, false, false] }
+        }
+      },
+      {
+        "id": "audio-probe",
+        "type": "audio_pwm",
+        "x": 360,
+        "y": 140,
+        "label": "Tone Output",
+        "state": {
+          "is_on": false,
+          "color": null,
+          "binding": { "kind": "single", "signal": "audio_pwm" },
+          "config": { "kind": "none" },
+          "data": { "kind": "none" }
+        }
+      }
+    ],
+    "waveformView": {
+      "version": 1,
+      "signalOrder": [
+        "clk",
+        "enable",
+        "note_select[0]",
+        "note_select[1]",
+        "note_select[2]",
+        "audio_pwm"
+      ],
+      "signalColorOverrides": {}
+    }
+  },
+  "workspaceView": { "activeFileId": "top" }
+}

@@ -1,0 +1,69 @@
+{
+  "version": 3,
+  "layout": "directory",
+  "content": {
+    "name": "UART Terminal Lab",
+    "files": [
+      {
+        "id": "root",
+        "name": "src",
+        "type": "folder",
+        "isOpen": true,
+        "children": [{ "id": "top", "name": "uart_echo.v", "type": "file" }]
+      }
+    ],
+    "topFileId": "top",
+    "topModuleName": "uart_echo",
+    "targetDeviceId": "FDP3P7",
+    "targetBoardId": "FDP3P7_REFERENCE",
+    "pinConstraints": {
+      "version": 1,
+      "topFileId": "top",
+      "assignments": [
+        { "portName": "clk", "pinId": "P77", "clockPeriodNs": 33.333333, "boardFunction": "CLK" },
+        { "portName": "reset", "pinId": "P151" },
+        { "portName": "uart_rx", "pinId": "P148" },
+        { "portName": "uart_tx", "pinId": "P7" }
+      ]
+    },
+    "implementationSettings": { "version": 1, "placeMode": "timing_driven" },
+    "synthesisCache": null,
+    "implementationCache": null,
+    "canvasDevices": [
+      {
+        "id": "reset-button",
+        "type": "button",
+        "x": 80,
+        "y": 160,
+        "label": "Reset",
+        "state": {
+          "is_on": false,
+          "color": null,
+          "binding": { "kind": "single", "signal": "reset" },
+          "config": { "kind": "button", "active_low": false },
+          "data": { "kind": "none" }
+        }
+      },
+      {
+        "id": "uart-console",
+        "type": "uart_terminal",
+        "x": 300,
+        "y": 80,
+        "label": "Echo Console",
+        "state": {
+          "is_on": false,
+          "color": null,
+          "binding": { "kind": "slots", "signals": ["uart_rx", "uart_tx"] },
+          "config": { "kind": "uart_terminal", "cycles_per_bit": 16, "mode": "tx_rx" },
+          "data": { "kind": "queued_bytes", "bytes": [] }
+        }
+      }
+    ],
+    "waveformView": {
+      "version": 1,
+      "signalOrder": ["clk", "uart_rx", "uart_tx"],
+      "signalColorOverrides": {}
+    }
+  },
+  "workspaceView": { "activeFileId": "top" }
+}

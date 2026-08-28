@@ -1,0 +1,149 @@
+{
+  "version": 3,
+  "layout": "directory",
+  "content": {
+    "name": "Mini Synth",
+    "files": [
+      {
+        "id": "root",
+        "name": "src",
+        "type": "folder",
+        "isOpen": true,
+        "children": [{ "id": "top", "name": "mini_synth.v", "type": "file" }]
+      }
+    ],
+    "topFileId": "top",
+    "topModuleName": "mini_synth",
+    "targetDeviceId": "FDP3P7",
+    "targetBoardId": "FDP3P7_REFERENCE",
+    "pinConstraints": {
+      "version": 1,
+      "topFileId": "top",
+      "assignments": [
+        { "portName": "clk", "pinId": "P77", "clockPeriodNs": 33.333333, "boardFunction": "CLK" },
+        { "portName": "keypad_columns[0]", "pinId": "P151" },
+        { "portName": "keypad_columns[1]", "pinId": "P148" },
+        { "portName": "keypad_columns[2]", "pinId": "P150" },
+        { "portName": "keypad_columns[3]", "pinId": "P152" },
+        { "portName": "encoder_a", "pinId": "P160" },
+        { "portName": "encoder_b", "pinId": "P161" },
+        { "portName": "encoder_button", "pinId": "P162" },
+        { "portName": "keypad_rows[0]", "pinId": "P7" },
+        { "portName": "keypad_rows[1]", "pinId": "P6" },
+        { "portName": "keypad_rows[2]", "pinId": "P5" },
+        { "portName": "keypad_rows[3]", "pinId": "P4" },
+        { "portName": "audio_pwm", "pinId": "P9" },
+        { "portName": "segments[0]", "pinId": "P8" },
+        { "portName": "segments[1]", "pinId": "P16" },
+        { "portName": "segments[2]", "pinId": "P15" },
+        { "portName": "segments[3]", "pinId": "P11" },
+        { "portName": "segments[4]", "pinId": "P10" },
+        { "portName": "segments[5]", "pinId": "P20" },
+        { "portName": "segments[6]", "pinId": "P18" },
+        { "portName": "segments[7]", "pinId": "P17" },
+        { "portName": "digit_select[0]", "pinId": "P22" },
+        { "portName": "digit_select[1]", "pinId": "P21" }
+      ]
+    },
+    "implementationSettings": { "version": 1, "placeMode": "timing_driven" },
+    "synthesisCache": null,
+    "implementationCache": null,
+    "canvasDevices": [
+      {
+        "id": "synth-keypad",
+        "type": "matrix_keypad",
+        "x": 60,
+        "y": 100,
+        "label": "Notes",
+        "state": {
+          "is_on": false,
+          "color": null,
+          "binding": {
+            "kind": "slots",
+            "signals": [
+              "keypad_rows[0]",
+              "keypad_rows[1]",
+              "keypad_rows[2]",
+              "keypad_rows[3]",
+              "keypad_columns[0]",
+              "keypad_columns[1]",
+              "keypad_columns[2]",
+              "keypad_columns[3]"
+            ]
+          },
+          "config": { "kind": "matrix_keypad", "rows": 4, "columns": 4, "active_low": true },
+          "data": { "kind": "matrix_keypad", "pressed_row": null, "pressed_column": null }
+        }
+      },
+      {
+        "id": "octave-encoder",
+        "type": "quadrature_encoder",
+        "x": 300,
+        "y": 100,
+        "label": "Octave",
+        "state": {
+          "is_on": false,
+          "color": null,
+          "binding": { "kind": "slots", "signals": ["encoder_a", "encoder_b", "encoder_button"] },
+          "config": { "kind": "quadrature_encoder", "has_button": true },
+          "data": { "kind": "quadrature_encoder", "phase": 0, "button_pressed": false }
+        }
+      },
+      {
+        "id": "synth-display",
+        "type": "segment_display",
+        "x": 540,
+        "y": 100,
+        "label": "Octave / Note",
+        "state": {
+          "is_on": false,
+          "color": "#eab308",
+          "binding": {
+            "kind": "slots",
+            "signals": [
+              "segments[0]",
+              "segments[1]",
+              "segments[2]",
+              "segments[3]",
+              "segments[4]",
+              "segments[5]",
+              "segments[6]",
+              "segments[7]",
+              "digit_select[0]",
+              "digit_select[1]"
+            ]
+          },
+          "config": { "kind": "segment_display", "digits": 2, "active_low": false },
+          "data": { "kind": "none" }
+        }
+      },
+      {
+        "id": "synth-audio",
+        "type": "audio_pwm",
+        "x": 360,
+        "y": 340,
+        "label": "Synth Output",
+        "state": {
+          "is_on": false,
+          "color": null,
+          "binding": { "kind": "single", "signal": "audio_pwm" },
+          "config": { "kind": "none" },
+          "data": { "kind": "none" }
+        }
+      }
+    ],
+    "waveformView": {
+      "version": 1,
+      "signalOrder": [
+        "clk",
+        "keypad_rows[0]",
+        "keypad_columns[0]",
+        "encoder_a",
+        "encoder_b",
+        "audio_pwm"
+      ],
+      "signalColorOverrides": {}
+    }
+  },
+  "workspaceView": { "activeFileId": "top" }
+}
