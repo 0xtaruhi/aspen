@@ -1,0 +1,76 @@
+{
+  "version": 3,
+  "layout": "directory",
+  "content": {
+    "name": "VGA Display Lab",
+    "files": [
+      {
+        "id": "root",
+        "name": "VGA Display Lab",
+        "type": "folder",
+        "isOpen": true,
+        "children": [{ "id": "top", "name": "vga_color_bars.v", "type": "file" }]
+      }
+    ],
+    "topFileId": "top",
+    "topModuleName": "vga_color_bars",
+    "targetDeviceId": "FDP3P7",
+    "targetBoardId": "FDP3P7_REFERENCE",
+    "pinConstraints": {
+      "version": 1,
+      "topFileId": "top",
+      "assignments": [
+        { "portName": "clk", "pinId": "P77", "clockPeriodNs": 33.333333, "boardFunction": "CLK" },
+        { "portName": "vga_hsync", "pinId": "P7" },
+        { "portName": "vga_vsync", "pinId": "P6" },
+        { "portName": "vga_rgb[0]", "pinId": "P5" },
+        { "portName": "vga_rgb[1]", "pinId": "P4" },
+        { "portName": "vga_rgb[2]", "pinId": "P9" },
+        { "portName": "vga_rgb[3]", "pinId": "P8" },
+        { "portName": "vga_rgb[4]", "pinId": "P16" },
+        { "portName": "vga_rgb[5]", "pinId": "P15" },
+        { "portName": "vga_rgb[6]", "pinId": "P11" },
+        { "portName": "vga_rgb[7]", "pinId": "P10" }
+      ]
+    },
+    "implementationSettings": { "version": 1, "placeMode": "timing_driven" },
+    "synthesisCache": null,
+    "implementationCache": null,
+    "canvasDevices": [
+      {
+        "id": "vga-monitor",
+        "type": "vga_display",
+        "x": 120,
+        "y": 80,
+        "label": "RGB332 Color Bars",
+        "state": {
+          "is_on": false,
+          "color": null,
+          "binding": {
+            "kind": "slots",
+            "signals": [
+              "vga_hsync",
+              "vga_vsync",
+              "vga_rgb[5]",
+              "vga_rgb[6]",
+              "vga_rgb[7]",
+              "vga_rgb[2]",
+              "vga_rgb[3]",
+              "vga_rgb[4]",
+              "vga_rgb[0]",
+              "vga_rgb[1]"
+            ]
+          },
+          "config": { "kind": "vga_display", "columns": 640, "rows": 480, "color_mode": "rgb332" },
+          "data": { "kind": "none" }
+        }
+      }
+    ],
+    "waveformView": {
+      "version": 1,
+      "signalOrder": ["clk", "vga_hsync", "vga_vsync", "vga_rgb[7]", "vga_rgb[4]", "vga_rgb[1]"],
+      "signalColorOverrides": {}
+    }
+  },
+  "workspaceView": { "activeFileId": "top" }
+}

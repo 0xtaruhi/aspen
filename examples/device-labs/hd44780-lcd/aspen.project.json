@@ -1,0 +1,85 @@
+{
+  "version": 3,
+  "layout": "directory",
+  "content": {
+    "name": "HD44780 LCD Lab",
+    "files": [
+      {
+        "id": "root",
+        "name": "HD44780 LCD Lab",
+        "type": "folder",
+        "isOpen": true,
+        "children": [{ "id": "top", "name": "hd44780_hello.v", "type": "file" }]
+      }
+    ],
+    "topFileId": "top",
+    "topModuleName": "hd44780_hello",
+    "targetDeviceId": "FDP3P7",
+    "targetBoardId": "FDP3P7_REFERENCE",
+    "pinConstraints": {
+      "version": 1,
+      "topFileId": "top",
+      "assignments": [
+        { "portName": "clk", "pinId": "P77", "clockPeriodNs": 33.333333, "boardFunction": "CLK" },
+        { "portName": "reset", "pinId": "P151" },
+        { "portName": "lcd_rs", "pinId": "P7" },
+        { "portName": "lcd_e", "pinId": "P6" },
+        { "portName": "lcd_rw", "pinId": "P5" },
+        { "portName": "lcd_data[0]", "pinId": "P4" },
+        { "portName": "lcd_data[1]", "pinId": "P9" },
+        { "portName": "lcd_data[2]", "pinId": "P8" },
+        { "portName": "lcd_data[3]", "pinId": "P16" }
+      ]
+    },
+    "implementationSettings": { "version": 1, "placeMode": "timing_driven" },
+    "synthesisCache": null,
+    "implementationCache": null,
+    "canvasDevices": [
+      {
+        "id": "reset-button",
+        "type": "button",
+        "x": 80,
+        "y": 180,
+        "label": "Restart Message",
+        "state": {
+          "is_on": false,
+          "color": null,
+          "binding": { "kind": "single", "signal": "reset" },
+          "config": { "kind": "button", "active_low": false },
+          "data": { "kind": "none" }
+        }
+      },
+      {
+        "id": "character-lcd",
+        "type": "hd44780_lcd",
+        "x": 300,
+        "y": 120,
+        "label": "Character LCD",
+        "state": {
+          "is_on": false,
+          "color": null,
+          "binding": {
+            "kind": "slots",
+            "signals": [
+              "lcd_rs",
+              "lcd_e",
+              "lcd_rw",
+              "lcd_data[0]",
+              "lcd_data[1]",
+              "lcd_data[2]",
+              "lcd_data[3]"
+            ]
+          },
+          "config": { "kind": "hd44780_lcd", "columns": 16, "rows": 2, "bus_mode": "4bit" },
+          "data": { "kind": "none" }
+        }
+      }
+    ],
+    "waveformView": {
+      "version": 1,
+      "signalOrder": ["clk", "lcd_e", "lcd_rs", "lcd_data[0]"],
+      "signalColorOverrides": {}
+    }
+  },
+  "workspaceView": { "activeFileId": "top" }
+}

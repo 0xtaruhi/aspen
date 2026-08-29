@@ -170,7 +170,7 @@ impl HardwareRuntime {
                     }
                 })
                 .collect::<Vec<_>>();
-            let target_hz = config.target_hz.max(DATA_DEFAULT_TARGET_HZ);
+            let target_hz = config.target_hz.max(DATA_MIN_TARGET_HZ);
             let loop_now = Instant::now();
 
             if Self::target_hz_changed(schedule_anchor.target_hz, target_hz) {

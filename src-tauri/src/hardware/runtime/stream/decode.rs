@@ -69,6 +69,15 @@ impl HardwareRuntime {
                             batch.words_per_cycle,
                             &mut output_decoders,
                         );
+                        Self::finish_output_batch(
+                            &mut output_decoders,
+                            batch.generated_at_ms,
+                            if batch.actual_hz > 0.0 {
+                                batch.actual_hz
+                            } else {
+                                batch.target_hz
+                            },
+                        );
                         output_dirty = true;
                     }
 

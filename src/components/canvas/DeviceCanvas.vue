@@ -20,7 +20,6 @@ import {
   rotateCanvasDeviceEncoder,
   setCanvasDeviceBit,
   setCanvasDeviceEncoderButton,
-  setCanvasDeviceMatrixKey,
 } from '@/lib/canvas-device-actions'
 import { snapToGrid } from '@/lib/canvas-selection'
 import {
@@ -273,10 +272,6 @@ function setEncoderButton(device: CanvasDeviceSnapshot, value: boolean) {
   updateDevice(device, (current) => setCanvasDeviceEncoderButton(current, value))
 }
 
-function setMatrixKey(device: CanvasDeviceSnapshot, row: number | null, column: number | null) {
-  updateDevice(device, (current) => setCanvasDeviceMatrixKey(current, row, column))
-}
-
 function renderedDevice(device: CanvasDeviceSnapshot): CanvasDeviceSnapshot {
   if (!streamRunning.value) {
     if (!deviceReceivesSignal(device.type) || deviceDrivesSignal(device.type)) {
@@ -339,7 +334,6 @@ function rendererListeners(
       setBitsetValue,
       rotateEncoder,
       setEncoderButton,
-      setMatrixKey,
       enqueueAsciiText,
     }) ?? {},
   )

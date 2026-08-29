@@ -167,14 +167,13 @@ Aspen uses a protected `main` branch:
 
 ## Examples
 
-The repository includes small reference designs under [`examples/`](examples):
+[`examples/`](examples) contains complete, ready-to-open Aspen projects:
 
-- [`examples/audio_pwm_sky_demo.v`](examples/audio_pwm_sky_demo.v)
-- [`examples/bram_inferred_demo.v`](examples/bram_inferred_demo.v)
-- [`examples/bram_inferred_init.mem`](examples/bram_inferred_init.mem)
-- [`examples/vga_test_rgb332.v`](examples/vga_test_rgb332.v)
+- Device labs cover every supported virtual-device type with focused HDL designs.
+- Showcase projects combine several devices into a calculator, synthesizer, and VGA game.
+- Loose HDL smoke tests remain available for scripts and quick synthesis checks.
 
-These are useful both as smoke tests and as reference projects for Aspen's virtual device platform.
+See the [example project catalog](examples/README.md) for controls and usage.
 
 ## Repository Layout
 

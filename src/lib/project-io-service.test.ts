@@ -47,7 +47,7 @@ describe('project io service', () => {
     expect(
       validateCreateProjectAtDirectoryInput({
         name: '   ',
-        template: 'empty',
+        starter: { kind: 'template', template: 'empty' },
         parentDirectoryPath: '/tmp/aspen',
       }),
     ).toEqual({
@@ -61,7 +61,7 @@ describe('project io service', () => {
     expect(
       validateCreateProjectAtDirectoryInput({
         name: '.',
-        template: 'empty',
+        starter: { kind: 'template', template: 'empty' },
         parentDirectoryPath: '/tmp/aspen',
       }),
     ).toEqual({
@@ -75,7 +75,7 @@ describe('project io service', () => {
     expect(
       validateCreateProjectAtDirectoryInput({
         name: '..',
-        template: 'empty',
+        starter: { kind: 'template', template: 'empty' },
         parentDirectoryPath: '/tmp/aspen',
       }),
     ).toEqual({
@@ -306,7 +306,7 @@ describe('project io service', () => {
         projectName: 'NewProject',
       },
       {
-        template: 'empty',
+        starter: { kind: 'template', template: 'empty' },
         importPaths: ['/tmp/init.mem'],
       },
     )

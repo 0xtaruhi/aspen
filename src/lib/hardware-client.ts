@@ -32,7 +32,6 @@ export const CANVAS_DEVICE_TYPES = [
   'led_bar',
   'audio_pwm',
   'quadrature_encoder',
-  'matrix_keypad',
   'uart_terminal',
   'hd44780_lcd',
   'vga_display',

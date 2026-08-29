@@ -27,7 +27,7 @@ impl HardwareRuntime {
         } else {
             Duration::from_secs_f64(
                 (target_batch_cycles as u64 - due_cycles) as f64
-                    / target_hz.max(DATA_DEFAULT_TARGET_HZ),
+                    / target_hz.max(DATA_MIN_TARGET_HZ),
             )
         };
         DATA_IDLE_SLEEP
@@ -42,7 +42,7 @@ impl HardwareRuntime {
         max_wait: Duration,
     ) -> usize {
         let ideal_batch_cycles =
-            (target_hz.max(DATA_DEFAULT_TARGET_HZ) * max_wait.as_secs_f64()).ceil() as usize;
+            (target_hz.max(DATA_MIN_TARGET_HZ) * max_wait.as_secs_f64()).ceil() as usize;
         ideal_batch_cycles.clamp(min_batch_cycles, queue_capacity)
     }
 
@@ -63,7 +63,7 @@ impl HardwareRuntime {
         target_hz: f64,
     ) -> u64 {
         let elapsed_cycles =
-            (elapsed.as_secs_f64() * target_hz.max(DATA_DEFAULT_TARGET_HZ)).floor() as u64;
+            (elapsed.as_secs_f64() * target_hz.max(DATA_MIN_TARGET_HZ)).floor() as u64;
 
         anchor_completed_cycles.saturating_add(elapsed_cycles)
     }

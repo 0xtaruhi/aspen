@@ -119,7 +119,6 @@ pub enum CanvasDeviceType {
     LedBar,
     AudioPwm,
     QuadratureEncoder,
-    MatrixKeypad,
     UartTerminal,
     Hd44780Lcd,
     VgaDisplay,
@@ -200,12 +199,6 @@ pub enum CanvasDeviceConfigSnapshot {
         #[serde(default = "default_true")]
         has_button: bool,
     },
-    MatrixKeypad {
-        rows: u16,
-        columns: u16,
-        #[serde(default)]
-        active_low: bool,
-    },
     UartTerminal {
         cycles_per_bit: u16,
         mode: CanvasUartMode,
@@ -229,10 +222,6 @@ pub enum CanvasDeviceDataSnapshot {
         phase: u8,
         #[serde(default)]
         button_pressed: bool,
-    },
-    MatrixKeypad {
-        pressed_row: Option<u16>,
-        pressed_column: Option<u16>,
     },
     QueuedBytes {
         #[serde(default)]
@@ -317,8 +306,7 @@ impl CanvasDeviceStateSnapshot {
 
     pub fn matrix_dimensions(&self) -> Option<(usize, usize)> {
         match self.config {
-            CanvasDeviceConfigSnapshot::LedMatrix { rows, columns }
-            | CanvasDeviceConfigSnapshot::MatrixKeypad { rows, columns, .. } => {
+            CanvasDeviceConfigSnapshot::LedMatrix { rows, columns } => {
                 Some((usize::from(rows), usize::from(columns)))
             }
             _ => None,
@@ -390,19 +378,6 @@ impl CanvasDeviceStateSnapshot {
                 button_pressed,
             } => (phase % 4, button_pressed),
             _ => (0, false),
-        }
-    }
-
-    pub fn matrix_keypad_data(&self) -> (Option<usize>, Option<usize>) {
-        match self.data {
-            CanvasDeviceDataSnapshot::MatrixKeypad {
-                pressed_row,
-                pressed_column,
-            } => (
-                pressed_row.map(usize::from),
-                pressed_column.map(usize::from),
-            ),
-            _ => (None, None),
         }
     }
 }
@@ -585,7 +560,7 @@ pub struct HardwareDataStreamConfigV1 {
 impl Default for HardwareDataStreamConfigV1 {
     fn default() -> Self {
         Self {
-            target_hz: 1.0,
+            target_hz: 200_000.0,
             input_signal_order: Vec::new(),
             output_signal_order: Vec::new(),
             waveform_enabled: false,

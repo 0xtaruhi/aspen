@@ -1,7 +1,4 @@
-use std::{
-    hash::{Hash, Hasher},
-    sync::{Arc, Mutex},
-};
+use std::hash::{Hash, Hasher};
 
 use crate::hardware::types::{
     CanvasDeviceSnapshot, CanvasHd44780BusMode, CanvasUartMode, CanvasVgaColorMode,
@@ -10,7 +7,6 @@ use crate::hardware::types::{
 };
 
 use super::registry::{output_compiler_for_device_type, SignalIndexLookup};
-use super::shared::{matrix_keypad_shared_state, MatrixKeypadRuntimeState};
 use super::*;
 
 mod text;
@@ -19,8 +15,12 @@ mod vga;
 pub(super) use text::{compile_hd44780_lcd_output, compile_uart_terminal_output};
 pub(super) use vga::compile_vga_display_output;
 
+const DEFAULT_VERICOMM_FABRIC_CLOCK_HZ: f64 = 30_000_000.0;
+const AUDIO_EDGE_TIMEOUT_MS: u64 = 1_500;
+
 pub(super) trait OutputDeviceDecoder: Send {
     fn ingest_cycle(&mut self, cycle: &[u16]);
+    fn finish_batch(&mut self, _generated_at_ms: u64, _sample_rate_hz: f64) {}
     fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntry;
 }
 
@@ -60,8 +60,10 @@ struct AudioPwmOutputDecoder {
     high_count: u32,
     total_count: u32,
     edge_count: u32,
-    samples_since_rising: u32,
-    has_rising_edge: bool,
+    batch_edge_count: u32,
+    frequency_window_start_ms: Option<u64>,
+    frequency_window_edges: u32,
+    last_edge_at_ms: Option<u64>,
     period_samples: f32,
 }
 
@@ -75,13 +77,6 @@ struct LedMatrixOutputDecoder {
     active_columns: Vec<usize>,
     row_samples: Vec<u32>,
     pixel_on_counts: Vec<u32>,
-}
-
-struct MatrixKeypadOutputDecoder {
-    device_id: String,
-    row_signal_indices: Vec<Option<usize>>,
-    latest_rows: Vec<u8>,
-    shared: Arc<Mutex<MatrixKeypadRuntimeState>>,
 }
 
 impl HardwareRuntime {
@@ -160,6 +155,16 @@ impl HardwareRuntime {
             for decoder in decoders.iter_mut() {
                 decoder.ingest_cycle(cycle);
             }
+        }
+    }
+
+    pub(super) fn finish_output_batch(
+        decoders: &mut [Box<dyn OutputDeviceDecoder>],
+        generated_at_ms: u64,
+        sample_rate_hz: f64,
+    ) {
+        for decoder in decoders {
+            decoder.finish_batch(generated_at_ms, sample_rate_hz);
         }
     }
 
@@ -276,32 +281,6 @@ pub(super) fn compile_led_bar_output(
     }))
 }
 
-pub(super) fn compile_matrix_keypad_output(
-    device: &CanvasDeviceSnapshot,
-    signal_indices: &SignalIndexLookup<'_>,
-) -> Option<Box<dyn OutputDeviceDecoder>> {
-    let (rows, _) = device.state.matrix_dimensions()?;
-    let slot_signals = device.state.slot_signals();
-    let row_signal_indices = (0..rows)
-        .map(|index| {
-            slot_signals
-                .get(index)
-                .and_then(|signal| signal.as_deref())
-                .and_then(|signal| signal_indices.get(signal).copied())
-        })
-        .collect::<Vec<_>>();
-    if !row_signal_indices.iter().any(Option::is_some) {
-        return None;
-    }
-
-    Some(Box::new(MatrixKeypadOutputDecoder {
-        device_id: device.id.clone(),
-        latest_rows: vec![0; row_signal_indices.len()],
-        row_signal_indices,
-        shared: matrix_keypad_shared_state(device),
-    }))
-}
-
 pub(super) fn compile_audio_pwm_output(
     device: &CanvasDeviceSnapshot,
     signal_indices: &SignalIndexLookup<'_>,
@@ -319,8 +298,10 @@ pub(super) fn compile_audio_pwm_output(
         high_count: 0,
         total_count: 0,
         edge_count: 0,
-        samples_since_rising: 0,
-        has_rising_edge: false,
+        batch_edge_count: 0,
+        frequency_window_start_ms: None,
+        frequency_window_edges: 0,
+        last_edge_at_ms: None,
         period_samples: 0.0,
     }))
 }
@@ -476,40 +457,52 @@ impl OutputDeviceDecoder for AudioPwmOutputDecoder {
         let value = read_signal_value(cycle, self.signal_index);
         self.latest = value;
         self.total_count = self.total_count.saturating_add(1);
-        self.samples_since_rising = self.samples_since_rising.saturating_add(1);
         if value {
             self.high_count = self.high_count.saturating_add(1);
         }
 
         if value != self.previous {
             self.edge_count = self.edge_count.saturating_add(1);
-        }
-
-        if value && !self.previous {
-            if self.has_rising_edge && self.samples_since_rising > 0 {
-                let period = self.samples_since_rising as f32;
-                self.period_samples = if self.period_samples <= 0.0 {
-                    period
-                } else {
-                    (self.period_samples * 0.75) + (period * 0.25)
-                };
-            }
-            self.samples_since_rising = 0;
-            self.has_rising_edge = true;
+            self.batch_edge_count = self.batch_edge_count.saturating_add(1);
         }
 
         self.previous = value;
     }
 
+    fn finish_batch(&mut self, generated_at_ms: u64, sample_rate_hz: f64) {
+        let window_start = *self
+            .frequency_window_start_ms
+            .get_or_insert(generated_at_ms);
+        self.frequency_window_edges = self
+            .frequency_window_edges
+            .saturating_add(self.batch_edge_count);
+        if self.batch_edge_count > 0 {
+            self.last_edge_at_ms = Some(generated_at_ms);
+        }
+        self.batch_edge_count = 0;
+
+        let elapsed_ms = generated_at_ms.saturating_sub(window_start);
+        if elapsed_ms >= 100 && self.frequency_window_edges >= 2 && sample_rate_hz > 0.0 {
+            // VeriComm snapshots a continuously running fabric, so observed edges are
+            // scaled by the ratio between the sample rate and the P77 fabric clock.
+            let observed_hz = self.frequency_window_edges as f64 * 500.0 / elapsed_ms as f64;
+            let frequency_hz = observed_hz * DEFAULT_VERICOMM_FABRIC_CLOCK_HZ / sample_rate_hz;
+            self.period_samples = (sample_rate_hz / frequency_hz) as f32;
+            self.frequency_window_start_ms = Some(generated_at_ms);
+            self.frequency_window_edges = 0;
+        }
+
+        if self.last_edge_at_ms.is_some_and(|last_edge| {
+            generated_at_ms.saturating_sub(last_edge) >= AUDIO_EDGE_TIMEOUT_MS
+        }) {
+            self.period_samples = 0.0;
+            self.frequency_window_start_ms = Some(generated_at_ms);
+            self.frequency_window_edges = 0;
+        }
+    }
+
     fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntry {
         let total_count = self.total_count.max(1);
-        let period_samples = if self.edge_count == 0
-            && self.samples_since_rising as f32 > self.period_samples * 3.0
-        {
-            0.0
-        } else {
-            self.period_samples
-        };
         let entry = device_snapshot(
             &self.device_id,
             self.latest,
@@ -517,7 +510,7 @@ impl OutputDeviceDecoder for AudioPwmOutputDecoder {
             HardwareCanvasDeviceTelemetryPayload::AudioPwm {
                 edge_count: self.edge_count,
                 sample_count: self.total_count,
-                period_samples,
+                period_samples: self.period_samples,
             },
         );
 
@@ -593,8 +586,9 @@ impl OutputDeviceDecoder for SegmentDisplayOutputDecoder {
 
         for digit_index in 0..self.digit_count {
             let sample_count = self.sample_counts[digit_index];
-            let mut digit_mask = 0_u16;
+            let mut digit_mask = self.latest_masks[digit_index];
             if sample_count > 0 {
+                digit_mask = 0;
                 for segment_index in 0..8 {
                     let on_count = self.segment_on_counts[digit_index][segment_index];
                     total_on_counts = total_on_counts.saturating_add(on_count);
@@ -602,6 +596,7 @@ impl OutputDeviceDecoder for SegmentDisplayOutputDecoder {
                         digit_mask |= 1u16 << segment_index;
                     }
                 }
+                self.latest_masks[digit_index] = digit_mask;
             }
             digit_masks.push(digit_mask);
         }
@@ -624,7 +619,6 @@ impl OutputDeviceDecoder for SegmentDisplayOutputDecoder {
         for segment_counts in &mut self.segment_on_counts {
             segment_counts.fill(0);
         }
-        self.latest_masks.fill(0);
         entry
     }
 }
@@ -708,34 +702,6 @@ impl OutputDeviceDecoder for LedMatrixOutputDecoder {
         self.row_samples.fill(0);
         self.pixel_on_counts.fill(0);
         entry
-    }
-}
-
-impl OutputDeviceDecoder for MatrixKeypadOutputDecoder {
-    fn ingest_cycle(&mut self, cycle: &[u16]) {
-        let mut next_rows = Vec::with_capacity(self.row_signal_indices.len());
-        for signal_index in &self.row_signal_indices {
-            let value = signal_index
-                .map(|signal_index| read_signal_value(cycle, signal_index))
-                .unwrap_or(false);
-            next_rows.push(value);
-        }
-        self.latest_rows = next_rows.iter().copied().map(u8::from).collect();
-
-        if let Ok(mut shared) = self.shared.lock() {
-            shared.active_rows = next_rows;
-        }
-    }
-
-    fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntry {
-        device_snapshot(
-            &self.device_id,
-            self.latest_rows.iter().any(|value| *value != 0),
-            0.0,
-            HardwareCanvasDeviceTelemetryPayload::Bitset {
-                bits: self.latest_rows.clone(),
-            },
-        )
     }
 }
 

@@ -19,7 +19,6 @@ import {
   defaultHd44780Config,
   defaultLedBarConfig,
   defaultMatrixDimensions,
-  defaultMatrixKeypadConfig,
   defaultQuadratureEncoderConfig,
   defaultSegmentDisplayConfig,
   defaultUartTerminalConfig,
@@ -29,8 +28,6 @@ import {
   getCanvasHd44780LcdConfig,
   getCanvasLedBarConfig,
   getCanvasMatrixDimensions,
-  getCanvasMatrixKeypadConfig,
-  getCanvasMatrixKeypadData,
   getCanvasQuadratureEncoderConfig,
   getCanvasQuadratureEncoderData,
   getCanvasSegmentDisplayConfig,
@@ -246,53 +243,6 @@ function createQuadratureEncoderDefinition(): CanvasDeviceDefinition {
   }
 }
 
-function createMatrixKeypadDefinition(): CanvasDeviceDefinition {
-  const defaults = defaultMatrixKeypadConfig()
-  const getConfig = (device: CanvasDeviceSnapshot) => {
-    return getCanvasMatrixKeypadConfig(device) ?? defaults
-  }
-
-  return {
-    titleKey: 'matrixKeypad',
-    defaultState: () =>
-      createDefaultState({
-        binding: createSlotBindings(
-          Array.from({ length: defaults.rows + defaults.columns }, () => null),
-        ),
-        config: {
-          kind: 'matrix_keypad',
-          rows: defaults.rows,
-          columns: defaults.columns,
-          active_low: defaults.activeLow,
-        },
-        data: { kind: 'matrix_keypad', pressed_row: null, pressed_column: null },
-      }),
-    toRendererProps: (device) => {
-      const config = getConfig(device)
-      const data = getCanvasMatrixKeypadData(device)
-      return {
-        rows: config.rows,
-        columns: config.columns,
-        pressedRow: data.pressedRow,
-        pressedColumn: data.pressedColumn,
-      }
-    },
-    getShellSize: (device) => {
-      const config = getConfig(device)
-      return {
-        width: alignShellSize(36 + config.columns * 40),
-        height: alignShellSize(44 + config.rows * 40),
-      }
-    },
-    emitsToggle: false,
-    capabilities: { drivesSignal: true, receivesSignal: true },
-    getBindingSlots: (device) => {
-      const config = getConfig(device)
-      return createMatrixSlots(config.rows, config.columns)
-    },
-  }
-}
-
 function createUartTerminalDefinition(): CanvasDeviceDefinition {
   const defaults = defaultUartTerminalConfig()
   const getConfig = (device: CanvasDeviceSnapshot) => {
@@ -409,7 +359,6 @@ const canvasDeviceDefinitions: Record<CanvasDeviceType, CanvasDeviceDefinition> 
     emitsToggle: false,
     capabilities: { drivesSignal: false, receivesSignal: true },
   },
-  matrix_keypad: createMatrixKeypadDefinition(),
   uart_terminal: createUartTerminalDefinition(),
   hd44780_lcd: createHd44780Definition(),
   vga_display: createVgaDisplayDefinition(),

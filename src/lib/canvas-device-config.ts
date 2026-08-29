@@ -14,7 +14,6 @@ import type {
   CanvasHd44780LcdConfig,
   CanvasLedBarConfig,
   CanvasMatrixDimensions,
-  CanvasMatrixKeypadConfig,
   CanvasQuadratureEncoderConfig,
   CanvasSegmentDisplayConfig,
   CanvasUartTerminalConfig,
@@ -100,10 +99,6 @@ export function defaultLedBarConfig(): CanvasLedBarConfig {
 
 export function defaultQuadratureEncoderConfig(): CanvasQuadratureEncoderConfig {
   return { hasButton: true }
-}
-
-export function defaultMatrixKeypadConfig(): CanvasMatrixKeypadConfig {
-  return { rows: 4, columns: 4, activeLow: true }
 }
 
 export function defaultUartTerminalConfig(): CanvasUartTerminalConfig {
@@ -364,25 +359,6 @@ export function getCanvasQuadratureEncoderConfig(
   }
 }
 
-export function getCanvasMatrixKeypadConfig(
-  device: Pick<CanvasDeviceSnapshot, 'type' | 'state'>,
-): CanvasMatrixKeypadConfig | null {
-  if (device.type !== 'matrix_keypad') {
-    return null
-  }
-
-  const defaults = defaultMatrixKeypadConfig()
-  if (device.state.config.kind !== 'matrix_keypad') {
-    return defaults
-  }
-
-  return {
-    rows: clampInt(device.state.config.rows, defaults.rows, 1, 8),
-    columns: clampInt(device.state.config.columns, defaults.columns, 1, 8),
-    activeLow: device.state.config.active_low ?? defaults.activeLow,
-  }
-}
-
 export function getCanvasUartTerminalConfig(
   device: Pick<CanvasDeviceSnapshot, 'type' | 'state'>,
 ): CanvasUartTerminalConfig | null {
@@ -469,20 +445,6 @@ export function getCanvasQuadratureEncoderData(device: Pick<CanvasDeviceSnapshot
   return {
     phase: clampInt(device.state.data.phase, 0, 0, 3),
     buttonPressed: device.state.data.button_pressed,
-  }
-}
-
-export function getCanvasMatrixKeypadData(device: Pick<CanvasDeviceSnapshot, 'state'>) {
-  if (device.state.data.kind !== 'matrix_keypad') {
-    return {
-      pressedRow: null,
-      pressedColumn: null,
-    }
-  }
-
-  return {
-    pressedRow: device.state.data.pressed_row ?? null,
-    pressedColumn: device.state.data.pressed_column ?? null,
   }
 }
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
-import { FolderOpen, FilePlus2, X } from '@lucide/vue'
+import { FilePlus2, FolderOpen, X } from '@lucide/vue'
 
 import {
   Dialog,
@@ -11,19 +11,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { useI18n } from '@/lib/i18n'
 import { createProjectAtDirectory, PROJECT_IMPORT_SOURCE_FILE_EXTENSIONS } from '@/lib/project-io'
+import { defaultProjectStarter, projectStarterCatalog } from '@/lib/project-starters'
 
 const props = defineProps<{
   open: boolean
@@ -35,7 +39,8 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const projectName = ref(t('projectNameDefault'))
-const projectTemplate = ref<'empty' | 'blinky' | 'uart'>('empty')
+const selectedStarterId = ref(defaultProjectStarter.id)
+const projectNameCustomized = ref(false)
 const projectParentDirectory = ref('')
 const importedSourcePaths = ref<string[]>([])
 const isCreating = ref(false)
@@ -48,6 +53,21 @@ const canCreate = computed(() => {
   )
 })
 
+const templateStarters = computed(() =>
+  projectStarterCatalog.filter((entry) => entry.category === 'template'),
+)
+const deviceLabStarters = computed(() =>
+  projectStarterCatalog.filter((entry) => entry.category === 'device-lab'),
+)
+const showcaseStarters = computed(() =>
+  projectStarterCatalog.filter((entry) => entry.category === 'showcase'),
+)
+const selectedStarter = computed(
+  () =>
+    projectStarterCatalog.find((entry) => entry.id === selectedStarterId.value) ??
+    defaultProjectStarter,
+)
+
 watch(
   () => props.open,
   (isOpen) => {
@@ -56,12 +76,34 @@ watch(
     }
 
     projectName.value = t('projectNameDefault')
-    projectTemplate.value = 'empty'
+    selectedStarterId.value = defaultProjectStarter.id
+    projectNameCustomized.value = false
     projectParentDirectory.value = ''
     importedSourcePaths.value = []
     isCreating.value = false
   },
 )
+
+function updateProjectName(value: string | number) {
+  projectName.value = String(value)
+  projectNameCustomized.value = true
+}
+
+function selectStarter(value: unknown) {
+  if (typeof value !== 'string') {
+    return
+  }
+
+  const starter = projectStarterCatalog.find((entry) => entry.id === value)
+  if (!starter) {
+    return
+  }
+
+  selectedStarterId.value = starter.id
+  if (!projectNameCustomized.value) {
+    projectName.value = starter.suggestedName
+  }
+}
 
 function basename(path: string) {
   return path.replace(/\\/g, '/').split('/').filter(Boolean).pop() || path
@@ -114,7 +156,7 @@ async function handleCreate() {
   try {
     const created = await createProjectAtDirectory({
       name: projectName.value,
-      template: projectTemplate.value,
+      starter: selectedStarter.value.starter,
       parentDirectoryPath: projectParentDirectory.value,
       importPaths: importedSourcePaths.value,
     })
@@ -130,7 +172,7 @@ async function handleCreate() {
 
 <template>
   <Dialog :open="open" @update:open="$emit('update:open', $event)">
-    <DialogContent class="sm:max-w-[640px]">
+    <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-[640px]">
       <DialogHeader>
         <DialogTitle>{{ t('createNewProject') }}</DialogTitle>
         <DialogDescription>
@@ -141,7 +183,11 @@ async function handleCreate() {
       <div class="space-y-5 py-2">
         <div class="space-y-2">
           <Label for="project-name">{{ t('name') }}</Label>
-          <Input id="project-name" v-model="projectName" />
+          <Input
+            id="project-name"
+            :model-value="projectName"
+            @update:model-value="updateProjectName"
+          />
         </div>
 
         <div class="space-y-2">
@@ -164,23 +210,45 @@ async function handleCreate() {
           </div>
           <p class="text-sm text-muted-foreground">
             {{
-              t('projectDirectoryWillBeCreated', { name: projectName || t('projectNameDefault') })
+              t('projectDirectoryWillBeCreated', {
+                name: projectName || t('projectNameDefault'),
+              })
             }}
           </p>
         </div>
 
         <div class="space-y-2">
-          <Label for="project-template">{{ t('template') }}</Label>
-          <Select v-model="projectTemplate">
-            <SelectTrigger id="project-template">
+          <Label for="project-starter">{{ t('startingPoint') }}</Label>
+          <Select :model-value="selectedStarterId" @update:model-value="selectStarter">
+            <SelectTrigger id="project-starter" class="w-full">
               <SelectValue :placeholder="t('selectTemplate')" />
             </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="empty">{{ t('emptyProject') }}</SelectItem>
-              <SelectItem value="blinky">{{ t('ledBlinky') }}</SelectItem>
-              <SelectItem value="uart">{{ t('uartEcho') }}</SelectItem>
+            <SelectContent class="max-h-[360px]">
+              <SelectGroup>
+                <SelectLabel>{{ t('starterTemplates') }}</SelectLabel>
+                <SelectItem v-for="entry in templateStarters" :key="entry.id" :value="entry.id">
+                  {{ t(entry.titleKey) }}
+                </SelectItem>
+              </SelectGroup>
+              <SelectSeparator />
+              <SelectGroup>
+                <SelectLabel>{{ t('deviceLabs') }}</SelectLabel>
+                <SelectItem v-for="entry in deviceLabStarters" :key="entry.id" :value="entry.id">
+                  {{ t(entry.titleKey) }}
+                </SelectItem>
+              </SelectGroup>
+              <SelectSeparator />
+              <SelectGroup>
+                <SelectLabel>{{ t('showcases') }}</SelectLabel>
+                <SelectItem v-for="entry in showcaseStarters" :key="entry.id" :value="entry.id">
+                  {{ t(entry.titleKey) }}
+                </SelectItem>
+              </SelectGroup>
             </SelectContent>
           </Select>
+          <p class="text-sm text-muted-foreground">
+            {{ t(selectedStarter.descriptionKey) }}
+          </p>
         </div>
 
         <div class="space-y-3">

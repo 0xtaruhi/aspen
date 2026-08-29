@@ -1,0 +1,95 @@
+{
+  "version": 3,
+  "layout": "directory",
+  "content": {
+    "name": "Seven-Segment Counter Lab",
+    "files": [
+      {
+        "id": "root",
+        "name": "Seven-Segment Counter Lab",
+        "type": "folder",
+        "isOpen": true,
+        "children": [{ "id": "top", "name": "segment_counter.v", "type": "file" }]
+      }
+    ],
+    "topFileId": "top",
+    "topModuleName": "segment_counter",
+    "targetDeviceId": "FDP3P7",
+    "targetBoardId": "FDP3P7_REFERENCE",
+    "pinConstraints": {
+      "version": 1,
+      "topFileId": "top",
+      "assignments": [
+        { "portName": "clk", "pinId": "P77", "clockPeriodNs": 33.333333, "boardFunction": "CLK" },
+        { "portName": "reset", "pinId": "P151" },
+        { "portName": "segments[0]", "pinId": "P7" },
+        { "portName": "segments[1]", "pinId": "P6" },
+        { "portName": "segments[2]", "pinId": "P5" },
+        { "portName": "segments[3]", "pinId": "P4" },
+        { "portName": "segments[4]", "pinId": "P9" },
+        { "portName": "segments[5]", "pinId": "P8" },
+        { "portName": "segments[6]", "pinId": "P16" },
+        { "portName": "segments[7]", "pinId": "P15" },
+        { "portName": "digit_select[0]", "pinId": "P11" },
+        { "portName": "digit_select[1]", "pinId": "P10" },
+        { "portName": "digit_select[2]", "pinId": "P20" },
+        { "portName": "digit_select[3]", "pinId": "P18" }
+      ]
+    },
+    "implementationSettings": { "version": 1, "placeMode": "timing_driven" },
+    "synthesisCache": null,
+    "implementationCache": null,
+    "canvasDevices": [
+      {
+        "id": "reset-button",
+        "type": "button",
+        "x": 100,
+        "y": 160,
+        "label": "Reset",
+        "state": {
+          "is_on": false,
+          "color": null,
+          "binding": { "kind": "single", "signal": "reset" },
+          "config": { "kind": "button", "active_low": false },
+          "data": { "kind": "none" }
+        }
+      },
+      {
+        "id": "counter-display",
+        "type": "segment_display",
+        "x": 320,
+        "y": 120,
+        "label": "Counter",
+        "state": {
+          "is_on": false,
+          "color": "#ef4444",
+          "binding": {
+            "kind": "slots",
+            "signals": [
+              "segments[0]",
+              "segments[1]",
+              "segments[2]",
+              "segments[3]",
+              "segments[4]",
+              "segments[5]",
+              "segments[6]",
+              "segments[7]",
+              "digit_select[3]",
+              "digit_select[2]",
+              "digit_select[1]",
+              "digit_select[0]"
+            ]
+          },
+          "config": { "kind": "segment_display", "digits": 4, "active_low": false },
+          "data": { "kind": "none" }
+        }
+      }
+    ],
+    "waveformView": {
+      "version": 1,
+      "signalOrder": ["clk", "reset", "digit_select[0]", "segments[0]"],
+      "signalColorOverrides": {}
+    }
+  },
+  "workspaceView": { "activeFileId": "top" }
+}

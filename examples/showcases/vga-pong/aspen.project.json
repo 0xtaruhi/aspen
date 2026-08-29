@@ -1,0 +1,174 @@
+{
+  "version": 3,
+  "layout": "directory",
+  "content": {
+    "name": "VGA Pong",
+    "files": [
+      {
+        "id": "root",
+        "name": "VGA Pong",
+        "type": "folder",
+        "isOpen": true,
+        "children": [{ "id": "top", "name": "vga_pong.v", "type": "file" }]
+      }
+    ],
+    "topFileId": "top",
+    "topModuleName": "vga_pong",
+    "targetDeviceId": "FDP3P7",
+    "targetBoardId": "FDP3P7_REFERENCE",
+    "pinConstraints": {
+      "version": 1,
+      "topFileId": "top",
+      "assignments": [
+        { "portName": "clk", "pinId": "P77", "clockPeriodNs": 33.333333, "boardFunction": "CLK" },
+        { "portName": "reset", "pinId": "P151" },
+        { "portName": "paddle_up", "pinId": "P148" },
+        { "portName": "paddle_down", "pinId": "P150" },
+        { "portName": "vga_hsync", "pinId": "P7" },
+        { "portName": "vga_vsync", "pinId": "P6" },
+        { "portName": "vga_rgb[0]", "pinId": "P5" },
+        { "portName": "vga_rgb[1]", "pinId": "P4" },
+        { "portName": "vga_rgb[2]", "pinId": "P9" },
+        { "portName": "vga_rgb[3]", "pinId": "P8" },
+        { "portName": "vga_rgb[4]", "pinId": "P16" },
+        { "portName": "vga_rgb[5]", "pinId": "P15" },
+        { "portName": "vga_rgb[6]", "pinId": "P11" },
+        { "portName": "vga_rgb[7]", "pinId": "P10" },
+        { "portName": "score_segments[0]", "pinId": "P20" },
+        { "portName": "score_segments[1]", "pinId": "P18" },
+        { "portName": "score_segments[2]", "pinId": "P17" },
+        { "portName": "score_segments[3]", "pinId": "P22" },
+        { "portName": "score_segments[4]", "pinId": "P21" },
+        { "portName": "score_segments[5]", "pinId": "P23" },
+        { "portName": "score_segments[6]", "pinId": "P44" },
+        { "portName": "score_segments[7]", "pinId": "P45" },
+        { "portName": "score_digit_select[0]", "pinId": "P46" },
+        { "portName": "score_digit_select[1]", "pinId": "P43" },
+        { "portName": "audio_pwm", "pinId": "P40" }
+      ]
+    },
+    "implementationSettings": { "version": 1, "placeMode": "timing_driven" },
+    "synthesisCache": null,
+    "implementationCache": null,
+    "canvasDevices": [
+      {
+        "id": "pong-screen",
+        "type": "vga_display",
+        "x": 40,
+        "y": 60,
+        "label": "Pong Arena",
+        "state": {
+          "is_on": false,
+          "color": null,
+          "binding": {
+            "kind": "slots",
+            "signals": [
+              "vga_hsync",
+              "vga_vsync",
+              "vga_rgb[5]",
+              "vga_rgb[6]",
+              "vga_rgb[7]",
+              "vga_rgb[2]",
+              "vga_rgb[3]",
+              "vga_rgb[4]",
+              "vga_rgb[0]",
+              "vga_rgb[1]"
+            ]
+          },
+          "config": { "kind": "vga_display", "columns": 640, "rows": 480, "color_mode": "rgb332" },
+          "data": { "kind": "none" }
+        }
+      },
+      {
+        "id": "up-button",
+        "type": "button",
+        "x": 520,
+        "y": 60,
+        "label": "Paddle Up",
+        "state": {
+          "is_on": false,
+          "color": null,
+          "binding": { "kind": "single", "signal": "paddle_up" },
+          "config": { "kind": "button", "active_low": false },
+          "data": { "kind": "none" }
+        }
+      },
+      {
+        "id": "down-button",
+        "type": "button",
+        "x": 520,
+        "y": 220,
+        "label": "Paddle Down",
+        "state": {
+          "is_on": false,
+          "color": null,
+          "binding": { "kind": "single", "signal": "paddle_down" },
+          "config": { "kind": "button", "active_low": false },
+          "data": { "kind": "none" }
+        }
+      },
+      {
+        "id": "reset-button",
+        "type": "button",
+        "x": 680,
+        "y": 220,
+        "label": "New Game",
+        "state": {
+          "is_on": false,
+          "color": null,
+          "binding": { "kind": "single", "signal": "reset" },
+          "config": { "kind": "button", "active_low": false },
+          "data": { "kind": "none" }
+        }
+      },
+      {
+        "id": "score-display",
+        "type": "segment_display",
+        "x": 520,
+        "y": 380,
+        "label": "Score",
+        "state": {
+          "is_on": false,
+          "color": "#ef4444",
+          "binding": {
+            "kind": "slots",
+            "signals": [
+              "score_segments[0]",
+              "score_segments[1]",
+              "score_segments[2]",
+              "score_segments[3]",
+              "score_segments[4]",
+              "score_segments[5]",
+              "score_segments[6]",
+              "score_segments[7]",
+              "score_digit_select[0]",
+              "score_digit_select[1]"
+            ]
+          },
+          "config": { "kind": "segment_display", "digits": 2, "active_low": false },
+          "data": { "kind": "none" }
+        }
+      },
+      {
+        "id": "game-audio",
+        "type": "audio_pwm",
+        "x": 760,
+        "y": 380,
+        "label": "Game Audio",
+        "state": {
+          "is_on": false,
+          "color": null,
+          "binding": { "kind": "single", "signal": "audio_pwm" },
+          "config": { "kind": "none" },
+          "data": { "kind": "none" }
+        }
+      }
+    ],
+    "waveformView": {
+      "version": 1,
+      "signalOrder": ["clk", "paddle_up", "paddle_down", "vga_hsync", "vga_vsync", "audio_pwm"],
+      "signalColorOverrides": {}
+    }
+  },
+  "workspaceView": { "activeFileId": "top" }
+}

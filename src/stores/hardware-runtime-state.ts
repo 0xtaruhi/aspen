@@ -26,6 +26,7 @@ export const DATA_DEFAULT_MIN_BATCH_CYCLES = 128
 export const DATA_DEFAULT_MAX_WAIT_US = 2000
 export const DATA_DEFAULT_CLOCK_HIGH_DELAY = 4
 export const DATA_DEFAULT_CLOCK_LOW_DELAY = 4
+export const DATA_DEFAULT_TARGET_HZ = 200_000
 
 export const initialRuntimeState: RuntimeState = {
   version: 1,
@@ -40,7 +41,7 @@ export const initialRuntimeState: RuntimeState = {
 function createInitialDataStreamStatus(): HardwareDataStreamStatusV1 {
   return {
     running: false,
-    target_hz: 1,
+    target_hz: DATA_DEFAULT_TARGET_HZ,
     actual_hz: 0,
     transfer_rate_hz: 0,
     sequence: 0,
