@@ -10,6 +10,7 @@ module vga_pong (
     output reg  [1:0] score_digit_select,
     output reg        audio_pwm
 );
+    localparam FABRIC_CLOCK_HZ = 30_000_000;
     localparam H_VISIBLE = 640;
     localparam H_TOTAL = 800;
     localparam V_VISIBLE = 480;
@@ -25,7 +26,7 @@ module vga_pong (
     reg ball_down = 1'b1;
     reg [3:0] player_score = 0;
     reg [3:0] opponent_score = 0;
-    reg [9:0] display_scan = 0;
+    reg [16:0] display_scan = 0;
     reg [21:0] beep_ticks = 0;
     reg [14:0] tone_count = 0;
     reg [3:0] score_nibble;
@@ -71,8 +72,8 @@ module vga_pong (
         else
             vga_rgb = 8'b000_001_00;
 
-        score_digit_select = display_scan[9] ? 2'b10 : 2'b01;
-        score_nibble = display_scan[9] ? opponent_score : player_score;
+        score_digit_select = display_scan[16] ? 2'b10 : 2'b01;
+        score_nibble = display_scan[16] ? opponent_score : player_score;
         score_segments = hex_segments(score_nibble);
     end
 
@@ -106,7 +107,7 @@ module vga_pong (
                 audio_pwm <= 1'b0;
             end else begin
                 beep_ticks <= beep_ticks - 1'b1;
-                if (tone_count == 15'd14999) begin
+                if (tone_count == FABRIC_CLOCK_HZ / (2 * 1000) - 1) begin
                     tone_count <= 0;
                     audio_pwm <= ~audio_pwm;
                 end else begin
@@ -130,35 +131,35 @@ module vga_pong (
                 if (ball_down) begin
                     if (ball_y >= 470) begin
                         ball_down <= 1'b0;
-                        beep_ticks <= 22'd450000;
+                        beep_ticks <= FABRIC_CLOCK_HZ / 1000 * 15;
                     end else begin
                         ball_y <= ball_y + 2;
                     end
                 end else if (ball_y <= 2) begin
                     ball_down <= 1'b1;
-                    beep_ticks <= 22'd450000;
+                    beep_ticks <= FABRIC_CLOCK_HZ / 1000 * 15;
                 end else begin
                     ball_y <= ball_y - 2;
                 end
 
                 if (!ball_right && ball_x <= 32 && ball_y + 8 >= paddle_y && ball_y < paddle_y + 80) begin
                     ball_right <= 1'b1;
-                    beep_ticks <= 22'd900000;
+                    beep_ticks <= FABRIC_CLOCK_HZ / 1000 * 30;
                 end else if (!ball_right && ball_x <= 2) begin
                     opponent_score <= opponent_score + 1'b1;
                     ball_x <= 320;
                     ball_y <= 240;
                     ball_right <= 1'b1;
-                    beep_ticks <= 22'd1800000;
+                    beep_ticks <= FABRIC_CLOCK_HZ / 1000 * 60;
                 end else if (ball_right && ball_x >= 600 && ball_y + 8 >= opponent_y && ball_y < opponent_y + 80) begin
                     ball_right <= 1'b0;
-                    beep_ticks <= 22'd900000;
+                    beep_ticks <= FABRIC_CLOCK_HZ / 1000 * 30;
                 end else if (ball_right && ball_x >= 630) begin
                     player_score <= player_score + 1'b1;
                     ball_x <= 320;
                     ball_y <= 240;
                     ball_right <= 1'b0;
-                    beep_ticks <= 22'd1800000;
+                    beep_ticks <= FABRIC_CLOCK_HZ / 1000 * 60;
                 end else if (ball_right) begin
                     ball_x <= ball_x + 2;
                 end else begin

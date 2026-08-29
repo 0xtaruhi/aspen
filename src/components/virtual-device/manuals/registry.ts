@@ -8,7 +8,6 @@ import {
   getCanvasHd44780LcdConfig,
   getCanvasLedBarConfig,
   getCanvasMatrixDimensions,
-  getCanvasMatrixKeypadConfig,
   getCanvasQuadratureEncoderConfig,
   getCanvasSegmentDisplayConfig,
   getCanvasUartTerminalConfig,
@@ -550,101 +549,6 @@ const canvasDeviceManualDefinitions: Record<CanvasDeviceType, CanvasDeviceManual
         },
       },
     ],
-  },
-  matrix_keypad: {
-    summary: txt(
-      'Simulate a scanned matrix keypad by observing row selects and driving matching columns.',
-      '模拟扫描式矩阵键盘：观察设计驱动的行选通信号，并在按键命中时回驱对应列线。',
-    ),
-    resolvePins: (device, language) => {
-      const config = getCanvasMatrixKeypadConfig(device)
-      const rows = config?.rows ?? 4
-      const columns = config?.columns ?? 4
-      return [
-        ...Array.from({ length: rows }, (_, index) =>
-          pin(
-            `ROW${index}`,
-            'fpga_to_device',
-            txt(
-              `Row select line ${index} observed from the design.`,
-              `从设计观察到的第 ${index} 行扫描信号。`,
-            ),
-            language,
-          ),
-        ),
-        ...Array.from({ length: columns }, (_, index) =>
-          pin(
-            `COL${index}`,
-            'device_to_fpga',
-            txt(
-              `Column sense line ${index} driven back when the selected key is pressed.`,
-              `当选中的按键被按下时，器件会回驱第 ${index} 列感测线。`,
-            ),
-            language,
-          ),
-        ),
-      ]
-    },
-    resolveParameters: (device, language) => {
-      const config = getCanvasMatrixKeypadConfig(device)
-      return [
-        parameter(
-          'Rows',
-          config?.rows ?? 4,
-          4,
-          txt('Number of scanned rows.', '矩阵键盘的行数。'),
-          language,
-        ),
-        parameter(
-          'Columns',
-          config?.columns ?? 4,
-          4,
-          txt('Number of sensed columns.', '矩阵键盘的列数。'),
-          language,
-        ),
-        parameter(
-          'Active level',
-          activeLevelValue(config?.activeLow ?? true, language),
-          resolveText(txt('Active low', '低电平有效'), language),
-          txt(
-            'Electrical polarity used when a key closes the row/column path.',
-            '按键闭合时用于列线回驱的有效电平极性。',
-          ),
-          language,
-        ),
-      ]
-    },
-    resolveWaveforms: (device, _language) => {
-      const activeLow = getCanvasMatrixKeypadConfig(device)?.activeLow ?? true
-      return [
-        {
-          id: 'matrix-scan',
-          title: txt('Scan and key closure', '扫描与按键闭合'),
-          description: activeLow
-            ? txt(
-                'With active-low sensing, the pressed column is driven low when its row is selected.',
-                '在低电平有效模式下，当对应行被选中时，被按下按键所在列会被拉低。',
-              )
-            : txt(
-                'With active-high sensing, the pressed column is driven high when its row is selected.',
-                '在高电平有效模式下，当对应行被选中时，被按下按键所在列会被拉高。',
-              ),
-          source: {
-            signal: activeLow
-              ? [
-                  { name: 'ROW1', wave: '0..1..0.' },
-                  { name: 'Pressed', wave: '0.1....0' },
-                  { name: 'COL2', wave: '1..0..1.' },
-                ]
-              : [
-                  { name: 'ROW1', wave: '0..1..0.' },
-                  { name: 'Pressed', wave: '0.1....0' },
-                  { name: 'COL2', wave: '0..1..0.' },
-                ],
-          },
-        },
-      ]
-    },
   },
   uart_terminal: {
     summary: txt(

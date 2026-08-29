@@ -39,12 +39,7 @@ const gainNode = shallowRef<GainNode | null>(null)
 const { t } = useI18n()
 
 const audible = computed(() => {
-  return (
-    props.sampleRateHz > 0 &&
-    props.frequencyHz >= 20 &&
-    props.frequencyHz <= 5000 &&
-    props.edgeCount > 0
-  )
+  return props.sampleRateHz > 0 && props.frequencyHz >= 20 && props.frequencyHz <= 5000
 })
 
 const displayFrequency = computed(() => {

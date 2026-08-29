@@ -489,6 +489,23 @@ fn expected_cycles_reanchor_after_rate_change() {
 }
 
 #[test]
+fn default_stream_rate_is_fast_enough_for_async_virtual_devices() {
+    let config = HardwareDataStreamConfigV1::default();
+    let runtime = HardwareRuntime::default();
+
+    assert_eq!(config.target_hz, 200_000.0);
+    assert_eq!(config.min_batch_cycles, 128);
+    assert_eq!(config.max_wait_us, 2_000);
+    assert_eq!(
+        runtime
+            .data_stream_status()
+            .expect("status snapshot should succeed")
+            .target_hz,
+        200_000.0
+    );
+}
+
+#[test]
 fn aggregate_read_buffer_windows_merge_batch_boundaries() {
     let first_batch = HardwareRuntime::aggregate_read_buffer_windows(&[0u16, 0u16], &[1], 1);
     let second_batch = HardwareRuntime::aggregate_read_buffer_windows(&[1u16, 1u16], &[1], 1);
@@ -861,6 +878,55 @@ fn segment_display_decoder_honors_active_low_polarity() {
 }
 
 #[test]
+fn segment_display_decoder_retains_digits_between_sparse_scan_windows() {
+    let state = HardwareStateV1 {
+        canvas_devices: vec![CanvasDeviceSnapshot {
+            id: "seg_sparse".to_string(),
+            r#type: CanvasDeviceType::SegmentDisplay,
+            x: 0.0,
+            y: 0.0,
+            label: "SEG".to_string(),
+            state: CanvasDeviceStateSnapshot {
+                is_on: false,
+                color: None,
+                binding: slot_bindings(&[
+                    Some("seg_a"),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some("digit_0"),
+                    Some("digit_1"),
+                ]),
+                config: CanvasDeviceConfigSnapshot::SegmentDisplay {
+                    digits: 2,
+                    active_low: false,
+                },
+                data: no_data(),
+            },
+        }],
+        ..HardwareStateV1::default()
+    };
+    let signal_order = vec![
+        "seg_a".to_string(),
+        "digit_0".to_string(),
+        "digit_1".to_string(),
+    ];
+    let mut decoders = HardwareRuntime::compile_output_decoders(&state, &signal_order);
+
+    HardwareRuntime::ingest_output_batch(&[packed_cycle(&[0, 1])], 1, &mut decoders);
+    let first = HardwareRuntime::flush_output_decoders(&mut decoders, 1);
+    assert_eq!(expect_segment_display(&first.devices[0]).1, &[1, 0]);
+
+    HardwareRuntime::ingest_output_batch(&[packed_cycle(&[0, 2])], 1, &mut decoders);
+    let second = HardwareRuntime::flush_output_decoders(&mut decoders, 2);
+    assert_eq!(expect_segment_display(&second.devices[0]).1, &[1, 1]);
+}
+
+#[test]
 fn matrix_decoder_normalizes_scanned_pixels_by_row_activity() {
     let mut state = HardwareStateV1 {
         canvas_devices: vec![CanvasDeviceSnapshot {
@@ -1103,7 +1169,7 @@ fn vga_display_decoder_prefers_active_window_over_blanking() {
 }
 
 #[test]
-fn audio_pwm_decoder_reports_period_edges_and_duty_ratio() {
+fn audio_pwm_decoder_uses_elapsed_batch_time_for_frequency() {
     let state = HardwareStateV1 {
         canvas_devices: vec![CanvasDeviceSnapshot {
             id: "audio0".to_string(),
@@ -1126,29 +1192,17 @@ fn audio_pwm_decoder_reports_period_edges_and_duty_ratio() {
     let mut decoders = HardwareRuntime::compile_output_decoders(&state, &signal_order);
     assert_eq!(decoders.len(), 1);
 
-    for cycle in [
-        packed_cycle(&[]),
-        packed_cycle(&[]),
-        packed_cycle(&[0]),
-        packed_cycle(&[0]),
-        packed_cycle(&[]),
-        packed_cycle(&[]),
-        packed_cycle(&[0]),
-        packed_cycle(&[0]),
-        packed_cycle(&[]),
-        packed_cycle(&[]),
-        packed_cycle(&[0]),
-        packed_cycle(&[0]),
-    ] {
-        decoders[0].ingest_cycle(&[cycle]);
+    for index in 0..=10 {
+        decoders[0].ingest_cycle(&[packed_cycle(if index % 2 == 0 { &[] } else { &[0] })]);
+        HardwareRuntime::finish_output_batch(&mut decoders, index * 10, 30_000_000.0);
     }
 
     let snapshot = decoders[0].flush_snapshot();
     let (edge_count, sample_count, period_samples) = expect_audio_pwm(&snapshot);
-    assert_eq!(edge_count, 5);
-    assert_eq!(sample_count, 12);
-    assert!((period_samples - 4.0).abs() < 0.01);
-    assert!((snapshot.high_ratio - 0.5).abs() < 0.01);
+    assert_eq!(edge_count, 10);
+    assert_eq!(sample_count, 11);
+    assert!((period_samples - 600_000.0).abs() < 0.01);
+    assert!((snapshot.high_ratio - (5.0 / 11.0)).abs() < 0.01);
 }
 
 #[test]

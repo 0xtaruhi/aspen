@@ -61,7 +61,7 @@
               "vga_rgb[1]"
             ]
           },
-          "config": { "kind": "vga_display", "columns": 320, "rows": 240, "color_mode": "rgb332" },
+          "config": { "kind": "vga_display", "columns": 640, "rows": 480, "color_mode": "rgb332" },
           "data": { "kind": "none" }
         }
       }

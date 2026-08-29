@@ -181,7 +181,6 @@ export type CanvasDeviceType =
   | 'led_bar'
   | 'audio_pwm'
   | 'quadrature_encoder'
-  | 'matrix_keypad'
   | 'uart_terminal'
   | 'hd44780_lcd'
   | 'vga_display'
@@ -206,7 +205,6 @@ export type CanvasDeviceConfigSnapshot =
   | { kind: 'dip_switch_bank'; width: number }
   | { kind: 'led_bar'; width: number; active_low: boolean }
   | { kind: 'quadrature_encoder'; has_button: boolean }
-  | { kind: 'matrix_keypad'; rows: number; columns: number; active_low: boolean }
   | { kind: 'uart_terminal'; cycles_per_bit: number; mode: CanvasUartMode }
   | { kind: 'hd44780_lcd'; columns: number; rows: number; bus_mode: CanvasHd44780BusMode }
 
@@ -214,7 +212,6 @@ export type CanvasDeviceDataSnapshot =
   | { kind: 'none' }
   | { kind: 'bitset'; bits: Array<boolean> }
   | { kind: 'quadrature_encoder'; phase: number; button_pressed: boolean }
-  | { kind: 'matrix_keypad'; pressed_row: number | null; pressed_column: number | null }
   | { kind: 'queued_bytes'; bytes: Array<number> }
 
 export type CanvasDeviceStateSnapshot = {

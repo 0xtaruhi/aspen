@@ -11,12 +11,9 @@ export type ProjectExampleId =
   | 'device-labs/led-matrix'
   | 'device-labs/uart-terminal'
   | 'device-labs/hd44780-lcd'
-  | 'device-labs/matrix-keypad'
   | 'device-labs/quadrature-encoder'
   | 'device-labs/audio-pwm'
   | 'device-labs/vga-display'
-  | 'showcases/keypad-calculator'
-  | 'showcases/mini-synth'
   | 'showcases/vga-pong'
 
 export type ProjectStarter =
@@ -110,14 +107,6 @@ export const projectStarterCatalog: ProjectStarterCatalogEntry[] = [
     starter: { kind: 'example', exampleId: 'device-labs/hd44780-lcd' },
   },
   {
-    id: 'example-matrix-keypad',
-    category: 'device-lab',
-    titleKey: 'matrixKeypadLab',
-    descriptionKey: 'matrixKeypadLabDescription',
-    suggestedName: 'MatrixKeypadLab',
-    starter: { kind: 'example', exampleId: 'device-labs/matrix-keypad' },
-  },
-  {
     id: 'example-quadrature-encoder',
     category: 'device-lab',
     titleKey: 'quadratureEncoderLab',
@@ -140,22 +129,6 @@ export const projectStarterCatalog: ProjectStarterCatalogEntry[] = [
     descriptionKey: 'vgaDisplayLabDescription',
     suggestedName: 'VgaDisplayLab',
     starter: { kind: 'example', exampleId: 'device-labs/vga-display' },
-  },
-  {
-    id: 'example-keypad-calculator',
-    category: 'showcase',
-    titleKey: 'keypadCalculator',
-    descriptionKey: 'keypadCalculatorDescription',
-    suggestedName: 'KeypadCalculator',
-    starter: { kind: 'example', exampleId: 'showcases/keypad-calculator' },
-  },
-  {
-    id: 'example-mini-synth',
-    category: 'showcase',
-    titleKey: 'miniSynth',
-    descriptionKey: 'miniSynthDescription',
-    suggestedName: 'MiniSynth',
-    starter: { kind: 'example', exampleId: 'showcases/mini-synth' },
   },
   {
     id: 'example-vga-pong',

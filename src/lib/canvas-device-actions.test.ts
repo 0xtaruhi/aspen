@@ -5,7 +5,6 @@ import {
   rotateCanvasDeviceEncoder,
   setCanvasDeviceBit,
   setCanvasDeviceEncoderButton,
-  setCanvasDeviceMatrixKey,
 } from '@/lib/canvas-device-actions'
 import { createCanvasDeviceSnapshot } from '@/lib/canvas-devices'
 
@@ -42,21 +41,6 @@ describe('canvas device actions', () => {
       kind: 'quadrature_encoder',
       phase: 3,
       button_pressed: true,
-    })
-  })
-
-  it('sets and releases a matrix key', () => {
-    const device = createCanvasDeviceSnapshot('matrix_keypad', 'keypad', 0, 0, 0)
-
-    expect(setCanvasDeviceMatrixKey(device, 1, 2).state.data).toEqual({
-      kind: 'matrix_keypad',
-      pressed_row: 1,
-      pressed_column: 2,
-    })
-    expect(setCanvasDeviceMatrixKey(device, null, null).state.data).toEqual({
-      kind: 'matrix_keypad',
-      pressed_row: null,
-      pressed_column: null,
     })
   })
 })

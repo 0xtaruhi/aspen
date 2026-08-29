@@ -20,7 +20,6 @@ import Hd44780LcdDevice from '@/components/devices/Hd44780LcdDevice.vue'
 import LedBarDevice from '@/components/devices/LedBarDevice.vue'
 import LedDevice from '@/components/devices/LedDevice.vue'
 import LedMatrixDevice from '@/components/devices/LedMatrixDevice.vue'
-import MatrixKeypadDevice from '@/components/devices/MatrixKeypadDevice.vue'
 import QuadratureEncoderDevice from '@/components/devices/QuadratureEncoderDevice.vue'
 import SegmentDisplayDevice from '@/components/devices/SegmentDisplayDevice.vue'
 import SwitchDevice from '@/components/devices/SwitchDevice.vue'
@@ -28,7 +27,6 @@ import UartTerminalDevice from '@/components/devices/UartTerminalDevice.vue'
 import VgaDisplayDevice from '@/components/devices/VgaDisplayDevice.vue'
 import DipSwitchBankBindingAssistant from '@/components/virtual-device/binding-assist/DipSwitchBankBindingAssistant.vue'
 import LedBarBindingAssistant from '@/components/virtual-device/binding-assist/LedBarBindingAssistant.vue'
-import MatrixKeypadBindingAssistant from '@/components/virtual-device/binding-assist/MatrixKeypadBindingAssistant.vue'
 import SegmentDisplayBindingAssistant from '@/components/virtual-device/binding-assist/SegmentDisplayBindingAssistant.vue'
 import LedMatrixBindingAssistant from '@/components/virtual-device/binding-assist/LedMatrixBindingAssistant.vue'
 import VgaDisplayBindingAssistant from '@/components/virtual-device/binding-assist/VgaDisplayBindingAssistant.vue'
@@ -37,7 +35,6 @@ import DeviceDipSwitchBankSettings from '@/components/virtual-device/settings/De
 import DeviceHd44780LcdSettings from '@/components/virtual-device/settings/DeviceHd44780LcdSettings.vue'
 import DeviceLedBarSettings from '@/components/virtual-device/settings/DeviceLedBarSettings.vue'
 import DeviceLedMatrixSettings from '@/components/virtual-device/settings/DeviceLedMatrixSettings.vue'
-import DeviceMatrixKeypadSettings from '@/components/virtual-device/settings/DeviceMatrixKeypadSettings.vue'
 import DeviceQuadratureEncoderSettings from '@/components/virtual-device/settings/DeviceQuadratureEncoderSettings.vue'
 import DeviceSegmentDisplaySettings from '@/components/virtual-device/settings/DeviceSegmentDisplaySettings.vue'
 import DeviceUartTerminalSettings from '@/components/virtual-device/settings/DeviceUartTerminalSettings.vue'
@@ -80,7 +77,6 @@ type CanvasDeviceActionContext = {
   setBitsetValue: (device: CanvasDeviceSnapshot, index: number, value: boolean) => void
   rotateEncoder: (device: CanvasDeviceSnapshot, delta: number) => void
   setEncoderButton: (device: CanvasDeviceSnapshot, value: boolean) => void
-  setMatrixKey: (device: CanvasDeviceSnapshot, row: number | null, column: number | null) => void
   enqueueAsciiText: (device: CanvasDeviceSnapshot, value: string) => void
 }
 
@@ -215,17 +211,6 @@ const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefiniti
       },
       'toggle-button': (value: boolean) => {
         actions.setEncoderButton(device, value)
-      },
-    }),
-  },
-  matrix_keypad: {
-    renderer: MatrixKeypadDevice,
-    gallery: { section: 'input', order: 50, metaKey: 'galleryMetaRowColumnScan', icon: Grid2x2 },
-    settingsComponent: DeviceMatrixKeypadSettings,
-    bindingAssistantComponent: MatrixKeypadBindingAssistant,
-    buildRendererListeners: (device, actions) => ({
-      'press-key': (row: number | null, column: number | null) => {
-        actions.setMatrixKey(device, row, column)
       },
     }),
   },

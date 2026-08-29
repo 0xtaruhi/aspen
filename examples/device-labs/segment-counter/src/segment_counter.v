@@ -4,7 +4,11 @@ module segment_counter (
     output reg  [7:0] segments,
     output reg  [3:0] digit_select
 );
+    localparam FABRIC_CLOCK_HZ = 30_000_000;
+    localparam COUNT_TICKS = FABRIC_CLOCK_HZ / 10;
+
     reg [23:0] tick = 0;
+    reg [16:0] scan_divider = 0;
     reg [15:0] value = 16'h0000;
     reg [1:0] scan_digit = 0;
     reg [3:0] nibble;
@@ -36,11 +40,13 @@ module segment_counter (
     always @(posedge clk) begin
         if (reset) begin
             tick <= 0;
+            scan_divider <= 0;
             value <= 0;
             scan_digit <= 0;
         end else begin
-            scan_digit <= tick[8:7];
-            if (tick == 24'd2_999_999) begin
+            scan_divider <= scan_divider + 1'b1;
+            scan_digit <= scan_divider[16:15];
+            if (tick == COUNT_TICKS - 1) begin
                 tick <= 0;
                 value <= value + 1'b1;
             end else begin

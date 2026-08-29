@@ -21,6 +21,7 @@ import {
   DATA_DEFAULT_CLOCK_LOW_DELAY,
   DATA_DEFAULT_MAX_WAIT_US,
   DATA_DEFAULT_MIN_BATCH_CYCLES,
+  DATA_DEFAULT_TARGET_HZ,
   dataStreamStatus,
   resetRuntimeState,
 } from './hardware-runtime-state'
@@ -52,7 +53,7 @@ export async function configureDataStream(
 ) {
   const wordsPerCycle = options?.wordsPerCycle ?? dataStreamStatus.value.words_per_cycle ?? 4
   const nextConfig: HardwareDataStreamConfigV1 = {
-    target_hz: dataStreamStatus.value.target_hz || 1,
+    target_hz: dataStreamStatus.value.target_hz || DATA_DEFAULT_TARGET_HZ,
     input_signal_order: configuredSignalOrder(inputSignalOrder),
     output_signal_order: configuredSignalOrder(outputSignalOrder),
     waveform_enabled: waveformEnabled,

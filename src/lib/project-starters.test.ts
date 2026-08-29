@@ -17,7 +17,6 @@ const supportedDeviceTypes: CanvasDeviceType[] = [
   'led_bar',
   'audio_pwm',
   'quadrature_encoder',
-  'matrix_keypad',
   'uart_terminal',
   'hd44780_lcd',
   'vga_display',
@@ -34,9 +33,9 @@ function collectFiles(nodes: ProjectNode[]): ProjectNode[] {
 describe('bundled project starters', () => {
   const exampleEntries = projectStarterCatalog.filter((entry) => entry.starter.kind === 'example')
 
-  it('keeps three lightweight templates and twelve complete examples', () => {
+  it('keeps three lightweight templates and nine complete examples', () => {
     expect(projectStarterCatalog.filter((entry) => entry.category === 'template')).toHaveLength(3)
-    expect(exampleEntries).toHaveLength(12)
+    expect(exampleEntries).toHaveLength(9)
   })
 
   it.each(exampleEntries)('hydrates $id into an editable project snapshot', (entry) => {
@@ -88,5 +87,37 @@ describe('bundled project starters', () => {
       kind: 'single',
       signal: 'inverted_led',
     })
+  })
+
+  it('keeps bundled VGA timing and virtual display geometry aligned', () => {
+    for (const exampleId of [
+      'device-labs/vga-display',
+      'showcases/vga-pong',
+    ] as const satisfies readonly ProjectExampleId[]) {
+      const snapshot = createBundledExampleSnapshot(exampleId, 'VgaExample')
+      const source = collectFiles(snapshot.content.files)[0]?.content ?? ''
+      const display = snapshot.content.canvasDevices.find((device) => device.type === 'vga_display')
+
+      expect(display?.state.config).toMatchObject({
+        kind: 'vga_display',
+        columns: 640,
+        rows: 480,
+      })
+      expect(source).toContain('localparam H_VISIBLE = 640;')
+      expect(source).toContain('localparam V_VISIBLE = 480;')
+    }
+  })
+
+  it('uses the default virtual fabric clock for time-sensitive examples', () => {
+    for (const exampleId of [
+      'device-labs/segment-counter',
+      'device-labs/audio-pwm',
+      'showcases/vga-pong',
+    ] as const satisfies readonly ProjectExampleId[]) {
+      const snapshot = createBundledExampleSnapshot(exampleId, 'TimedExample')
+      const source = collectFiles(snapshot.content.files)[0]?.content ?? ''
+
+      expect(source).toContain('localparam FABRIC_CLOCK_HZ = 30_000_000;')
+    }
   })
 })

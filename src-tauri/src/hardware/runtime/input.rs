@@ -1,16 +1,13 @@
 use std::{
     collections::VecDeque,
     hash::{Hash, Hasher},
-    sync::{Arc, Mutex},
+    sync::Mutex,
 };
 
 use crate::hardware::types::{CanvasDeviceSnapshot, CanvasUartMode, HardwareStateV1};
 
+use super::registry::{input_compiler_for_device_type, SignalIndexLookup};
 use super::*;
-use super::{
-    registry::{input_compiler_for_device_type, SignalIndexLookup},
-    shared::{matrix_keypad_shared_state, MatrixKeypadRuntimeState},
-};
 
 pub(super) trait InputDeviceEncoder: Send {
     fn encode_cycle(&self, state: &HardwareStateV1, cycle_index: usize, frame_words: &mut [u16]);
@@ -34,12 +31,6 @@ struct QuadratureEncoderInputEncoder {
 struct SerialLineInputEncoder {
     signal_index: usize,
     waveform: Mutex<VecDeque<bool>>,
-}
-
-struct MatrixKeypadInputEncoder {
-    device_index: usize,
-    column_signal_indices: Vec<Option<usize>>,
-    shared: Arc<Mutex<MatrixKeypadRuntimeState>>,
 }
 
 impl HardwareRuntime {
@@ -211,32 +202,6 @@ pub(super) fn compile_uart_terminal_input(
     }))
 }
 
-pub(super) fn compile_matrix_keypad_input(
-    device: &CanvasDeviceSnapshot,
-    device_index: usize,
-    signal_indices: &SignalIndexLookup<'_>,
-) -> Option<Box<dyn InputDeviceEncoder>> {
-    let (rows, columns) = device.state.matrix_dimensions()?;
-    let slot_signals = device.state.slot_signals();
-    let column_signal_indices = (0..columns)
-        .map(|index| {
-            slot_signals
-                .get(rows + index)
-                .and_then(|signal| signal.as_deref())
-                .and_then(|signal| signal_indices.get(signal).copied())
-        })
-        .collect::<Vec<_>>();
-    if !column_signal_indices.iter().any(Option::is_some) {
-        return None;
-    }
-
-    Some(Box::new(MatrixKeypadInputEncoder {
-        device_index,
-        column_signal_indices,
-        shared: matrix_keypad_shared_state(device),
-    }))
-}
-
 impl InputDeviceEncoder for SingleBitInputEncoder {
     fn encode_cycle(&self, state: &HardwareStateV1, _cycle_index: usize, frame_words: &mut [u16]) {
         let Some(device) = state.canvas_devices.get(self.device_index) else {
@@ -299,39 +264,6 @@ impl InputDeviceEncoder for SerialLineInputEncoder {
             .and_then(|mut waveform| waveform.pop_front())
             .unwrap_or(true);
         set_signal_value(frame_words, self.signal_index, value);
-    }
-}
-
-impl InputDeviceEncoder for MatrixKeypadInputEncoder {
-    fn encode_cycle(&self, state: &HardwareStateV1, _cycle_index: usize, frame_words: &mut [u16]) {
-        let Some(device) = state.canvas_devices.get(self.device_index) else {
-            return;
-        };
-        let (pressed_row, pressed_column) = device.state.matrix_keypad_data();
-        let Ok(shared) = self.shared.lock() else {
-            return;
-        };
-        let pressed_row = pressed_row.filter(|row| *row < shared.rows);
-        let pressed_column = pressed_column.filter(|column| *column < shared.columns);
-        let idle_level = shared.active_low;
-        let active_level = !shared.active_low;
-        let selected_row_level = !shared.active_low;
-        let row_is_selected = pressed_row
-            .and_then(|row| shared.active_rows.get(row).copied())
-            .map(|level| level == selected_row_level)
-            .unwrap_or(false);
-
-        for (column_index, signal_index) in self.column_signal_indices.iter().enumerate() {
-            let Some(signal_index) = signal_index else {
-                continue;
-            };
-            let level = if row_is_selected && pressed_column == Some(column_index) {
-                active_level
-            } else {
-                idle_level
-            };
-            set_signal_value(frame_words, *signal_index, level);
-        }
     }
 }
 

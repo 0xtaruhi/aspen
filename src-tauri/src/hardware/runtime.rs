@@ -22,7 +22,6 @@ mod canvas;
 mod input;
 mod output;
 mod registry;
-mod shared;
 mod stream;
 mod telemetry;
 
@@ -42,7 +41,8 @@ const STREAM_DECODE_QUEUE_CAPACITY: usize = STREAM_USB_PIPELINE_WINDOW * 2;
 const STREAM_BUFFER_POOL_CAPACITY: usize = STREAM_USB_PIPELINE_WINDOW * 2;
 const DATA_MAX_UPDATES_PER_BATCH: usize = 256;
 const DATA_DEFAULT_WORDS_PER_CYCLE: u16 = 4;
-const DATA_DEFAULT_TARGET_HZ: f64 = 1.0;
+const DATA_MIN_TARGET_HZ: f64 = 1.0;
+const DATA_DEFAULT_TARGET_HZ: f64 = 200_000.0;
 const DATA_DEFAULT_MIN_BATCH_CYCLES: u16 = 128;
 const DATA_DEFAULT_MAX_WAIT_US: u32 = 2_000;
 const DATA_DEFAULT_CLOCK_HIGH_DELAY: u16 = 4;

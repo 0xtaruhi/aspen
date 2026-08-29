@@ -161,11 +161,6 @@ function isCanvasDeviceConfigSnapshot(value: unknown): value is CanvasDeviceConf
       )
     case 'led_matrix':
       return hasFiniteDimensions(value)
-    case 'matrix_keypad':
-      return (
-        hasFiniteDimensions(value) &&
-        (value.active_low === undefined || typeof value.active_low === 'boolean')
-      )
     case 'vga_display':
       return (
         hasFiniteDimensions(value) &&
@@ -212,14 +207,6 @@ function isCanvasDeviceDataSnapshot(value: unknown): boolean {
         value.phase >= 0 &&
         value.phase <= 3 &&
         typeof value.button_pressed === 'boolean'
-      )
-    case 'matrix_keypad':
-      return (
-        (value.pressed_row === null && value.pressed_column === null) ||
-        (isFiniteInteger(value.pressed_row) &&
-          value.pressed_row >= 0 &&
-          isFiniteInteger(value.pressed_column) &&
-          value.pressed_column >= 0)
       )
     case 'queued_bytes':
       return (

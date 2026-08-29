@@ -3,14 +3,13 @@ use std::collections::HashMap;
 use crate::hardware::types::{CanvasDeviceSnapshot, CanvasDeviceType};
 
 use super::input::{
-    compile_bitset_input, compile_matrix_keypad_input, compile_quadrature_encoder_input,
-    compile_single_bit_input, compile_uart_terminal_input, InputDeviceEncoder,
+    compile_bitset_input, compile_quadrature_encoder_input, compile_single_bit_input,
+    compile_uart_terminal_input, InputDeviceEncoder,
 };
 use super::output::{
     compile_audio_pwm_output, compile_hd44780_lcd_output, compile_led_bar_output,
-    compile_led_matrix_output, compile_led_output, compile_matrix_keypad_output,
-    compile_segment_display_output, compile_uart_terminal_output, compile_vga_display_output,
-    OutputDeviceDecoder,
+    compile_led_matrix_output, compile_led_output, compile_segment_display_output,
+    compile_uart_terminal_output, compile_vga_display_output, OutputDeviceDecoder,
 };
 
 #[derive(Clone, Copy, Default)]
@@ -38,7 +37,7 @@ struct DeviceRegistration {
     output_compiler: Option<OutputCompiler>,
 }
 
-const DEVICE_REGISTRATIONS: [DeviceRegistration; 13] = [
+const DEVICE_REGISTRATIONS: [DeviceRegistration; 12] = [
     DeviceRegistration {
         device_type: CanvasDeviceType::Led,
         capabilities: DeviceCapabilities {
@@ -101,15 +100,6 @@ const DEVICE_REGISTRATIONS: [DeviceRegistration; 13] = [
         },
         input_compiler: Some(compile_quadrature_encoder_input),
         output_compiler: None,
-    },
-    DeviceRegistration {
-        device_type: CanvasDeviceType::MatrixKeypad,
-        capabilities: DeviceCapabilities {
-            drives_signal: true,
-            receives_signal: true,
-        },
-        input_compiler: Some(compile_matrix_keypad_input),
-        output_compiler: Some(compile_matrix_keypad_output),
     },
     DeviceRegistration {
         device_type: CanvasDeviceType::UartTerminal,

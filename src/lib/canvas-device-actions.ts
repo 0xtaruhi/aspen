@@ -67,15 +67,3 @@ export function setCanvasDeviceEncoderButton(
     button_pressed: value,
   })
 }
-
-export function setCanvasDeviceMatrixKey(
-  device: CanvasDeviceSnapshot,
-  row: number | null,
-  column: number | null,
-): CanvasDeviceSnapshot {
-  return updateDeviceData(device, {
-    kind: 'matrix_keypad',
-    pressed_row: row,
-    pressed_column: column,
-  })
-}

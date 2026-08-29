@@ -74,10 +74,10 @@
               "segments[5]",
               "segments[6]",
               "segments[7]",
-              "digit_select[0]",
-              "digit_select[1]",
+              "digit_select[3]",
               "digit_select[2]",
-              "digit_select[3]"
+              "digit_select[1]",
+              "digit_select[0]"
             ]
           },
           "config": { "kind": "segment_display", "digits": 4, "active_low": false },

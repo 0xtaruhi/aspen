@@ -26,14 +26,11 @@ describe('project model validation', () => {
     ])
   })
 
-  it('discards invalid transient matrix and encoder state without removing devices', () => {
-    const keypad = createCanvasDeviceSnapshot('matrix_keypad', 'keypad', 0, 0, 0)
-    keypad.state.data = { kind: 'matrix_keypad', pressed_row: 1, pressed_column: null }
+  it('discards invalid transient encoder state without removing the device', () => {
     const encoder = createCanvasDeviceSnapshot('quadrature_encoder', 'encoder', 0, 0, 0)
     encoder.state.data = { kind: 'quadrature_encoder', phase: 4, button_pressed: false }
 
-    expect(normalizeProjectCanvasDevices([keypad, encoder])).toMatchObject([
-      { id: 'keypad', state: { data: { kind: 'none' } } },
+    expect(normalizeProjectCanvasDevices([encoder])).toMatchObject([
       { id: 'encoder', state: { data: { kind: 'none' } } },
     ])
   })

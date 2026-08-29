@@ -47,12 +47,6 @@ export type CanvasQuadratureEncoderConfig = {
   hasButton: boolean
 }
 
-export type CanvasMatrixKeypadConfig = {
-  rows: number
-  columns: number
-  activeLow: boolean
-}
-
 export type CanvasUartTerminalConfig = {
   cyclesPerBit: number
   mode: CanvasUartMode
