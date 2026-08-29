@@ -67,4 +67,26 @@ describe('bundled project starters', () => {
 
     expect([...coveredTypes].sort()).toEqual([...supportedDeviceTypes].sort())
   })
+
+  it('keeps the GPIO controls lab direct and stateless', () => {
+    const snapshot = createBundledExampleSnapshot('device-labs/gpio-controls', 'GPIOControlsLab')
+    const source = collectFiles(snapshot.content.files)[0]?.content ?? ''
+    const devices = new Map(snapshot.content.canvasDevices.map((device) => [device.label, device]))
+
+    expect(source).toContain('assign inverted_led = invert_switch;')
+    expect(source).toContain("assign led_bar = clear_button ? 8'h00")
+    expect(source).not.toContain('always @')
+    expect(devices.get('Invert')?.state.binding).toEqual({
+      kind: 'single',
+      signal: 'invert_switch',
+    })
+    expect(devices.get('Clear')?.state.binding).toEqual({
+      kind: 'single',
+      signal: 'clear_button',
+    })
+    expect(devices.get('Inverted')?.state.binding).toEqual({
+      kind: 'single',
+      signal: 'inverted_led',
+    })
+  })
 })

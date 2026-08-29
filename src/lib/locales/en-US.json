@@ -74,7 +74,7 @@
   "deviceLabs": "Device Labs",
   "showcases": "Showcases",
   "gpioControlsLab": "GPIO Controls",
-  "gpioControlsLabDescription": "Switches, a button, DIP inputs, an LED, and an LED bar.",
+  "gpioControlsLabDescription": "Invert or clear an 8-bit DIP value and observe the result.",
   "segmentCounterLab": "Segment Counter",
   "segmentCounterLabDescription": "A multiplexed four-digit hexadecimal counter.",
   "ledMatrixLab": "LED Matrix",

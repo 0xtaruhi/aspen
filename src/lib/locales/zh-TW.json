@@ -74,7 +74,7 @@
   "deviceLabs": "器件實驗",
   "showcases": "綜合展示",
   "gpioControlsLab": "GPIO 控制",
-  "gpioControlsLabDescription": "開關、按鍵、DIP 輸入、LED 和 LED 燈條。",
+  "gpioControlsLabDescription": "反相或清零八位 DIP 輸入，並觀察輸出結果。",
   "segmentCounterLab": "數碼管計數器",
   "segmentCounterLabDescription": "四位動態掃描十六進位制計數器。",
   "ledMatrixLab": "LED 點陣",

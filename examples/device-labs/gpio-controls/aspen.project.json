@@ -20,9 +20,8 @@
       "version": 1,
       "topFileId": "top",
       "assignments": [
-        { "portName": "clk", "pinId": "P77", "clockPeriodNs": 33.333333, "boardFunction": "CLK" },
-        { "portName": "mode_switch", "pinId": "P151" },
-        { "portName": "invert_button", "pinId": "P148" },
+        { "portName": "invert_switch", "pinId": "P151" },
+        { "portName": "clear_button", "pinId": "P148" },
         { "portName": "dip[0]", "pinId": "P150" },
         { "portName": "dip[1]", "pinId": "P152" },
         { "portName": "dip[2]", "pinId": "P160" },
@@ -31,7 +30,7 @@
         { "portName": "dip[5]", "pinId": "P163" },
         { "portName": "dip[6]", "pinId": "P164" },
         { "portName": "dip[7]", "pinId": "P165" },
-        { "portName": "status_led", "pinId": "P7" },
+        { "portName": "inverted_led", "pinId": "P7" },
         { "portName": "led_bar[0]", "pinId": "P6" },
         { "portName": "led_bar[1]", "pinId": "P5" },
         { "portName": "led_bar[2]", "pinId": "P4" },
@@ -47,29 +46,29 @@
     "implementationCache": null,
     "canvasDevices": [
       {
-        "id": "mode-switch",
+        "id": "invert-switch",
         "type": "switch",
         "x": 80,
         "y": 80,
-        "label": "Mode",
+        "label": "Invert",
         "state": {
           "is_on": false,
           "color": null,
-          "binding": { "kind": "single", "signal": "mode_switch" },
+          "binding": { "kind": "single", "signal": "invert_switch" },
           "config": { "kind": "none" },
           "data": { "kind": "none" }
         }
       },
       {
-        "id": "invert-button",
+        "id": "clear-button",
         "type": "button",
         "x": 220,
         "y": 100,
-        "label": "Invert",
+        "label": "Clear",
         "state": {
           "is_on": false,
           "color": null,
-          "binding": { "kind": "single", "signal": "invert_button" },
+          "binding": { "kind": "single", "signal": "clear_button" },
           "config": { "kind": "button", "active_low": false },
           "data": { "kind": "none" }
         }
@@ -101,15 +100,15 @@
         }
       },
       {
-        "id": "status-led",
+        "id": "inverted-led",
         "type": "led",
         "x": 430,
         "y": 100,
-        "label": "Status",
+        "label": "Inverted",
         "state": {
           "is_on": false,
           "color": "#ef4444",
-          "binding": { "kind": "single", "signal": "status_led" },
+          "binding": { "kind": "single", "signal": "inverted_led" },
           "config": { "kind": "none" },
           "data": { "kind": "none" }
         }
@@ -143,7 +142,7 @@
     ],
     "waveformView": {
       "version": 1,
-      "signalOrder": ["clk", "mode_switch", "invert_button", "status_led", "led_bar[0]"],
+      "signalOrder": ["invert_switch", "clear_button", "inverted_led", "led_bar[0]"],
       "signalColorOverrides": {}
     }
   },

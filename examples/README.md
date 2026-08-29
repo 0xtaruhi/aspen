@@ -11,7 +11,7 @@ The designs assume the FDP3P7 reference board's 30 MHz clock.
 
 | Project                                                            | Virtual devices                               | What it demonstrates                         |
 | ------------------------------------------------------------------ | --------------------------------------------- | -------------------------------------------- |
-| [`device-labs/gpio-controls`](device-labs/gpio-controls)           | Switch, button, DIP switch bank, LED, LED bar | Basic digital input and output               |
+| [`device-labs/gpio-controls`](device-labs/gpio-controls)           | Switch, button, DIP switch bank, LED, LED bar | DIP input with invert and clear controls     |
 | [`device-labs/segment-counter`](device-labs/segment-counter)       | Button, 4-digit seven-segment display         | Multiplexing and hexadecimal display         |
 | [`device-labs/led-matrix`](device-labs/led-matrix)                 | Button, 8x8 LED matrix                        | Row scanning and animation                   |
 | [`device-labs/uart-terminal`](device-labs/uart-terminal)           | Button, UART terminal                         | Full-duplex serial echo                      |
