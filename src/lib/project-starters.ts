@@ -26,7 +26,6 @@ export type ProjectStarterCategory = 'template' | 'device-lab' | 'showcase'
 
 export type ProjectStarterCatalogEntry = {
   id: string
-  code: string
   category: ProjectStarterCategory
   titleKey: MessageKey
   descriptionKey: MessageKey
@@ -48,7 +47,6 @@ const bundledExampleFiles = import.meta.glob('../../examples/{device-labs,showca
 export const projectStarterCatalog: ProjectStarterCatalogEntry[] = [
   {
     id: 'template-empty',
-    code: 'T0',
     category: 'template',
     titleKey: 'emptyProject',
     descriptionKey: 'emptyProjectDescription',
@@ -57,7 +55,6 @@ export const projectStarterCatalog: ProjectStarterCatalogEntry[] = [
   },
   {
     id: 'template-blinky',
-    code: 'T1',
     category: 'template',
     titleKey: 'ledBlinky',
     descriptionKey: 'ledBlinkyDescription',
@@ -66,7 +63,6 @@ export const projectStarterCatalog: ProjectStarterCatalogEntry[] = [
   },
   {
     id: 'template-uart',
-    code: 'T2',
     category: 'template',
     titleKey: 'uartEcho',
     descriptionKey: 'uartStarterDescription',
@@ -75,7 +71,6 @@ export const projectStarterCatalog: ProjectStarterCatalogEntry[] = [
   },
   {
     id: 'example-gpio-controls',
-    code: 'D1',
     category: 'device-lab',
     titleKey: 'gpioControlsLab',
     descriptionKey: 'gpioControlsLabDescription',
@@ -84,7 +79,6 @@ export const projectStarterCatalog: ProjectStarterCatalogEntry[] = [
   },
   {
     id: 'example-segment-counter',
-    code: 'D2',
     category: 'device-lab',
     titleKey: 'segmentCounterLab',
     descriptionKey: 'segmentCounterLabDescription',
@@ -93,7 +87,6 @@ export const projectStarterCatalog: ProjectStarterCatalogEntry[] = [
   },
   {
     id: 'example-led-matrix',
-    code: 'D3',
     category: 'device-lab',
     titleKey: 'ledMatrixLab',
     descriptionKey: 'ledMatrixLabDescription',
@@ -102,7 +95,6 @@ export const projectStarterCatalog: ProjectStarterCatalogEntry[] = [
   },
   {
     id: 'example-uart-terminal',
-    code: 'D4',
     category: 'device-lab',
     titleKey: 'uartTerminalLab',
     descriptionKey: 'uartTerminalLabDescription',
@@ -111,7 +103,6 @@ export const projectStarterCatalog: ProjectStarterCatalogEntry[] = [
   },
   {
     id: 'example-hd44780-lcd',
-    code: 'D5',
     category: 'device-lab',
     titleKey: 'hd44780LcdLab',
     descriptionKey: 'hd44780LcdLabDescription',
@@ -120,7 +111,6 @@ export const projectStarterCatalog: ProjectStarterCatalogEntry[] = [
   },
   {
     id: 'example-matrix-keypad',
-    code: 'D6',
     category: 'device-lab',
     titleKey: 'matrixKeypadLab',
     descriptionKey: 'matrixKeypadLabDescription',
@@ -129,7 +119,6 @@ export const projectStarterCatalog: ProjectStarterCatalogEntry[] = [
   },
   {
     id: 'example-quadrature-encoder',
-    code: 'D7',
     category: 'device-lab',
     titleKey: 'quadratureEncoderLab',
     descriptionKey: 'quadratureEncoderLabDescription',
@@ -138,7 +127,6 @@ export const projectStarterCatalog: ProjectStarterCatalogEntry[] = [
   },
   {
     id: 'example-audio-pwm',
-    code: 'D8',
     category: 'device-lab',
     titleKey: 'audioPwmLab',
     descriptionKey: 'audioPwmLabDescription',
@@ -147,7 +135,6 @@ export const projectStarterCatalog: ProjectStarterCatalogEntry[] = [
   },
   {
     id: 'example-vga-display',
-    code: 'D9',
     category: 'device-lab',
     titleKey: 'vgaDisplayLab',
     descriptionKey: 'vgaDisplayLabDescription',
@@ -156,7 +143,6 @@ export const projectStarterCatalog: ProjectStarterCatalogEntry[] = [
   },
   {
     id: 'example-keypad-calculator',
-    code: 'S1',
     category: 'showcase',
     titleKey: 'keypadCalculator',
     descriptionKey: 'keypadCalculatorDescription',
@@ -165,7 +151,6 @@ export const projectStarterCatalog: ProjectStarterCatalogEntry[] = [
   },
   {
     id: 'example-mini-synth',
-    code: 'S2',
     category: 'showcase',
     titleKey: 'miniSynth',
     descriptionKey: 'miniSynthDescription',
@@ -174,7 +159,6 @@ export const projectStarterCatalog: ProjectStarterCatalogEntry[] = [
   },
   {
     id: 'example-vga-pong',
-    code: 'S3',
     category: 'showcase',
     titleKey: 'vgaPong',
     descriptionKey: 'vgaPongDescription',
