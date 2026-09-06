@@ -72,7 +72,7 @@ Follow repository facts first, then these conventions.
 - Upgrade by fetching/checking out a stable tag inside the submodule, updating its
   nested submodules, preparing the bundle and running ignored integration tests.
   Commit the updated Git pointer with the migration; do not follow upstream main.
-- Windows uses MSYS2 CLANG64 to produce native binaries with bundled runtime DLLs.
+- Windows uses MSYS2 UCRT64 GCC >= 16 to produce native binaries with bundled runtime DLLs.
   Linux releases build on Ubuntu 22.04; macOS defaults to deployment target 12.0.
 - Build setup lives in `.github/actions/setup-yosys-build/action.yml`. Source pointer
   and build-script changes must trigger all three toolchain jobs and gate Pipeline.

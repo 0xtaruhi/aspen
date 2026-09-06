@@ -106,9 +106,9 @@ Python >= 3.11, Flex >= 2.6 and Bison >= 3.8:
   Python >= 3.11 and CMake >= 3.28, and run with `CC=gcc-12 CXX=g++-12`.
   CI installs CMake 3.31.6 using Python 3.12. Build release Linux artifacts on
   Ubuntu 22.04 to preserve the existing glibc compatibility baseline.
-- Windows x64: use MSYS2 CLANG64 with `bison`, `flex` and the
-  `mingw-w64-clang-x86_64-` packages `clang`, `libc++`, `cmake`, `ninja`, `python`
-  and `pkgconf`. Put the MSYS2 `clang64/bin` directory first in `PATH`, followed
+- Windows x64: use MSYS2 UCRT64 with `bison`, `flex` and the
+  `mingw-w64-ucrt-x86_64-` packages `gcc` (>= 16), `cmake`, `ninja`, `python`
+  and `pkgconf`. Put the MSYS2 `ucrt64/bin` directory first in `PATH`, followed
   by `usr/bin`, and use Windows Node.js/pnpm. The produced executables run
   outside MSYS2; required compiler runtime DLLs are bundled automatically.
 

@@ -34,16 +34,15 @@ runs:
       id: msys2
       uses: msys2/setup-msys2@v2
       with:
-        msystem: CLANG64
+        msystem: UCRT64
         update: true
         install: >-
           bison flex
-          mingw-w64-clang-x86_64-clang
-          mingw-w64-clang-x86_64-libc++
-          mingw-w64-clang-x86_64-cmake
-          mingw-w64-clang-x86_64-ninja
-          mingw-w64-clang-x86_64-python
-          mingw-w64-clang-x86_64-pkgconf
+          mingw-w64-ucrt-x86_64-gcc
+          mingw-w64-ucrt-x86_64-cmake
+          mingw-w64-ucrt-x86_64-ninja
+          mingw-w64-ucrt-x86_64-python
+          mingw-w64-ucrt-x86_64-pkgconf
 
     - name: Configure native Windows tool paths
       if: runner.os == 'Windows'
@@ -51,7 +50,8 @@ runs:
       env:
         MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
       run: |
+        # GITHUB_PATH entries are prepended in reverse order; UCRT64 must be last.
         "$env:MSYS2_ROOT\usr\bin" | Out-File -Append -FilePath $env:GITHUB_PATH
-        "$env:MSYS2_ROOT\clang64\bin" | Out-File -Append -FilePath $env:GITHUB_PATH
-        "CC=$env:MSYS2_ROOT\clang64\bin\clang.exe" | Out-File -Append -FilePath $env:GITHUB_ENV
-        "CXX=$env:MSYS2_ROOT\clang64\bin\clang++.exe" | Out-File -Append -FilePath $env:GITHUB_ENV
+        "$env:MSYS2_ROOT\ucrt64\bin" | Out-File -Append -FilePath $env:GITHUB_PATH
+        "CC=$env:MSYS2_ROOT\ucrt64\bin\gcc.exe" | Out-File -Append -FilePath $env:GITHUB_ENV
+        "CXX=$env:MSYS2_ROOT\ucrt64\bin\g++.exe" | Out-File -Append -FilePath $env:GITHUB_ENV

@@ -116,13 +116,17 @@ function toolPath(name) {
 function buildConfiguration() {
   const cmake = toolPath('cmake')
   const ninja = toolPath('ninja')
-  const cc = toolPath(process.env.CC || (process.platform === 'linux' ? 'gcc' : 'clang'))
-  const cxx = toolPath(process.env.CXX || (process.platform === 'linux' ? 'g++' : 'clang++'))
+  const cc = toolPath(process.env.CC || (process.platform === 'darwin' ? 'clang' : 'gcc'))
+  const cxx = toolPath(process.env.CXX || (process.platform === 'darwin' ? 'clang++' : 'g++'))
   const compilerVersion = run(cxx, ['--version'])
-  if (process.platform === 'win32' && !run(cxx, ['-dumpmachine']).includes('windows-gnu')) {
-    throw new Error(
-      'Windows builds require MSYS2 CLANG64 clang/clang++; put clang64/bin first in PATH.',
-    )
+  if (process.platform === 'win32') {
+    const target = run(cxx, ['-dumpmachine'])
+    const majorVersion = Number.parseInt(run(cxx, ['-dumpfullversion']), 10)
+    if (!target.includes('w64-mingw32') || !Number.isFinite(majorVersion) || majorVersion < 16) {
+      throw new Error(
+        'Windows builds require MSYS2 UCRT64 GCC >= 16; put ucrt64/bin first in PATH.',
+      )
+    }
   }
   const options = {
     CMAKE_BUILD_TYPE: 'Release',
@@ -171,36 +175,35 @@ function buildConfiguration() {
 
 // Only Windows OS libraries may be satisfied by the host. Compiler runtime DLLs
 // must be copied even when a developer happens to have them in System32.
+const windowsSystemDlls = new Set([
+  'advapi32.dll',
+  'bcrypt.dll',
+  'comdlg32.dll',
+  'crypt32.dll',
+  'dbghelp.dll',
+  'gdi32.dll',
+  'imm32.dll',
+  'kernel32.dll',
+  'msvcrt.dll',
+  'ntdll.dll',
+  'ole32.dll',
+  'oleaut32.dll',
+  'psapi.dll',
+  'rpcrt4.dll',
+  'secur32.dll',
+  'setupapi.dll',
+  'shell32.dll',
+  'shlwapi.dll',
+  'ucrtbase.dll',
+  'user32.dll',
+  'userenv.dll',
+  'version.dll',
+  'winmm.dll',
+  'ws2_32.dll',
+])
+
 export function isWindowsSystemDll(name) {
-  return (
-    /^(api-ms-win-|ext-ms-win-)/i.test(name) ||
-    new Set([
-      'advapi32.dll',
-      'bcrypt.dll',
-      'comdlg32.dll',
-      'crypt32.dll',
-      'dbghelp.dll',
-      'gdi32.dll',
-      'imm32.dll',
-      'kernel32.dll',
-      'msvcrt.dll',
-      'ntdll.dll',
-      'ole32.dll',
-      'oleaut32.dll',
-      'psapi.dll',
-      'rpcrt4.dll',
-      'secur32.dll',
-      'setupapi.dll',
-      'shell32.dll',
-      'shlwapi.dll',
-      'ucrtbase.dll',
-      'user32.dll',
-      'userenv.dll',
-      'version.dll',
-      'winmm.dll',
-      'ws2_32.dll',
-    ]).has(name.toLowerCase())
-  )
+  return /^(api-ms-win-|ext-ms-win-)/i.test(name) || windowsSystemDlls.has(name.toLowerCase())
 }
 
 function collectWindowsRuntime(root, compiler) {
