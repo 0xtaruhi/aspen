@@ -44,6 +44,7 @@ jobs:
       rust: ${{ steps.filter.outputs.rust }}
       toolchain: ${{ steps.filter.outputs.toolchain }}
       desktop: ${{ steps.filter.outputs.desktop }}
+      driver_installer: ${{ steps.filter.outputs.driver_installer }}
       force_full: ${{ steps.flags.outputs.force_full }}
       run_frontend: ${{ steps.flags.outputs.run_frontend }}
       run_rust: ${{ steps.flags.outputs.run_rust }}
@@ -63,6 +64,9 @@ jobs:
         uses: dorny/paths-filter@v4
         with:
           filters: |
+            driver_installer:
+              - '.github/workflows/ci.yml'
+              - 'tools/aspen-driver-installer/**'
             frontend:
               - '.github/workflows/ci.yml'
               - 'src/**'
@@ -507,6 +511,19 @@ jobs:
       - name: Rust clippy
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 
+  driver-installer-checks:
+    name: Windows Driver Installer
+    runs-on: windows-latest
+    needs:
+      - changes
+    if: needs.changes.outputs.force_full == 'true' || needs.changes.outputs.driver_installer == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Build bundled driver installer
+        run: cargo build --locked --release --manifest-path tools/aspen-driver-installer/Cargo.toml
+
   pipeline:
     name: Pipeline
     runs-on: ubuntu-latest
@@ -517,6 +534,7 @@ jobs:
       - toolchain-linux
       - toolchain-macos
       - toolchain-windows
+      - driver-installer-checks
     if: always()
     steps:
       - name: Verify required jobs
@@ -531,7 +549,8 @@ jobs:
           for result in "$changes_result" "$frontend_result" "$rust_result" \
             "${{ needs.toolchain-linux.result }}" \
             "${{ needs.toolchain-macos.result }}" \
-            "${{ needs.toolchain-windows.result }}"; do
+            "${{ needs.toolchain-windows.result }}" \
+            "${{ needs.driver-installer-checks.result }}"; do
             case "$result" in
               success|skipped)
                 ;;

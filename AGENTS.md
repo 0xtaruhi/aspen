@@ -103,6 +103,7 @@ Follow repository facts first, then these conventions.
 - Standalone typecheck: `pnpm exec vue-tsc --noEmit`
 - Rust formatting: `cargo fmt --manifest-path src-tauri/Cargo.toml`
 - Rust tests: `cargo test --manifest-path src-tauri/Cargo.toml`
+- Windows driver installer build: `cargo build --locked --release --manifest-path tools/aspen-driver-installer/Cargo.toml` (Windows only). CI runs this for helper changes and full builds, and gates Pipeline on its result.
 
 ## Release Process
 
