@@ -32,7 +32,6 @@ env:
   GITHUB_TOKEN: ${{ github.token }}
   NODE_VERSION: '24'
   NODE_OPTIONS: --max-old-space-size=6144
-  OSS_CAD_SUITE_VERSION: '2026-06-24'
   RELEASE_DRY_RUN: ${{ inputs.release_dry_run || false }}
   SLANG_SERVER_VERSION: 'v0.2.6'
 
@@ -89,6 +88,12 @@ jobs:
             toolchain:
               - '.github/workflows/ci.yml'
               - 'scripts/prepare-yosys-bundle.mjs'
+              - 'scripts/prepare-yosys-bundle.test.mjs'
+              - 'scripts/yosys/**'
+              - 'scripts/lib/portable-executable.mjs'
+              - '.github/actions/setup-yosys-build/**'
+              - '.gitmodules'
+              - 'third_party/yosys'
               - 'scripts/restore-bundled-toolchain-perms.sh'
               - 'src-tauri/resource/**'
             desktop:
@@ -102,6 +107,12 @@ jobs:
               - 'vite.config.*'
               - 'vitest.config.*'
               - 'scripts/prepare-yosys-bundle.mjs'
+              - 'scripts/prepare-yosys-bundle.test.mjs'
+              - 'scripts/yosys/**'
+              - 'scripts/lib/portable-executable.mjs'
+              - '.github/actions/setup-yosys-build/**'
+              - '.gitmodules'
+              - 'third_party/yosys'
               - 'scripts/restore-bundled-toolchain-perms.sh'
 
       - name: Compute CI matrix
@@ -146,6 +157,12 @@ jobs:
 
             if [ "$frontend" = true ]; then
               run_frontend=true
+            fi
+
+            if [ "$toolchain" = true ]; then
+              run_frontend=true
+              run_toolchain_macos=true
+              run_toolchain_windows=true
             fi
 
             if [ "$run_rust" = true ]; then
@@ -240,12 +257,19 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      - name: Identify pinned Yosys and runner image
+        id: yosys-source
+        shell: bash
+        run: |
+          echo "commit=$(git rev-parse HEAD:third_party/yosys)" >> "$GITHUB_OUTPUT"
+          echo "image=$ImageOS-$ImageVersion" >> "$GITHUB_OUTPUT"
+
       - name: Cache bundled Yosys toolchain
         id: cache-yosys
         uses: actions/cache@v6
         with:
           path: src-tauri/vendor/yosys
-          key: bundled-yosys-${{ runner.os }}-ubuntu-22.04-${{ env.OSS_CAD_SUITE_VERSION }}-${{ hashFiles('scripts/prepare-yosys-bundle.mjs') }}
+          key: source-yosys-${{ runner.os }}-${{ runner.arch }}-${{ steps.yosys-source.outputs.image }}-${{ steps.yosys-source.outputs.commit }}-${{ hashFiles('scripts/prepare-yosys-bundle.mjs', 'scripts/lib/portable-executable.mjs', 'scripts/yosys/**', '.github/actions/setup-yosys-build/action.yml') }}
 
       - name: Cache bundled slang-server
         id: cache-slang
@@ -254,9 +278,16 @@ jobs:
           path: src-tauri/vendor/slang-server
           key: bundled-slang-server-${{ runner.os }}-ubuntu-22.04-${{ env.SLANG_SERVER_VERSION }}-${{ hashFiles('scripts/prepare-slang-server-bundle.mjs') }}
 
-      - name: Download bundled Yosys toolchain
+      - name: Setup Yosys source build
+        if: steps.cache-yosys.outputs.cache-hit != 'true'
+        uses: ./.github/actions/setup-yosys-build
+
+      - name: Build bundled Yosys from source
         if: steps.cache-yosys.outputs.cache-hit != 'true'
         run: pnpm prepare:yosys-bundle
+
+      - name: Verify bundled Yosys, including cache hits
+        run: pnpm prepare:yosys-bundle --check
 
       - name: Download bundled slang-server
         if: steps.cache-slang.outputs.cache-hit != 'true'
@@ -266,6 +297,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: bundled-fpga-toolchains-ubuntu-22.04
+          # The Yosys inventory includes dotfiles in bundled license sources.
+          include-hidden-files: true
           path: |
             src-tauri/vendor/yosys
             src-tauri/vendor/slang-server
@@ -293,12 +326,19 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      - name: Identify pinned Yosys and runner image
+        id: yosys-source
+        shell: bash
+        run: |
+          echo "commit=$(git rev-parse HEAD:third_party/yosys)" >> "$GITHUB_OUTPUT"
+          echo "image=$ImageOS-$ImageVersion" >> "$GITHUB_OUTPUT"
+
       - name: Cache bundled Yosys toolchain
         id: cache-yosys
         uses: actions/cache@v6
         with:
           path: src-tauri/vendor/yosys
-          key: bundled-yosys-${{ runner.os }}-${{ env.OSS_CAD_SUITE_VERSION }}-${{ hashFiles('scripts/prepare-yosys-bundle.mjs') }}
+          key: source-yosys-${{ runner.os }}-${{ runner.arch }}-${{ steps.yosys-source.outputs.image }}-${{ steps.yosys-source.outputs.commit }}-${{ hashFiles('scripts/prepare-yosys-bundle.mjs', 'scripts/lib/portable-executable.mjs', 'scripts/yosys/**', '.github/actions/setup-yosys-build/action.yml') }}
 
       - name: Cache bundled slang-server
         id: cache-slang
@@ -307,9 +347,16 @@ jobs:
           path: src-tauri/vendor/slang-server
           key: bundled-slang-server-${{ runner.os }}-${{ env.SLANG_SERVER_VERSION }}-${{ hashFiles('scripts/prepare-slang-server-bundle.mjs') }}
 
-      - name: Download bundled Yosys toolchain
+      - name: Setup Yosys source build
+        if: steps.cache-yosys.outputs.cache-hit != 'true'
+        uses: ./.github/actions/setup-yosys-build
+
+      - name: Build bundled Yosys from source
         if: steps.cache-yosys.outputs.cache-hit != 'true'
         run: pnpm prepare:yosys-bundle
+
+      - name: Verify bundled Yosys, including cache hits
+        run: pnpm prepare:yosys-bundle --check
 
       - name: Download bundled slang-server
         if: steps.cache-slang.outputs.cache-hit != 'true'
@@ -319,6 +366,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: bundled-fpga-toolchains-macos-latest
+          include-hidden-files: true
           path: |
             src-tauri/vendor/yosys
             src-tauri/vendor/slang-server
@@ -346,12 +394,19 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      - name: Identify pinned Yosys and runner image
+        id: yosys-source
+        shell: bash
+        run: |
+          echo "commit=$(git rev-parse HEAD:third_party/yosys)" >> "$GITHUB_OUTPUT"
+          echo "image=$ImageOS-$ImageVersion" >> "$GITHUB_OUTPUT"
+
       - name: Cache bundled Yosys toolchain
         id: cache-yosys
         uses: actions/cache@v6
         with:
           path: src-tauri/vendor/yosys
-          key: bundled-yosys-${{ runner.os }}-${{ env.OSS_CAD_SUITE_VERSION }}-${{ hashFiles('scripts/prepare-yosys-bundle.mjs') }}
+          key: source-yosys-${{ runner.os }}-${{ runner.arch }}-${{ steps.yosys-source.outputs.image }}-${{ steps.yosys-source.outputs.commit }}-${{ hashFiles('scripts/prepare-yosys-bundle.mjs', 'scripts/lib/portable-executable.mjs', 'scripts/yosys/**', '.github/actions/setup-yosys-build/action.yml') }}
 
       - name: Cache bundled slang-server
         id: cache-slang
@@ -360,9 +415,20 @@ jobs:
           path: src-tauri/vendor/slang-server
           key: bundled-slang-server-${{ runner.os }}-${{ env.SLANG_SERVER_VERSION }}-${{ hashFiles('scripts/prepare-slang-server-bundle.mjs') }}
 
-      - name: Download bundled Yosys toolchain
+      - name: Setup Yosys source build
+        if: steps.cache-yosys.outputs.cache-hit != 'true'
+        uses: ./.github/actions/setup-yosys-build
+
+      - name: Verify Windows UTF-8 runtime manifests
+        if: steps.cache-yosys.outputs.cache-hit != 'true'
+        run: node scripts/yosys/test-windows-runtime.mjs
+
+      - name: Build bundled Yosys from source
         if: steps.cache-yosys.outputs.cache-hit != 'true'
         run: pnpm prepare:yosys-bundle
+
+      - name: Verify bundled Yosys, including cache hits
+        run: pnpm prepare:yosys-bundle --check
 
       - name: Download bundled slang-server
         if: steps.cache-slang.outputs.cache-hit != 'true'
@@ -372,6 +438,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: bundled-fpga-toolchains-windows-latest
+          include-hidden-files: true
           path: |
             src-tauri/vendor/yosys
             src-tauri/vendor/slang-server
@@ -447,6 +514,9 @@ jobs:
       - changes
       - frontend-checks
       - rust-checks
+      - toolchain-linux
+      - toolchain-macos
+      - toolchain-windows
     if: always()
     steps:
       - name: Verify required jobs
@@ -458,7 +528,10 @@ jobs:
           frontend_result="${{ needs.frontend-checks.result }}"
           rust_result="${{ needs.rust-checks.result }}"
 
-          for result in "$changes_result" "$frontend_result" "$rust_result"; do
+          for result in "$changes_result" "$frontend_result" "$rust_result" \
+            "${{ needs.toolchain-linux.result }}" \
+            "${{ needs.toolchain-macos.result }}" \
+            "${{ needs.toolchain-windows.result }}"; do
             case "$result" in
               success|skipped)
                 ;;
@@ -547,6 +620,9 @@ jobs:
           slang=$(find "$extract_dir/squashfs-root" -type f -path '*/vendor/slang-server/slang-server' -print -quit)
           test -n "$slang"
           node scripts/test-slang-server-handshake.mjs "$slang"
+          yosys=$(find "$extract_dir/squashfs-root" -type f -path '*/vendor/yosys/bin/yosys' -print -quit)
+          test -n "$yosys"
+          node scripts/prepare-yosys-bundle.mjs --check-packaged "$(dirname "$(dirname "$yosys")")"
 
       - name: Record updater target metadata
         if: startsWith(github.ref, 'refs/tags/v') || inputs.release_dry_run
@@ -690,6 +766,7 @@ jobs:
           test -f "$mount_dir/aspen.app/Contents/Resources/vendor/yosys/bin/yosys"
           test -f "$mount_dir/aspen.app/Contents/Resources/vendor/slang-server/slang-server"
           node scripts/test-slang-server-handshake.mjs "$mount_dir/aspen.app/Contents/Resources/vendor/slang-server/slang-server"
+          node scripts/prepare-yosys-bundle.mjs --check-packaged "$mount_dir/aspen.app/Contents/Resources/vendor/yosys"
           codesign --verify --deep --strict --verbose=4 "$mount_dir/aspen.app"
 
       - name: Upload Aspen package artifacts
@@ -772,6 +849,11 @@ jobs:
           }
           if (-not $slang) { throw 'Packaged slang-server.exe was not found.' }
           node scripts/test-slang-server-handshake.mjs $slang.FullName
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged LSP handshake failed.' }
+          $yosys = Get-ChildItem $extractDir -Recurse -Filter 'yosys.exe' | Select-Object -First 1
+          if (-not $yosys) { throw 'Packaged yosys.exe was not found.' }
+          node scripts/prepare-yosys-bundle.mjs --check-packaged (Split-Path $yosys.DirectoryName)
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged Yosys validation failed.' }
 
       - name: Record updater target metadata
         if: startsWith(github.ref, 'refs/tags/v') || inputs.release_dry_run

@@ -86,11 +86,63 @@ Install dependencies:
 pnpm install
 ```
 
-Prepare the bundled Yosys toolchain:
+Prepare the bundled Yosys toolchain from the pinned Git submodule:
 
 ```bash
 pnpm prepare:yosys-bundle
 ```
+
+The command initializes `third_party/yosys` and its nested submodules on first use,
+then builds Yosys and ABC with CMake/Ninja. The initial pin is stable **v0.68**.
+Aspen ships the resulting executables, technology data and runtime dependencies;
+end users do not need Git, a compiler, Python, or a system Yosys installation.
+
+Additional build prerequisites are Git, a C++20 compiler, CMake >= 3.28, Ninja,
+Python >= 3.11, Flex >= 2.6 and Bison >= 3.8:
+
+- macOS: `brew install cmake ninja bison flex`; use Xcode Command Line Tools for
+  Clang. Add `$(brew --prefix bison)/bin` and `$(brew --prefix flex)/bin` to `PATH`.
+- Ubuntu 22.04: install `gcc-12 g++-12 ninja-build bison flex pkg-config`, provide
+  Python >= 3.11 and CMake >= 3.28, and run with `CC=gcc-12 CXX=g++-12`.
+  CI installs CMake 3.31.6 using Python 3.12. Build release Linux artifacts on
+  Ubuntu 22.04 to preserve the existing glibc compatibility baseline.
+- Windows x64: use MSYS2 UCRT64 with `bison`, `flex` and the
+  `mingw-w64-ucrt-x86_64-` packages `gcc` (>= 16), `cmake`, `ninja`, `python`
+  and `pkgconf`. Put the MSYS2 `ucrt64/bin` directory first in `PATH`, followed
+  by `usr/bin`, and use Windows Node.js/pnpm. The produced executables run
+  outside MSYS2; required compiler runtime DLLs are bundled automatically.
+  Windows 10 1903 or newer is required for the embedded UTF-8 process manifests
+  that let Yosys and ABC handle non-ASCII installation and project paths.
+
+Completed builds are cached under `src-tauri/target/yosys`. Set
+`ASPEN_YOSYS_CACHE_DIR` to change that location, and
+`CMAKE_BUILD_PARALLEL_LEVEL` to control compilation parallelism (default: up to
+8 jobs). Repeated preparation validates and reuses the installation. Source
+commits, compiler versions, flags and build recipe changes invalidate the
+appropriate cache. `--force` rebuilds the current configuration; `--check`
+validates an existing bundle without needing build tools. Every check runs ABC
+LUT mapping and EDIF export from a relocated directory with spaces and Unicode
+characters and without the developer's toolchain paths.
+
+To upgrade to another stable release (replace `<stable-tag>` with its exact tag):
+
+```bash
+git -C third_party/yosys fetch --depth 1 origin tag <stable-tag>
+git -C third_party/yosys checkout --detach <stable-tag>
+git -C third_party/yosys submodule update --init --recursive --depth 1
+pnpm prepare:yosys-bundle
+cargo test --manifest-path src-tauri/Cargo.toml -- --ignored
+git add third_party/yosys
+```
+
+Commit the submodule pointer in the Aspen repository after the regressions pass.
+ABC and the other dependencies remain pinned by the selected Yosys commit.
+The bundler refuses tracked source edits rather than caching an unrecorded patch.
+CI keys the installation cache by the Git pointer, OS/architecture, runner image
+and build recipe, and validates cache hits. Changes to this toolchain run all
+three native toolchain jobs. Package jobs also validate the extracted Yosys;
+`--check-packaged <directory>` permits executable changes caused by code signing
+while retaining metadata, file-set, data integrity and runtime checks.
 
 Prepare the bundled `slang-server` language server:
 
