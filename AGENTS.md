@@ -57,9 +57,31 @@ Follow repository facts first, then these conventions.
 - Frontend dev server: `pnpm dev`
 - Tauri dev app: `pnpm tauri dev`
 - Frontend preview: `pnpm preview`
-- Download, prune, and bundle the official OSS CAD Suite into `src-tauri/vendor/yosys`: `pnpm prepare:yosys-bundle`
+- Build and cache the pinned Yosys/ABC Git submodules with CMake/Ninja into `src-tauri/vendor/yosys`: `pnpm prepare:yosys-bundle`
 - Download and bundle the official `slang-server` release into `src-tauri/vendor/slang-server`: `pnpm prepare:slang-server-bundle`
 - `pnpm tauri dev` and `pnpm tauri build` should automatically prepare the bundled `slang-server` when it is missing.
+
+## Yosys Source Toolchain
+
+- Source: `third_party/yosys` is a Git submodule, initially pinned to stable v0.68.
+- `pnpm prepare:yosys-bundle` initializes nested dependencies, builds with CMake/Ninja,
+  validates a relocated installation and publishes it to `src-tauri/vendor/yosys`.
+- `pnpm prepare:yosys-bundle --check` verifies an existing bundle without build tools.
+- Cache: `src-tauri/target/yosys`, overridable with `ASPEN_YOSYS_CACHE_DIR`.
+- Use `CMAKE_BUILD_PARALLEL_LEVEL` to limit compiler jobs; `--force` rebuilds.
+- Upgrade by fetching/checking out a stable tag inside the submodule, updating its
+  nested submodules, preparing the bundle and running ignored integration tests.
+  Commit the updated Git pointer with the migration; do not follow upstream main.
+- Windows uses MSYS2 UCRT64 GCC >= 16 to produce native binaries with bundled runtime DLLs.
+  Linux releases build on Ubuntu 22.04; macOS defaults to deployment target 12.0.
+- Build setup lives in `.github/actions/setup-yosys-build/action.yml`. Source pointer
+  and build-script changes must trigger all three toolchain jobs and gate Pipeline.
+- Windows runtime manifests live in `scripts/yosys/` and are attached by a CMake
+  project hook. Keep both Yosys and ABC opted into UTF-8 (Windows 10 1903+); do not
+  work around Unicode failures by removing the relocated-path regression.
+- Keep CMake out of Cargo `build.rs`; runtime continues to use the bundled process.
+- Preserve source/runtime license notices. Validate ABC, EDIF and Unicode paths in
+  the relocated bundle; after signing use `--check-packaged <directory>`.
 
 ## Build, Lint, Typecheck, Test
 

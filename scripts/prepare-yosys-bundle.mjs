@@ -1,1118 +1,531 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import {
   cpSync,
-  createWriteStream,
   existsSync,
-  lstatSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
-  readlinkSync,
   readdirSync,
+  renameSync,
   rmSync,
-  unlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { basename, delimiter, dirname, join, relative, resolve } from 'node:path'
-import { tmpdir } from 'node:os'
-import { Readable } from 'node:stream'
-import { pipeline } from 'node:stream/promises'
+import { availableParallelism, tmpdir } from 'node:os'
+import { delimiter, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { parsePortableExecutableDependencyNames as parsePortableExecutableDependencyNamesFromBuffer } from './lib/portable-executable.mjs'
+import { parsePortableExecutableDependencyNames } from './lib/portable-executable.mjs'
 
-const scriptDir = dirname(fileURLToPath(import.meta.url))
-const repoRoot = dirname(scriptDir)
-const bundleTargetDir = join(repoRoot, 'src-tauri', 'vendor', 'yosys')
-const releaseRepo = 'YosysHQ/oss-cad-suite-build'
-const explicitVersion = process.env.OSS_CAD_SUITE_VERSION?.trim()
-const targetAssetHint = resolveTargetAssetHint()
-const githubToken = process.env.GITHUB_TOKEN?.trim() || process.env.YOSYS_GITHUB_TOKEN?.trim() || ''
-const args = new Set(process.argv.slice(2))
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const sourceDir = join(repoRoot, 'third_party', 'yosys')
+const bundleDir = join(repoRoot, 'src-tauri', 'vendor', 'yosys')
+const manifestName = 'aspen-build.json'
+const exeSuffix = process.platform === 'win32' ? '.exe' : ''
 
-async function main() {
-  if (args.has('--prune-existing')) {
-    if (!existsSync(bundleTargetDir)) {
-      throw new Error(`No bundled Yosys toolchain found at ${bundleTargetDir}.`)
-    }
-
-    const beforeBytes = getDirectorySize(bundleTargetDir)
-    materializeBundledSymlinks(bundleTargetDir)
-    pruneBundledToolchain(bundleTargetDir)
-    ensureBundlePlaceholder(bundleTargetDir)
-    validateBundledYosys(bundleTargetDir)
-    const afterBytes = getDirectorySize(bundleTargetDir)
-    console.log(
-      `Pruned existing bundled Yosys from ${formatBytes(beforeBytes)} to ${formatBytes(afterBytes)}.`,
-    )
-    return
-  }
-
-  const { release, asset } = await resolveReleaseAndAsset()
-  const downloadDir = join(tmpdir(), `aspen-yosys-${process.pid}-${Date.now()}`)
-  const archivePath = join(downloadDir, asset.name)
-  const extractDir = join(downloadDir, 'extract')
-
-  rmSync(downloadDir, { recursive: true, force: true })
-  mkdirSync(downloadDir, { recursive: true })
-  mkdirSync(extractDir, { recursive: true })
-
-  console.log(`Downloading ${asset.name} from ${asset.browser_download_url}`)
-  const downloadStartedAt = Date.now()
-  await downloadFile(asset.browser_download_url, archivePath)
-  console.log(`Downloaded ${asset.name} in ${formatDuration(Date.now() - downloadStartedAt)}.`)
-  const extractStartedAt = Date.now()
-  extractArchive(archivePath, extractDir)
-  console.log(`Extracted ${asset.name} in ${formatDuration(Date.now() - extractStartedAt)}.`)
-
-  const extractedRoot = findToolchainRoot(extractDir)
-  const bundleStartedAt = Date.now()
-  rmSync(bundleTargetDir, { recursive: true, force: true })
-  mkdirSync(dirname(bundleTargetDir), { recursive: true })
-  cpSync(extractedRoot, bundleTargetDir, { recursive: true, dereference: true })
-  materializeBundledSymlinks(bundleTargetDir)
-  pruneBundledToolchain(bundleTargetDir)
-  ensureBundlePlaceholder(bundleTargetDir)
-  validateBundledYosys(bundleTargetDir)
-  console.log(
-    `Prepared and validated bundled Yosys in ${formatDuration(Date.now() - bundleStartedAt)}.`,
-  )
-  const bundledBytes = getDirectorySize(bundleTargetDir)
-  rmSync(downloadDir, { recursive: true, force: true })
-
-  console.log(
-    `Bundled official OSS CAD Suite ${release.tag_name} (${asset.name}) into ${bundleTargetDir} (${formatBytes(bundledBytes)}).`,
-  )
-}
-
-function resolveTargetAssetHint() {
-  const platform = process.env.OSS_CAD_SUITE_PLATFORM?.trim() || process.platform
-  const arch = process.env.OSS_CAD_SUITE_ARCH?.trim() || process.arch
-
-  if (platform === 'darwin' && arch === 'arm64') {
-    return 'darwin-arm64'
-  }
-  if (platform === 'darwin' && (arch === 'x64' || arch === 'amd64')) {
-    return 'darwin-x64'
-  }
-  if (platform === 'linux' && (arch === 'x64' || arch === 'amd64')) {
-    return 'linux-x64'
-  }
-  if (platform === 'linux' && arch === 'arm64') {
-    return 'linux-arm64'
-  }
-  if (platform === 'win32' && (arch === 'x64' || arch === 'amd64')) {
-    return 'windows-x64'
-  }
-  if (platform === 'win32' && arch === 'arm64') {
-    return 'windows-arm64'
-  }
-
-  throw new Error(
-    `Unsupported platform '${platform}' / '${arch}' for bundled OSS CAD Suite download.`,
-  )
-}
-
-async function resolveReleaseAndAsset() {
-  if (explicitVersion) {
-    const release = await fetchJson(
-      `https://api.github.com/repos/${releaseRepo}/releases/tags/${encodeURIComponent(explicitVersion)}`,
-      'release metadata',
-    )
-    if (!release || !Array.isArray(release.assets)) {
-      throw new Error('OSS CAD Suite release metadata did not contain an asset list.')
-    }
-
-    return {
-      release,
-      asset: selectAsset(release.assets),
-    }
-  }
-
-  const releases = await fetchJson(
-    `https://api.github.com/repos/${releaseRepo}/releases?per_page=12`,
-    'release list',
-  )
-  if (!Array.isArray(releases)) {
-    throw new Error('OSS CAD Suite release list did not contain a valid array payload.')
-  }
-
-  for (const release of releases) {
-    if (!release || !Array.isArray(release.assets)) {
-      continue
-    }
-
-    const asset = selectAsset(release.assets, { allowMissing: true })
-    if (asset) {
-      return { release, asset }
-    }
-  }
-
-  throw new Error(
-    `No recent OSS CAD Suite release contained a '${targetAssetHint}' archive for this platform.`,
-  )
-}
-
-async function fetchJson(url, label) {
-  const response = await fetch(url, {
-    headers: {
-      Accept: 'application/vnd.github+json',
-      ...(githubToken ? { Authorization: `Bearer ${githubToken}` } : {}),
-      'User-Agent': 'aspen-yosys-bundler',
-    },
+function run(command, args, options = {}) {
+  const result = spawnSync(command, args, {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    maxBuffer: 16 * 1024 * 1024,
+    ...options,
+    shell: false,
   })
-
-  if (!response.ok) {
+  if (result.error || result.status !== 0) {
     throw new Error(
-      `Failed to fetch OSS CAD Suite ${label} (${response.status} ${response.statusText}).`,
+      `${command} ${args.join(' ')} failed: ${result.error?.message || result.stderr || result.stdout || `exit ${result.status}`}`,
     )
   }
-
-  return response.json()
+  return result.stdout?.trim() || ''
 }
 
-function selectAsset(assets, { allowMissing = false } = {}) {
-  const normalizedHint = targetAssetHint.toLowerCase()
-  const preferredExtensions = targetAssetHint.startsWith('windows-')
-    ? ['.exe', '.zip', '.tgz']
-    : ['.tgz', '.zip']
-  const candidates = assets.filter((asset) => {
-    const name = String(asset.name || '').toLowerCase()
+function hash(value) {
+  return createHash('sha256').update(value).digest('hex')
+}
+
+function walk(root, prefix = '', strict = true) {
+  return readdirSync(join(root, prefix), { withFileTypes: true }).flatMap((entry) => {
+    if (entry.name === '.git') return []
+    const name = prefix ? `${prefix}/${entry.name}` : entry.name
+    if (entry.isDirectory()) return walk(root, name, strict)
+    if (!entry.isFile() && !strict) return []
+    if (!entry.isFile()) throw new Error(`Unexpected non-regular file: ${join(root, name)}`)
+    return [name]
+  })
+}
+
+export function fileInventory(root) {
+  return Object.fromEntries(
+    walk(root)
+      .filter((name) => name !== manifestName && name !== '.placeholder')
+      .sort()
+      .map((name) => [name, hash(readFileSync(join(root, name)))]),
+  )
+}
+
+export function bundleMatches(root, expected, buildKey, packaged = false) {
+  try {
+    const manifest = JSON.parse(readFileSync(join(root, manifestName), 'utf8'))
+    const files = fileInventory(root)
     return (
-      name.includes(normalizedHint) &&
-      preferredExtensions.some((extension) => name.endsWith(extension))
-    )
-  })
-
-  if (candidates.length === 0) {
-    if (allowMissing) {
-      return null
-    }
-
-    throw new Error(`No OSS CAD Suite asset matched '${targetAssetHint}' in the selected release.`)
-  }
-
-  for (const extension of preferredExtensions) {
-    const asset = candidates.find((candidate) =>
-      String(candidate.name || '')
-        .toLowerCase()
-        .endsWith(extension),
-    )
-    if (asset) {
-      return asset
-    }
-  }
-
-  return candidates[0]
-}
-
-async function downloadFile(url, destinationPath) {
-  if (tryNativeDownload(url, destinationPath)) {
-    return
-  }
-
-  const response = await fetch(url, {
-    headers: {
-      ...(githubToken ? { Authorization: `Bearer ${githubToken}` } : {}),
-      'User-Agent': 'aspen-yosys-bundler',
-    },
-  })
-
-  if (!response.ok) {
-    throw new Error(`Failed to download OSS CAD Suite archive (${response.status}).`)
-  }
-
-  if (!response.body) {
-    throw new Error('OSS CAD Suite download response did not include a body.')
-  }
-
-  await pipeline(Readable.fromWeb(response.body), createWriteStream(destinationPath))
-}
-
-function tryNativeDownload(url, destinationPath) {
-  if (process.platform === 'win32') {
-    const curlResult = spawnSync('curl.exe', ['-L', '--fail', '--output', destinationPath, url], {
-      stdio: 'inherit',
-    })
-    if (curlResult.status === 0) {
-      return true
-    }
-
-    const powershellResult = spawnSync(
-      'powershell',
-      ['-NoProfile', '-Command', `Invoke-WebRequest -Uri "${url}" -OutFile "${destinationPath}"`],
-      { stdio: 'inherit' },
-    )
-    return powershellResult.status === 0
-  }
-
-  const result = spawnSync('curl', ['-L', '--fail', '--output', destinationPath, url], {
-    stdio: 'inherit',
-  })
-  return result.status === 0
-}
-
-function extractArchive(archivePath, extractDir) {
-  if (archivePath.toLowerCase().endsWith('.exe')) {
-    const sevenZipResult = spawnSync('7z', ['x', archivePath, `-o${extractDir}`, '-y'], {
-      stdio: 'inherit',
-    })
-    if (sevenZipResult.status === 0) {
-      return
-    }
-
-    throw new Error(`Failed to extract ${basename(archivePath)}.`)
-  }
-
-  if (archivePath.toLowerCase().endsWith('.zip')) {
-    if (process.platform === 'win32') {
-      const result = spawnSync(
-        'powershell',
-        [
-          '-NoProfile',
-          '-Command',
-          `Expand-Archive -LiteralPath "${archivePath}" -DestinationPath "${extractDir}" -Force`,
-        ],
-        { stdio: 'inherit' },
+      Object.entries(expected).every(([key, value]) => manifest[key] === value) &&
+      (!buildKey || manifest.buildKey === buildKey) &&
+      JSON.stringify(Object.keys(manifest.files)) === JSON.stringify(Object.keys(files)) &&
+      Object.entries(files).every(
+        ([name, digest]) =>
+          // Signing changes executable bytes; packaged apps have a separate signature check.
+          (packaged && name.startsWith('bin/')) || manifest.files[name] === digest,
       )
-      if (result.status === 0) {
-        return
-      }
-    }
-
-    const unzipResult = spawnSync('unzip', ['-q', archivePath, '-d', extractDir], {
-      stdio: 'inherit',
-    })
-    if (unzipResult.status === 0) {
-      return
-    }
-
-    throw new Error(`Failed to extract ${basename(archivePath)}.`)
-  }
-
-  const tarResult = spawnSync('tar', ['-xzf', archivePath, '-C', extractDir], {
-    stdio: 'inherit',
-  })
-  if (tarResult.status !== 0) {
-    throw new Error(`Failed to extract ${basename(archivePath)}.`)
-  }
-}
-
-function findToolchainRoot(rootDir) {
-  const queue = [rootDir]
-  while (queue.length > 0) {
-    const currentDir = queue.shift()
-    if (!currentDir) {
-      continue
-    }
-
-    if (containsYosysBinary(currentDir)) {
-      return currentDir
-    }
-
-    for (const entry of readdirSync(currentDir, { withFileTypes: true })) {
-      if (entry.isDirectory()) {
-        queue.push(join(currentDir, entry.name))
-      }
-    }
-  }
-
-  throw new Error('Downloaded OSS CAD Suite archive did not contain a usable Yosys toolchain.')
-}
-
-function containsYosysBinary(directory) {
-  const executableName = process.platform === 'win32' ? 'yosys.exe' : 'yosys'
-  return existsSync(join(directory, 'bin', executableName))
-}
-
-function ensureBundlePlaceholder(bundleRoot) {
-  writeFileSync(
-    join(bundleRoot, '.placeholder'),
-    'This file keeps the bundled Yosys resource directory in git.\n',
-  )
-}
-
-function pruneBundledToolchain(bundleRoot) {
-  const keepRootEntries = new Set([
-    'README',
-    'VERSION',
-    'bin',
-    'lib',
-    'libexec',
-    'license',
-    'share',
-  ])
-  if (process.platform === 'linux' && existsSync(join(bundleRoot, 'lib64'))) {
-    keepRootEntries.add('lib64')
-  }
-  if (process.platform === 'win32') {
-    keepRootEntries.add('environment.bat')
-    keepRootEntries.add('start.bat')
-  }
-  pruneChildren(bundleRoot, keepRootEntries)
-  const prunePlan = buildPrunePlan(bundleRoot)
-  pruneBinDirectory(join(bundleRoot, 'bin'), prunePlan.binEntries)
-  pruneLibexecDirectory(join(bundleRoot, 'libexec'), prunePlan.libexecEntries)
-  pruneShareDirectory(join(bundleRoot, 'share'))
-  pruneLibraryDirectories(bundleRoot, prunePlan)
-}
-
-function buildPrunePlan(bundleRoot) {
-  const runtimeTargets = getRuntimeTargetPaths(bundleRoot)
-  const dependencyPaths = collectBundledDependencies(bundleRoot, runtimeTargets)
-  const wrapperDependencies = collectShellWrapperDependencies(bundleRoot)
-  const bundledDependencies = [...runtimeTargets, ...dependencyPaths, ...wrapperDependencies]
-  const binEntries = new Set(['yosys', 'yosys-abc', 'yosys.exe', 'yosys-abc.exe'])
-  const libexecEntries = new Set(['realpath', 'yosys', 'yosys-abc', 'yosys.exe', 'yosys-abc.exe'])
-  const libEntries = new Set(
-    ['tcl8.6', 'tk8.6'].filter((entry) => existsSync(join(bundleRoot, 'lib', entry))),
-  )
-  const lib64Entries = new Set()
-  const frameworkEntries = new Set()
-
-  if (process.platform === 'linux') {
-    addLinuxLoaderEntries(join(bundleRoot, 'lib'), libEntries)
-    addLinuxLoaderEntries(join(bundleRoot, 'lib64'), lib64Entries)
-    if (existsSync(join(bundleRoot, 'lib', 'yosys'))) {
-      libEntries.add('yosys')
-    }
-    if (existsSync(join(bundleRoot, 'lib', 'yosys-abc'))) {
-      libEntries.add('yosys-abc')
-    }
-  }
-
-  for (const dependencyPath of bundledDependencies) {
-    const relPath = relative(bundleRoot, dependencyPath)
-    const [topLevelDir, firstChild] = relPath.split(/[\\/]/, 2)
-    if (!topLevelDir || !firstChild) {
-      continue
-    }
-
-    if (topLevelDir === 'bin') {
-      binEntries.add(firstChild)
-      continue
-    }
-
-    if (topLevelDir === 'libexec') {
-      libexecEntries.add(firstChild)
-      continue
-    }
-
-    if (topLevelDir === 'lib') {
-      libEntries.add(firstChild)
-      continue
-    }
-
-    if (topLevelDir === 'lib64') {
-      lib64Entries.add(firstChild)
-      continue
-    }
-
-    if (topLevelDir === 'Frameworks') {
-      frameworkEntries.add(firstChild)
-    }
-  }
-
-  return {
-    binEntries,
-    libexecEntries,
-    libEntries,
-    lib64Entries,
-    frameworkEntries,
-  }
-}
-
-function addLinuxLoaderEntries(libDir, keepEntries) {
-  if (!existsSync(libDir)) {
-    return
-  }
-
-  for (const entry of readdirSync(libDir, { withFileTypes: true })) {
-    if (entry.isDirectory()) {
-      continue
-    }
-
-    if (/^ld-linux[-A-Za-z0-9._]*\.so(?:\.\d+)*$/i.test(entry.name)) {
-      keepEntries.add(entry.name)
-    }
-  }
-}
-
-function pruneBinDirectory(binDir, keepEntries) {
-  if (!existsSync(binDir)) {
-    return
-  }
-
-  const keep = keepEntries ?? new Set(['yosys', 'yosys-abc', 'yosys.exe', 'yosys-abc.exe'])
-  for (const entry of readdirSync(binDir, { withFileTypes: true })) {
-    if (keep.has(entry.name)) {
-      continue
-    }
-
-    if (entry.isDirectory()) {
-      removeEntry(join(binDir, entry.name))
-      continue
-    }
-
-    removeEntry(join(binDir, entry.name))
-  }
-}
-
-function pruneLibexecDirectory(libexecDir, keepEntries) {
-  if (!existsSync(libexecDir)) {
-    return
-  }
-
-  const keep =
-    keepEntries ?? new Set(['realpath', 'yosys', 'yosys-abc', 'yosys.exe', 'yosys-abc.exe'])
-  for (const entry of readdirSync(libexecDir, { withFileTypes: true })) {
-    if (keep.has(entry.name)) {
-      continue
-    }
-
-    if (entry.isDirectory()) {
-      removeEntry(join(libexecDir, entry.name))
-      continue
-    }
-
-    removeEntry(join(libexecDir, entry.name))
-  }
-}
-
-function pruneShareDirectory(shareDir) {
-  if (!existsSync(shareDir)) {
-    return
-  }
-
-  pruneChildren(shareDir, new Set(['terminfo', 'yosys']))
-
-  const yosysShareDir = join(shareDir, 'yosys')
-  if (!existsSync(yosysShareDir)) {
-    return
-  }
-
-  const pluginsDir = join(yosysShareDir, 'plugins')
-  if (existsSync(pluginsDir)) {
-    removeEntry(pluginsDir)
-  }
-}
-
-function pruneLibraryDirectories(bundleRoot, prunePlan) {
-  const libDir = join(bundleRoot, 'lib')
-  if (existsSync(libDir)) {
-    for (const entry of readdirSync(libDir, { withFileTypes: true })) {
-      if (prunePlan.libEntries.has(entry.name)) {
-        continue
-      }
-      removeEntry(join(libDir, entry.name))
-    }
-  }
-
-  const lib64Dir = join(bundleRoot, 'lib64')
-  if (existsSync(lib64Dir)) {
-    for (const entry of readdirSync(lib64Dir, { withFileTypes: true })) {
-      if (prunePlan.lib64Entries.has(entry.name)) {
-        continue
-      }
-      removeEntry(join(lib64Dir, entry.name))
-    }
-  }
-
-  const frameworksDir = join(bundleRoot, 'Frameworks')
-  if (existsSync(frameworksDir)) {
-    if (prunePlan.frameworkEntries.size === 0) {
-      removeEntry(frameworksDir)
-      return
-    }
-
-    for (const entry of readdirSync(frameworksDir, { withFileTypes: true })) {
-      if (prunePlan.frameworkEntries.has(entry.name)) {
-        continue
-      }
-      removeEntry(join(frameworksDir, entry.name))
-    }
-  }
-}
-
-function pruneChildren(dirPath, keepNames) {
-  for (const entry of readdirSync(dirPath, { withFileTypes: true })) {
-    if (keepNames.has(entry.name)) {
-      continue
-    }
-    removeEntry(join(dirPath, entry.name))
-  }
-}
-
-function materializeBundledSymlinks(rootDir) {
-  if (!existsSync(rootDir)) {
-    return
-  }
-
-  for (const entry of readdirSync(rootDir, { withFileTypes: true })) {
-    const entryPath = join(rootDir, entry.name)
-    const stats = lstatSync(entryPath)
-
-    if (stats.isSymbolicLink()) {
-      const linkTarget = readlinkSync(entryPath)
-      const resolvedTarget = resolve(dirname(entryPath), linkTarget)
-      removeEntry(entryPath)
-
-      if (!existsSync(resolvedTarget)) {
-        continue
-      }
-
-      cpSync(resolvedTarget, entryPath, { recursive: true, dereference: true })
-      continue
-    }
-
-    if (entry.isDirectory()) {
-      materializeBundledSymlinks(entryPath)
-    }
-  }
-}
-
-function removeEntry(entryPath) {
-  const stats = lstatSync(entryPath)
-  if (stats.isSymbolicLink()) {
-    unlinkSync(entryPath)
-    return
-  }
-
-  rmSync(entryPath, {
-    recursive: stats.isDirectory(),
-    force: true,
-  })
-}
-
-function getRuntimeTargetPaths(bundleRoot) {
-  const candidates = [
-    join(bundleRoot, 'lib', 'yosys'),
-    join(bundleRoot, 'lib', 'yosys-abc'),
-    join(bundleRoot, 'libexec', 'yosys'),
-    join(bundleRoot, 'libexec', 'yosys-abc'),
-    join(bundleRoot, 'libexec', 'realpath'),
-    join(bundleRoot, 'bin', 'yosys.exe'),
-    join(bundleRoot, 'bin', 'yosys-abc.exe'),
-    join(bundleRoot, 'bin', 'yosys'),
-    join(bundleRoot, 'bin', 'yosys-abc'),
-  ]
-
-  return candidates.filter((candidate) => {
-    if (!existsSync(candidate)) {
-      return false
-    }
-
-    if (!isShellScript(candidate)) {
-      return true
-    }
-
-    const relPath = relative(bundleRoot, candidate)
-    return relPath.startsWith('lib/') || relPath.startsWith('lib\\')
-  })
-}
-
-function isShellScript(filePath) {
-  if (process.platform === 'win32') {
+    )
+  } catch {
     return false
   }
-
-  const result = spawnSync('file', [filePath], { encoding: 'utf8' })
-  return result.status === 0 && result.stdout.toLowerCase().includes('shell script')
 }
 
-function collectBundledDependencies(bundleRoot, runtimeTargets) {
-  const queue = [...runtimeTargets]
-  const seen = new Set(queue.map((entry) => resolve(entry)))
-
-  while (queue.length > 0) {
-    const currentPath = queue.pop()
-    if (!currentPath) {
-      continue
-    }
-
-    for (const dependency of inspectDependencies(currentPath, bundleRoot)) {
-      const resolvedDependency = resolve(dependency)
-      if (seen.has(resolvedDependency) || !existsSync(resolvedDependency)) {
-        continue
-      }
-      seen.add(resolvedDependency)
-      queue.push(resolvedDependency)
-    }
+function expectedManifest() {
+  const sourceCommit = existsSync(join(sourceDir, 'CMakeLists.txt'))
+    ? run('git', ['rev-parse', 'HEAD'], { cwd: sourceDir })
+    : run('git', ['rev-parse', ':third_party/yosys'])
+  return {
+    schema: 1,
+    sourceCommit,
+    recipe: hash(
+      Buffer.concat([
+        readFileSync(fileURLToPath(import.meta.url)),
+        readFileSync(join(repoRoot, 'scripts', 'lib', 'portable-executable.mjs')),
+        ...['windows-runtime.cmake', 'windows-utf8.rc.in', 'windows-utf8.manifest'].map((name) =>
+          readFileSync(join(repoRoot, 'scripts', 'yosys', name)),
+        ),
+      ]),
+    ),
+    platform: process.platform,
+    arch: process.arch,
   }
-
-  return seen
 }
 
-function collectShellWrapperDependencies(bundleRoot) {
-  const wrappers = [
-    join(bundleRoot, 'bin', 'yosys'),
-    join(bundleRoot, 'bin', 'yosys-abc'),
-    join(bundleRoot, 'lib', 'yosys'),
-    join(bundleRoot, 'lib', 'yosys-abc'),
-  ]
-  const discovered = new Set()
-
-  for (const wrapperPath of wrappers) {
-    if (!existsSync(wrapperPath) || !isShellScript(wrapperPath)) {
-      continue
-    }
-
-    const contents = readFileSync(wrapperPath, 'utf8')
-    for (const match of contents.matchAll(/\.\.\/(?:lib|lib64|libexec)\/[A-Za-z0-9._/+:-]+/g)) {
-      const rawDependency = match[0]
-      const normalizedDependency = rawDependency.split('/').filter(Boolean)
-      const resolvedDependency = resolve(dirname(wrapperPath), ...normalizedDependency)
-      if (!resolvedDependency.startsWith(bundleRoot)) {
-        continue
-      }
-      discovered.add(resolvedDependency)
+function toolPath(name) {
+  const suffixes = process.platform === 'win32' ? ['', '.exe'] : ['']
+  const candidates = [name, ...(process.env.PATH || '').split(delimiter).map((p) => join(p, name))]
+  for (const candidate of candidates) {
+    for (const suffix of suffixes) {
+      if (existsSync(candidate + suffix)) return resolve(candidate + suffix)
     }
   }
-
-  return [...discovered]
+  throw new Error(`Missing build tool '${name}'. See README.md for Yosys build prerequisites.`)
 }
 
-function inspectDependencies(filePath, bundleRoot) {
-  if (process.platform === 'darwin') {
-    const result = spawnSync('otool', ['-L', filePath], { encoding: 'utf8' })
-    if (result.status !== 0) {
-      return []
-    }
-
-    return result.stdout
-      .split(/\r?\n/)
-      .slice(1)
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => line.split(' (')[0])
-      .map((dependency) => resolveBundledDependency(filePath, dependency, bundleRoot))
-      .filter(Boolean)
-  }
-
-  if (process.platform === 'linux') {
-    const result = spawnSync('ldd', [filePath], { encoding: 'utf8' })
-    if (result.status !== 0) {
-      return []
-    }
-
-    return result.stdout
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        if (line.includes('=>')) {
-          return line.split('=>')[1]?.trim().split(' (')[0] ?? ''
-        }
-        return line.split(' (')[0]
-      })
-      .map((dependency) => resolveBundledDependency(filePath, dependency, bundleRoot))
-      .filter(Boolean)
-  }
-
+export function buildConfiguration() {
+  const cmake = toolPath('cmake')
+  const ninja = toolPath('ninja')
+  const cc = toolPath(process.env.CC || (process.platform === 'darwin' ? 'clang' : 'gcc'))
+  const cxx = toolPath(process.env.CXX || (process.platform === 'darwin' ? 'clang++' : 'g++'))
+  const compilerVersion = run(cxx, ['--version'])
   if (process.platform === 'win32') {
-    return collectWindowsDependencyNames(filePath)
-      .map((dependency) => resolveWindowsBundledDependency(filePath, dependency, bundleRoot))
-      .filter(Boolean)
+    const target = run(cxx, ['-dumpmachine'])
+    const majorVersion = Number.parseInt(run(cxx, ['-dumpfullversion']), 10)
+    if (!target.includes('w64-mingw32') || !Number.isFinite(majorVersion) || majorVersion < 16) {
+      throw new Error(
+        'Windows builds require MSYS2 UCRT64 GCC >= 16; put ucrt64/bin first in PATH.',
+      )
+    }
   }
-
-  return []
+  const options = {
+    CMAKE_BUILD_TYPE: 'Release',
+    CMAKE_C_COMPILER: cc,
+    CMAKE_CXX_COMPILER: cxx,
+    CMAKE_MAKE_PROGRAM: ninja,
+    BUILD_SHARED_LIBS: 'OFF',
+    YOSYS_INSTALL_LIBRARY: 'OFF',
+    YOSYS_USE_BUNDLED_LIBS: 'ON',
+    YOSYS_WITHOUT_SLANG: 'ON',
+    YOSYS_WITHOUT_TCL: 'ON',
+    YOSYS_WITHOUT_READLINE: 'ON',
+    YOSYS_WITHOUT_EDITLINE: 'ON',
+    YOSYS_WITHOUT_LIBFFI: 'ON',
+    YOSYS_WITHOUT_ZLIB: 'ON',
+    YOSYS_WITH_PYTHON: 'OFF',
+  }
+  if (process.platform === 'win32') {
+    // CMake embeds these paths in quoted generated scripts. Native backslashes
+    // (for example D:\a\...) become invalid CMake escapes when those scripts load.
+    options.CMAKE_PROJECT_yosys_INCLUDE = join(
+      repoRoot,
+      'scripts',
+      'yosys',
+      'windows-runtime.cmake',
+    ).replaceAll('\\', '/')
+    options.CMAKE_RC_COMPILER = toolPath('windres').replaceAll('\\', '/')
+  }
+  if (process.platform === 'darwin') {
+    options.CMAKE_OSX_DEPLOYMENT_TARGET = process.env.MACOSX_DEPLOYMENT_TARGET || '12.0'
+    options.CMAKE_OSX_ARCHITECTURES = process.arch === 'arm64' ? 'arm64' : 'x86_64'
+  }
+  if (process.platform === 'linux') {
+    options.CMAKE_EXE_LINKER_FLAGS =
+      `${process.env.LDFLAGS || ''} -static-libstdc++ -static-libgcc`.trim()
+  }
+  const environment = Object.fromEntries(
+    ['CFLAGS', 'CXXFLAGS', 'LDFLAGS', 'SDKROOT', 'CMAKE_PREFIX_PATH', 'PKG_CONFIG_PATH'].map(
+      (key) => [key, process.env[key] || ''],
+    ),
+  )
+  return {
+    cmake,
+    cc,
+    options,
+    identity: {
+      options,
+      environment,
+      compilerVersion,
+      cVersion: run(cc, ['--version']),
+      cmake: run(cmake, ['--version']),
+      ninja: run(ninja, ['--version']),
+      sourceDir,
+    },
+  }
 }
 
-function collectWindowsDependencyNames(filePath) {
-  for (const tool of ['dumpbin', 'llvm-objdump']) {
-    const resolvedTool = resolveToolPath(tool)
-    if (!resolvedTool) {
-      continue
-    }
-
-    const args = tool === 'dumpbin' ? ['/dependents', filePath] : ['-p', filePath]
-    const result = spawnSync(resolvedTool, args, {
-      encoding: 'utf8',
-      env: process.env,
-      maxBuffer: 16 * 1024 * 1024,
-    })
-    if (result.status !== 0) {
-      continue
-    }
-
-    const dependencyNames =
-      tool === 'dumpbin'
-        ? result.stdout
-            .split(/\r?\n/)
-            .map((line) => line.trim())
-            .filter((line) => /\.dll$/i.test(line))
-        : result.stdout
-            .split(/\r?\n/)
-            .map((line) => line.match(/DLL Name:\s+(.+)$/)?.[1]?.trim())
-            .filter(Boolean)
-    if (dependencyNames.length > 0) {
-      return dependencyNames
-    }
-  }
-
-  return parsePortableExecutableDependencyNames(filePath)
-}
-
-function resolveWindowsBundledDependency(filePath, dependencyName, bundleRoot) {
-  const lowerName = String(dependencyName).toLowerCase()
-  if (WINDOWS_SYSTEM_DLLS.has(lowerName)) {
-    return null
-  }
-
-  const sameDirCandidate = join(dirname(filePath), dependencyName)
-  if (existsSync(sameDirCandidate)) {
-    return sameDirCandidate
-  }
-
-  const fileIndex = getBundledFileIndex(bundleRoot)
-  const candidates = fileIndex.get(lowerName) ?? []
-  if (candidates.length === 0) {
-    return null
-  }
-
-  candidates.sort((leftPath, rightPath) => {
-    const leftDir = dirname(leftPath)
-    const rightDir = dirname(rightPath)
-    const currentDir = dirname(filePath)
-    if (leftDir === currentDir && rightDir !== currentDir) {
-      return -1
-    }
-    if (leftDir !== currentDir && rightDir === currentDir) {
-      return 1
-    }
-    if (
-      leftPath.startsWith(join(bundleRoot, 'bin')) &&
-      !rightPath.startsWith(join(bundleRoot, 'bin'))
-    ) {
-      return -1
-    }
-    if (
-      !leftPath.startsWith(join(bundleRoot, 'bin')) &&
-      rightPath.startsWith(join(bundleRoot, 'bin'))
-    ) {
-      return 1
-    }
-    return leftPath.localeCompare(rightPath)
-  })
-
-  return candidates[0] ?? null
-}
-
-function resolveToolPath(name) {
-  const extensions = process.platform === 'win32' ? ['.exe', '.cmd', '.bat', ''] : ['']
-  const pathEntries = process.env.PATH ? process.env.PATH.split(delimiter) : []
-
-  for (const entry of pathEntries) {
-    for (const extension of extensions) {
-      const candidate = join(entry, `${name}${extension}`)
-      if (existsSync(candidate)) {
-        return candidate
-      }
-    }
-  }
-
-  return null
-}
-
-const bundledFileIndexCache = new Map()
-const WINDOWS_SYSTEM_DLLS = new Set([
+// Only Windows OS libraries may be satisfied by the host. Compiler runtime DLLs
+// must be copied even when a developer happens to have them in System32.
+const windowsSystemDlls = new Set([
   'advapi32.dll',
   'bcrypt.dll',
   'comdlg32.dll',
+  'crypt32.dll',
+  'dbghelp.dll',
   'gdi32.dll',
+  'imm32.dll',
   'kernel32.dll',
+  'msvcrt.dll',
   'ntdll.dll',
   'ole32.dll',
+  'oleaut32.dll',
+  'psapi.dll',
+  'rpcrt4.dll',
   'secur32.dll',
+  'setupapi.dll',
   'shell32.dll',
+  'shlwapi.dll',
+  'ucrtbase.dll',
   'user32.dll',
+  'userenv.dll',
+  'version.dll',
+  'winmm.dll',
   'ws2_32.dll',
 ])
 
-function getBundledFileIndex(bundleRoot) {
-  const normalizedRoot = resolve(bundleRoot)
-  const cached = bundledFileIndexCache.get(normalizedRoot)
-  if (cached) {
-    return cached
-  }
-
-  const index = new Map()
-  const queue = [normalizedRoot]
-  while (queue.length > 0) {
-    const currentDir = queue.pop()
-    if (!currentDir || !existsSync(currentDir)) {
-      continue
-    }
-
-    for (const entry of readdirSync(currentDir, { withFileTypes: true })) {
-      const entryPath = join(currentDir, entry.name)
-      if (entry.isDirectory()) {
-        queue.push(entryPath)
-        continue
-      }
-
-      const key = entry.name.toLowerCase()
-      const existing = index.get(key) ?? []
-      existing.push(entryPath)
-      index.set(key, existing)
-    }
-  }
-
-  bundledFileIndexCache.set(normalizedRoot, index)
-  return index
+export function isWindowsSystemDll(name) {
+  return /^(api-ms-win-|ext-ms-win-)/i.test(name) || windowsSystemDlls.has(name.toLowerCase())
 }
 
-function parsePortableExecutableDependencyNames(filePath) {
-  return parsePortableExecutableDependencyNamesFromBuffer(readFileSync(filePath))
-}
-
-function resolveBundledDependency(filePath, dependency, bundleRoot) {
-  if (!dependency || dependency === 'not') {
-    return null
-  }
-
-  let candidate = dependency
-  if (dependency.startsWith('@executable_path/')) {
-    candidate = resolve(dirname(filePath), dependency.slice('@executable_path/'.length))
-  } else if (dependency.startsWith('@loader_path/')) {
-    candidate = resolve(dirname(filePath), dependency.slice('@loader_path/'.length))
-  }
-
-  if (!candidate.startsWith(bundleRoot)) {
-    return null
-  }
-
-  return candidate
-}
-
-function validateBundledYosys(bundleRoot) {
-  const yosysExecutable = resolveBundledYosysExecutable(bundleRoot)
-  if (!existsSync(yosysExecutable)) {
-    throw new Error(`Bundled Yosys executable not found at ${yosysExecutable}.`)
-  }
-
-  const validationDir = join(tmpdir(), `aspen-yosys-validate-${process.pid}-${Date.now()}`)
-  mkdirSync(validationDir, { recursive: true })
-
-  const topPath = join(validationDir, 'top.v')
-  const scriptPath = join(validationDir, 'run.ys')
-  const netlistPath = join(validationDir, 'netlist.json')
-  writeFileSync(
-    topPath,
-    [
-      'module top(',
-      '  input wire clk,',
-      '  output reg led',
-      ');',
-      '  always @(posedge clk) begin',
-      '    led <= ~led;',
-      '  end',
-      'endmodule',
-      '',
-    ].join('\n'),
-  )
-  writeFileSync(
-    scriptPath,
-    [
-      `read_verilog -sv "${topPath.replaceAll('\\', '/')}"`,
-      'hierarchy -check -top top',
-      'synth -top top',
-      `write_json "${netlistPath.replaceAll('\\', '/')}"`,
-      '',
-    ].join('\n'),
-  )
-
-  const environmentBatch = join(bundleRoot, 'environment.bat')
-  const result =
-    process.platform === 'win32' && existsSync(environmentBatch)
-      ? runWindowsYosysWithEnvironmentBatch(
-          environmentBatch,
-          yosysExecutable,
-          scriptPath,
-          validationDir,
+function collectWindowsRuntime(root, compiler) {
+  const bin = join(root, 'bin')
+  const searchDirs = [bin, dirname(compiler)]
+  const queue = readdirSync(bin).filter((name) => /\.(exe|dll)$/i.test(name))
+  const seen = new Set()
+  while (queue.length) {
+    const name = queue.pop()
+    if (seen.has(name.toLowerCase())) continue
+    seen.add(name.toLowerCase())
+    for (const dependency of parsePortableExecutableDependencyNames(
+      readFileSync(join(bin, name)),
+    )) {
+      if (isWindowsSystemDll(dependency)) continue
+      let found
+      for (const directory of searchDirs) {
+        const actual = readdirSync(directory).find(
+          (file) => file.toLowerCase() === dependency.toLowerCase(),
         )
-      : spawnSync(yosysExecutable, ['-s', scriptPath], {
-          cwd: validationDir,
-          encoding: 'utf8',
-          env: buildYosysRuntimeEnv(bundleRoot, yosysExecutable),
-        })
-  rmSync(validationDir, { recursive: true, force: true })
-
-  if (result.status !== 0) {
-    throw new Error(formatSpawnFailure('Bundled Yosys validation failed.', result))
-  }
-}
-
-function resolveBundledYosysExecutable(bundleRoot) {
-  const candidates =
-    process.platform === 'linux'
-      ? [join(bundleRoot, 'libexec', 'yosys'), join(bundleRoot, 'bin', 'yosys')]
-      : process.platform === 'win32'
-        ? [join(bundleRoot, 'bin', 'yosys.exe')]
-        : [join(bundleRoot, 'bin', 'yosys')]
-
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) {
-      return candidate
+        if (actual) {
+          found = join(directory, actual)
+          break
+        }
+      }
+      if (!found) throw new Error(`Unresolved runtime DLL ${dependency} required by ${name}`)
+      if (dirname(found) !== bin) cpSync(found, join(bin, dependency))
+      queue.push(dependency)
     }
   }
-
-  return candidates[0]
+  // MSYS2 ships the redistribution notices for its compiler/runtime packages here.
+  const licenses = resolve(dirname(compiler), '..', 'share', 'licenses')
+  if (!existsSync(licenses)) throw new Error(`Missing MSYS2 runtime licenses at ${licenses}`)
+  cpSync(licenses, join(root, 'license', 'msys2'), { recursive: true, dereference: true })
 }
 
-function getDirectorySize(rootDir) {
-  if (!existsSync(rootDir)) {
-    return 0
-  }
-
-  let total = 0
-  for (const entry of readdirSync(rootDir, { withFileTypes: true })) {
-    const entryPath = join(rootDir, entry.name)
-    if (entry.isDirectory()) {
-      total += getDirectorySize(entryPath)
-      continue
-    }
-
-    try {
-      total += lstatSync(entryPath).size
-    } catch {
-      continue
-    }
-  }
-
-  return total
-}
-
-function formatBytes(bytes) {
-  if (bytes < 1024) {
-    return `${bytes} B`
-  }
-
-  const units = ['KB', 'MB', 'GB', 'TB']
-  let value = bytes / 1024
-  let unitIndex = 0
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024
-    unitIndex += 1
-  }
-
-  return `${value
-    .toFixed(value >= 10 ? 1 : 2)
-    .replace(/\.0+$/, '')
-    .replace(/(\.\d*[1-9])0$/, '$1')} ${units[unitIndex]}`
-}
-
-function formatDuration(durationMs) {
-  if (durationMs < 1000) {
-    return `${durationMs} ms`
-  }
-
-  const totalSeconds = durationMs / 1000
-  if (totalSeconds < 60) {
-    return `${totalSeconds.toFixed(1).replace(/\.0$/, '')} s`
-  }
-
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds - minutes * 60
-  return `${minutes}m ${seconds.toFixed(1).replace(/\.0$/, '')}s`
-}
-
-function buildYosysRuntimeEnv(bundleRoot, yosysExecutable = null) {
-  const env = { ...process.env }
-  const pathEntries = env.PATH ? env.PATH.split(delimiter) : []
-  const runtimeEntries = [
-    yosysExecutable ? dirname(yosysExecutable) : null,
-    join(bundleRoot, 'libexec'),
-    join(bundleRoot, 'bin'),
-  ].filter(
-    (entry, index, entries) => entry && existsSync(entry) && entries.indexOf(entry) === index,
-  )
-  env.PATH = [...new Set([...runtimeEntries, ...pathEntries].filter(Boolean))].join(delimiter)
-
-  if (process.platform === 'linux') {
-    const libraryEntries = [join(bundleRoot, 'lib'), join(bundleRoot, 'lib64')]
-      .filter((entry) => existsSync(entry))
-      .concat(env.LD_LIBRARY_PATH ? env.LD_LIBRARY_PATH.split(delimiter) : [])
-    env.LD_LIBRARY_PATH = [...new Set(libraryEntries.filter(Boolean))].join(delimiter)
-
-    const ghdlPrefix = join(bundleRoot, 'lib', 'ghdl')
-    if (existsSync(ghdlPrefix)) {
-      env.GHDL_PREFIX = ghdlPrefix
-    }
-
-    const tclLibrary = findPrefixedDirectory(join(bundleRoot, 'lib'), 'tcl')
-    if (tclLibrary) {
-      env.TCL_LIBRARY = tclLibrary
-    }
-
-    const tkLibrary = findPrefixedDirectory(join(bundleRoot, 'lib'), 'tk')
-    if (tkLibrary) {
-      env.TK_LIBRARY = tkLibrary
+function checkRuntimeDependencies(root) {
+  const bin = join(root, 'bin')
+  for (const name of readdirSync(bin)) {
+    const binary = join(bin, name)
+    if (process.platform === 'darwin') {
+      const dependencies = run('otool', ['-L', binary]).split('\n').slice(1)
+      for (const line of dependencies) {
+        const dependency = line.trim().split(' (')[0]
+        if (!dependency.startsWith('/usr/lib/') && !dependency.startsWith('/System/Library/')) {
+          throw new Error(`${name} depends on a non-system library: ${dependency}`)
+        }
+      }
+    } else if (process.platform === 'linux') {
+      const dependencies = run('ldd', [binary])
+      if (/not found/.test(dependencies)) throw new Error(`Unresolved dependency: ${dependencies}`)
+      for (const line of dependencies.split('\n')) {
+        const dependency = line.trim().split(/\s/)[0]
+        if (!/^(linux-vdso|ld-linux|\/.*\/ld-linux|lib(c|m|dl|pthread|rt)\.so)/.test(dependency)) {
+          throw new Error(`${name} depends on an unbundled library: ${dependency}`)
+        }
+      }
+    } else if (process.platform === 'win32') {
+      for (const dependency of parsePortableExecutableDependencyNames(readFileSync(binary))) {
+        if (
+          !isWindowsSystemDll(dependency) &&
+          !readdirSync(bin).some((file) => file.toLowerCase() === dependency.toLowerCase())
+        ) {
+          throw new Error(`Missing bundled DLL ${dependency} required by ${name}`)
+        }
+      }
     }
   }
-
-  return env
 }
 
-function findPrefixedDirectory(rootDir, prefix) {
-  if (!existsSync(rootDir)) {
-    return null
+function validateBundle(root) {
+  for (const name of [
+    `bin/yosys${exeSuffix}`,
+    `bin/yosys-abc${exeSuffix}`,
+    'share/yosys/techlibs/common/techmap.v',
+  ]) {
+    // Older layouts put common technology files directly under share/yosys.
+    if (
+      !existsSync(join(root, name)) &&
+      !(name.startsWith('share/') && existsSync(join(root, 'share/yosys/techmap.v')))
+    ) {
+      throw new Error(`Incomplete Yosys installation: missing ${name}`)
+    }
   }
-
-  const candidates = readdirSync(rootDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && entry.name.startsWith(prefix))
-    .map((entry) => join(rootDir, entry.name))
-    .sort()
-
-  return candidates.at(-1) ?? null
-}
-
-function runWindowsYosysWithEnvironmentBatch(environmentBatch, yosysExecutable, scriptPath, cwd) {
-  const wrapperPath = join(cwd, `aspen-yosys-${process.pid}-${Date.now()}.cmd`)
-  writeFileSync(
-    wrapperPath,
-    [
-      '@echo off',
-      `call "${environmentBatch}"`,
-      'if errorlevel 1 exit /b %errorlevel%',
-      `"${yosysExecutable}" -s "${scriptPath}"`,
-      '',
-    ].join('\r\n'),
-  )
+  checkRuntimeDependencies(root)
+  const temporary = mkdtempSync(join(tmpdir(), 'aspen-yosys-check-'))
   try {
-    return spawnSync('cmd.exe', ['/d', '/c', wrapperPath], {
-      cwd,
-      encoding: 'utf8',
-    })
+    const relocated = join(temporary, 'toolchain moved 测试')
+    cpSync(root, relocated, { recursive: true })
+    const work = join(temporary, 'project 测试')
+    mkdirSync(work)
+    writeFileSync(
+      join(work, 'top.v'),
+      'module top(input clk, input [3:0] a, b, output reg [3:0] q); always @(posedge clk) q <= (a + b) ^ (a & b); endmodule\n',
+    )
+    writeFileSync(
+      join(work, 'run.ys'),
+      'read_verilog -sv top.v\nhierarchy -check -top top\nsynth -top top -lut 4\ncheck -assert\nwrite_edif netlist.edf\nwrite_json netlist.json\n',
+    )
+    const env = { ...process.env }
+    for (const key of Object.keys(env)) {
+      if (/^(PATH|LD_LIBRARY_PATH|DYLD_.*|YOSYS_.*|ABC|TCL_LIBRARY|TK_LIBRARY)$/i.test(key))
+        delete env[key]
+    }
+    env.PATH =
+      process.platform === 'win32'
+        ? [join(relocated, 'bin'), join(process.env.SystemRoot || 'C:\\Windows', 'System32')].join(
+            delimiter,
+          )
+        : '/usr/bin:/bin'
+    const yosys = join(relocated, 'bin', `yosys${exeSuffix}`)
+    const version = run(yosys, ['-V'], { cwd: work, env })
+    const log = run(yosys, ['-s', 'run.ys'], { cwd: work, env })
+    const netlist = JSON.parse(readFileSync(join(work, 'netlist.json'), 'utf8'))
+    if (
+      !Object.values(netlist.modules.top.cells).some((cell) => cell.type === '$lut') ||
+      !log.includes('ABC RESULTS') ||
+      !readFileSync(join(work, 'netlist.edf'), 'utf8').includes('(edif')
+    ) {
+      throw new Error('Relocated Yosys did not complete ABC LUT mapping and EDIF export.')
+    }
+    console.log(`Validated ${version}, including relocated ABC synthesis and Unicode paths.`)
   } finally {
-    rmSync(wrapperPath, { force: true })
+    rmSync(temporary, { recursive: true, force: true })
   }
 }
 
-function formatSpawnFailure(message, result) {
-  const details = []
-  if (result.error instanceof Error) {
-    details.push(result.error.message)
+function installLicenses(root) {
+  for (const file of walk(sourceDir, '', false).filter((name) =>
+    /(^|\/)(copying|copyright|licen[cs]e)([.-]|$)/i.test(name),
+  )) {
+    const target = join(root, 'license', file)
+    mkdirSync(dirname(target), { recursive: true })
+    cpSync(join(sourceDir, file), target)
   }
-  if (typeof result.status === 'number') {
-    details.push(`exit code ${result.status}`)
+  // These small vendored libraries carry their notices in source files.
+  for (const library of ['bigint', 'ezsat', 'fst', 'json11', 'sha1', 'subcircuit', 'dlfcn-win32']) {
+    cpSync(join(sourceDir, 'libs', library), join(root, 'license', 'source-notices', library), {
+      recursive: true,
+    })
   }
-  if (result.signal) {
-    details.push(`signal ${result.signal}`)
-  }
-
-  const output = `${result.stdout || ''}${result.stderr || ''}`.trim()
-  if (output) {
-    return `${message}\n${output}`
-  }
-  if (details.length > 0) {
-    return `${message}\n${details.join('\n')}`
-  }
-  return message
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error))
-  process.exit(1)
-})
+export function publishBundle(installation, target = bundleDir) {
+  mkdirSync(dirname(target), { recursive: true })
+  const staging = mkdtempSync(join(dirname(target), '.yosys-stage-'))
+  const backup = `${staging}-previous`
+  let published = false
+  try {
+    cpSync(installation, staging, { recursive: true })
+    if (existsSync(target)) renameSync(target, backup)
+    try {
+      renameSync(staging, target)
+      published = true
+    } catch (error) {
+      if (existsSync(backup)) renameSync(backup, target)
+      throw error
+    }
+  } finally {
+    rmSync(staging, { recursive: true, force: true })
+    if (published) rmSync(backup, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+  }
+}
+
+async function main() {
+  const args = process.argv.slice(2)
+  if (args.includes('--help')) {
+    console.log(
+      'Usage: pnpm prepare:yosys-bundle [--force | --check [bundle-directory]]\nBuild the pinned third_party/yosys Git submodule with CMake, or validate an existing bundle.\nUse --check-packaged <directory> after app signing.\nOptional: ASPEN_YOSYS_CACHE_DIR, CMAKE_BUILD_PARALLEL_LEVEL, CC, CXX. See README.md for upgrading Yosys.',
+    )
+    return
+  }
+  if (['--check', '--check-packaged'].includes(args[0]) && args.length <= 2) {
+    const root = args[1] ? resolve(args[1]) : bundleDir
+    if (!bundleMatches(root, expectedManifest(), undefined, args[0] === '--check-packaged'))
+      throw new Error(`Missing, stale, or damaged Yosys bundle: ${root}`)
+    validateBundle(root)
+    return
+  }
+  if (args.length && !(args.length === 1 && args[0] === '--force'))
+    throw new Error('Unknown arguments. Use --help.')
+  if (
+    !['darwin', 'linux', 'win32'].includes(process.platform) ||
+    !['x64', 'arm64'].includes(process.arch) ||
+    (process.platform === 'win32' && process.arch !== 'x64')
+  ) {
+    throw new Error(`Unsupported native Yosys build: ${process.platform}/${process.arch}`)
+  }
+  if (!existsSync(join(sourceDir, 'CMakeLists.txt'))) {
+    run(
+      'git',
+      ['submodule', 'update', '--init', '--recursive', '--depth', '1', '--', 'third_party/yosys'],
+      { stdio: 'inherit' },
+    )
+  }
+  if (
+    run('git', ['status', '--porcelain', '--untracked-files=no', '--ignore-submodules=all'], {
+      cwd: sourceDir,
+    })
+  ) {
+    throw new Error(
+      'Yosys source or its submodules have tracked changes. Commit or restore them before building.',
+    )
+  }
+  run(
+    'git',
+    ['submodule', 'foreach', '--recursive', 'git diff --quiet --ignore-submodules=all HEAD'],
+    { cwd: sourceDir },
+  )
+  run('git', ['submodule', 'update', '--init', '--recursive', '--depth', '1'], {
+    cwd: sourceDir,
+    stdio: 'inherit',
+  })
+  const expected = expectedManifest()
+  const config = buildConfiguration()
+  const buildKey = hash(
+    JSON.stringify({
+      sourceCommit: expected.sourceCommit,
+      platform: expected.platform,
+      arch: expected.arch,
+      ...config.identity,
+    }),
+  )
+  if (!args.includes('--force') && bundleMatches(bundleDir, expected, buildKey)) {
+    validateBundle(bundleDir)
+    console.log('Reusing the verified bundled Yosys; no download or compilation needed.')
+    return
+  }
+  const cacheRoot = resolve(
+    process.env.ASPEN_YOSYS_CACHE_DIR || join(repoRoot, 'src-tauri', 'target', 'yosys'),
+  )
+  const cache = join(cacheRoot, buildKey)
+  const installation = join(cache, 'install')
+  mkdirSync(cacheRoot, { recursive: true })
+  const lock = join(cacheRoot, 'prepare.lock')
+  try {
+    mkdirSync(lock)
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error
+    throw new Error(
+      `Another Yosys preparation may be running (${lock}). If it was interrupted, remove this lock directory and retry.`,
+      { cause: error },
+    )
+  }
+  try {
+    if (args.includes('--force')) rmSync(cache, { recursive: true, force: true })
+    if (!bundleMatches(installation, expected, buildKey)) {
+      const build = join(cache, 'build')
+      mkdirSync(build, { recursive: true })
+      console.log(`Building Yosys ${expected.sourceCommit} from ${sourceDir}`)
+      run(
+        config.cmake,
+        [
+          '-S',
+          sourceDir,
+          '-B',
+          build,
+          '-G',
+          'Ninja',
+          `-DCMAKE_INSTALL_PREFIX=${installation}`,
+          ...Object.entries(config.options).map(([key, value]) => `-D${key}=${value}`),
+        ],
+        { stdio: 'inherit' },
+      )
+      const jobs =
+        process.env.CMAKE_BUILD_PARALLEL_LEVEL || String(Math.min(availableParallelism(), 8))
+      if (!/^[1-9]\d*$/.test(jobs))
+        throw new Error('CMAKE_BUILD_PARALLEL_LEVEL must be a positive integer.')
+      // Upstream's default all target also builds optional host GTest executables.
+      run(
+        config.cmake,
+        ['--build', build, '--target', 'yosys', 'yosys-abc', 'yosys-filterlib', '--parallel', jobs],
+        { stdio: 'inherit' },
+      )
+      rmSync(installation, { recursive: true, force: true })
+      run(config.cmake, ['--install', build, '--config', 'Release'], { stdio: 'inherit' })
+      for (const name of readdirSync(join(installation, 'bin'))) {
+        if (
+          ![`yosys${exeSuffix}`, `yosys-abc${exeSuffix}`].includes(name) &&
+          !name.endsWith('.dll')
+        )
+          rmSync(join(installation, 'bin', name), { recursive: true, force: true })
+      }
+      installLicenses(installation)
+      if (process.platform === 'win32') collectWindowsRuntime(installation, config.cc)
+      writeFileSync(
+        join(installation, '.placeholder'),
+        'This file keeps the bundled Yosys resource directory in git.\n',
+      )
+      validateBundle(installation)
+      writeFileSync(
+        join(installation, manifestName),
+        `${JSON.stringify({ ...expected, buildKey, toolchain: config.identity, files: fileInventory(installation) }, null, 2)}\n`,
+      )
+    } else {
+      validateBundle(installation)
+      console.log('Restoring Yosys from the local build cache.')
+    }
+    publishBundle(installation)
+    console.log(`Prepared source-built Yosys in ${bundleDir}`)
+  } finally {
+    rmSync(lock, { recursive: true, force: true })
+  }
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error(error.message)
+    process.exitCode = 1
+  })
+}
