@@ -297,6 +297,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: bundled-fpga-toolchains-ubuntu-22.04
+          # The Yosys inventory includes dotfiles in bundled license sources.
+          include-hidden-files: true
           path: |
             src-tauri/vendor/yosys
             src-tauri/vendor/slang-server
@@ -364,6 +366,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: bundled-fpga-toolchains-macos-latest
+          include-hidden-files: true
           path: |
             src-tauri/vendor/yosys
             src-tauri/vendor/slang-server
@@ -435,6 +438,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: bundled-fpga-toolchains-windows-latest
+          include-hidden-files: true
           path: |
             src-tauri/vendor/yosys
             src-tauri/vendor/slang-server
