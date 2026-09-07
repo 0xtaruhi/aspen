@@ -1,6 +1,6 @@
 // Exercise the real CMake manifest hook before the much larger Yosys build.
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -13,7 +13,7 @@ function run(command, args, options = {}) {
   const result = spawnSync(command, args, { encoding: 'utf8', ...options })
   if (result.error || result.status !== 0) {
     throw new Error(
-      `${command} failed: ${result.error?.message || result.stderr || result.stdout || result.status}`,
+      `${command} failed (exit ${result.status}): ${result.error?.message || ''}\n${result.stdout || ''}${result.stderr || ''}`,
     )
   }
   if (result.stdout) process.stdout.write(result.stdout)
@@ -22,6 +22,7 @@ function run(command, args, options = {}) {
 try {
   const source = join(temporary, 'source')
   const build = join(temporary, 'build')
+  const compiled = join(temporary, 'bin')
   const work = join(temporary, 'project 测试')
   const binaries = join(temporary, 'toolchain moved 测试')
   mkdirSync(source)
@@ -67,9 +68,12 @@ int main(void) {
     'Ninja',
     `-DCMAKE_C_COMPILER=${process.env.CC || 'gcc'}`,
     `-DCMAKE_PROJECT_yosys_INCLUDE=${resolve(scriptsDir, 'windows-runtime.cmake')}`,
-    `-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=${binaries}`,
+    `-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=${compiled}`,
   ])
   run('cmake', ['--build', build])
+  // Match bundle publication: GCC links in the build directory, then we relocate
+  // the executables to test their UTF-8 runtime without testing the linker's encoding.
+  renameSync(compiled, binaries)
   // Both the executable path and the temp directory exercise the ANSI APIs in Yosys.
   const env = { ...process.env, TMP: work, TEMP: work }
   for (const executable of ['yosys.exe', 'yosys-abc.exe']) {
