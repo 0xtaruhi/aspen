@@ -116,7 +116,7 @@ function toolPath(name) {
   throw new Error(`Missing build tool '${name}'. See README.md for Yosys build prerequisites.`)
 }
 
-function buildConfiguration() {
+export function buildConfiguration() {
   const cmake = toolPath('cmake')
   const ninja = toolPath('ninja')
   const cc = toolPath(process.env.CC || (process.platform === 'darwin' ? 'clang' : 'gcc'))
@@ -148,13 +148,15 @@ function buildConfiguration() {
     YOSYS_WITH_PYTHON: 'OFF',
   }
   if (process.platform === 'win32') {
+    // CMake embeds these paths in quoted generated scripts. Native backslashes
+    // (for example D:\a\...) become invalid CMake escapes when those scripts load.
     options.CMAKE_PROJECT_yosys_INCLUDE = join(
       repoRoot,
       'scripts',
       'yosys',
       'windows-runtime.cmake',
-    )
-    options.CMAKE_RC_COMPILER = toolPath('windres')
+    ).replaceAll('\\', '/')
+    options.CMAKE_RC_COMPILER = toolPath('windres').replaceAll('\\', '/')
   }
   if (process.platform === 'darwin') {
     options.CMAKE_OSX_DEPLOYMENT_TARGET = process.env.MACOSX_DEPLOYMENT_TARGET || '12.0'

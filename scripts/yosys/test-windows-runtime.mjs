@@ -2,11 +2,11 @@
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
+
+import { buildConfiguration } from '../prepare-yosys-bundle.mjs'
 
 if (process.platform !== 'win32') throw new Error('This native runtime probe requires Windows.')
-const scriptsDir = dirname(fileURLToPath(import.meta.url))
 const temporary = mkdtempSync(join(tmpdir(), 'aspen-utf8-probe-'))
 
 function run(command, args, options = {}) {
@@ -32,7 +32,7 @@ try {
     join(source, 'CMakeLists.txt'),
     `
 cmake_minimum_required(VERSION 3.28)
-project(yosys LANGUAGES C)
+project(yosys LANGUAGES C CXX)
 add_executable(yosys probe.c)
 add_executable(yosys-abc probe.c)
 `,
@@ -59,18 +59,20 @@ int main(void) {
 }
 `,
   )
-  run('cmake', [
+  // Use the production tool discovery and every production CMake option so the
+  // probe catches configuration failures as well as runtime manifest failures.
+  const config = buildConfiguration()
+  run(config.cmake, [
     '-S',
     source,
     '-B',
     build,
     '-G',
     'Ninja',
-    `-DCMAKE_C_COMPILER=${process.env.CC || 'gcc'}`,
-    `-DCMAKE_PROJECT_yosys_INCLUDE=${resolve(scriptsDir, 'windows-runtime.cmake')}`,
+    ...Object.entries(config.options).map(([key, value]) => `-D${key}=${value}`),
     `-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=${compiled}`,
   ])
-  run('cmake', ['--build', build])
+  run(config.cmake, ['--build', build])
   // Match bundle publication: GCC links in the build directory, then we relocate
   // the executables to test their UTF-8 runtime without testing the linker's encoding.
   renameSync(compiled, binaries)
