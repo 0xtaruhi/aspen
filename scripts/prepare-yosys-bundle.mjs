@@ -95,6 +95,9 @@ function expectedManifest() {
       Buffer.concat([
         readFileSync(fileURLToPath(import.meta.url)),
         readFileSync(join(repoRoot, 'scripts', 'lib', 'portable-executable.mjs')),
+        ...['windows-runtime.cmake', 'windows-utf8.rc.in', 'windows-utf8.manifest'].map((name) =>
+          readFileSync(join(repoRoot, 'scripts', 'yosys', name)),
+        ),
       ]),
     ),
     platform: process.platform,
@@ -143,6 +146,15 @@ function buildConfiguration() {
     YOSYS_WITHOUT_LIBFFI: 'ON',
     YOSYS_WITHOUT_ZLIB: 'ON',
     YOSYS_WITH_PYTHON: 'OFF',
+  }
+  if (process.platform === 'win32') {
+    options.CMAKE_PROJECT_yosys_INCLUDE = join(
+      repoRoot,
+      'scripts',
+      'yosys',
+      'windows-runtime.cmake',
+    )
+    options.CMAKE_RC_COMPILER = toolPath('windres')
   }
   if (process.platform === 'darwin') {
     options.CMAKE_OSX_DEPLOYMENT_TARGET = process.env.MACOSX_DEPLOYMENT_TARGET || '12.0'

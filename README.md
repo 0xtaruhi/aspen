@@ -111,6 +111,8 @@ Python >= 3.11, Flex >= 2.6 and Bison >= 3.8:
   and `pkgconf`. Put the MSYS2 `ucrt64/bin` directory first in `PATH`, followed
   by `usr/bin`, and use Windows Node.js/pnpm. The produced executables run
   outside MSYS2; required compiler runtime DLLs are bundled automatically.
+  Windows 10 1903 or newer is required for the embedded UTF-8 process manifests
+  that let Yosys and ABC handle non-ASCII installation and project paths.
 
 Completed builds are cached under `src-tauri/target/yosys`. Set
 `ASPEN_YOSYS_CACHE_DIR` to change that location, and

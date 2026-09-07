@@ -76,6 +76,9 @@ Follow repository facts first, then these conventions.
   Linux releases build on Ubuntu 22.04; macOS defaults to deployment target 12.0.
 - Build setup lives in `.github/actions/setup-yosys-build/action.yml`. Source pointer
   and build-script changes must trigger all three toolchain jobs and gate Pipeline.
+- Windows runtime manifests live in `scripts/yosys/` and are attached by a CMake
+  project hook. Keep both Yosys and ABC opted into UTF-8 (Windows 10 1903+); do not
+  work around Unicode failures by removing the relocated-path regression.
 - Keep CMake out of Cargo `build.rs`; runtime continues to use the bundled process.
 - Preserve source/runtime license notices. Validate ABC, EDIF and Unicode paths in
   the relocated bundle; after signing use `--check-packaged <directory>`.

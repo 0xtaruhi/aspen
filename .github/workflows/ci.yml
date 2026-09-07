@@ -89,6 +89,7 @@ jobs:
               - '.github/workflows/ci.yml'
               - 'scripts/prepare-yosys-bundle.mjs'
               - 'scripts/prepare-yosys-bundle.test.mjs'
+              - 'scripts/yosys/**'
               - 'scripts/lib/portable-executable.mjs'
               - '.github/actions/setup-yosys-build/**'
               - '.gitmodules'
@@ -107,6 +108,7 @@ jobs:
               - 'vitest.config.*'
               - 'scripts/prepare-yosys-bundle.mjs'
               - 'scripts/prepare-yosys-bundle.test.mjs'
+              - 'scripts/yosys/**'
               - 'scripts/lib/portable-executable.mjs'
               - '.github/actions/setup-yosys-build/**'
               - '.gitmodules'
@@ -267,7 +269,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: src-tauri/vendor/yosys
-          key: source-yosys-${{ runner.os }}-${{ runner.arch }}-${{ steps.yosys-source.outputs.image }}-${{ steps.yosys-source.outputs.commit }}-${{ hashFiles('scripts/prepare-yosys-bundle.mjs', 'scripts/lib/portable-executable.mjs', '.github/actions/setup-yosys-build/action.yml') }}
+          key: source-yosys-${{ runner.os }}-${{ runner.arch }}-${{ steps.yosys-source.outputs.image }}-${{ steps.yosys-source.outputs.commit }}-${{ hashFiles('scripts/prepare-yosys-bundle.mjs', 'scripts/lib/portable-executable.mjs', 'scripts/yosys/**', '.github/actions/setup-yosys-build/action.yml') }}
 
       - name: Cache bundled slang-server
         id: cache-slang
@@ -334,7 +336,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: src-tauri/vendor/yosys
-          key: source-yosys-${{ runner.os }}-${{ runner.arch }}-${{ steps.yosys-source.outputs.image }}-${{ steps.yosys-source.outputs.commit }}-${{ hashFiles('scripts/prepare-yosys-bundle.mjs', 'scripts/lib/portable-executable.mjs', '.github/actions/setup-yosys-build/action.yml') }}
+          key: source-yosys-${{ runner.os }}-${{ runner.arch }}-${{ steps.yosys-source.outputs.image }}-${{ steps.yosys-source.outputs.commit }}-${{ hashFiles('scripts/prepare-yosys-bundle.mjs', 'scripts/lib/portable-executable.mjs', 'scripts/yosys/**', '.github/actions/setup-yosys-build/action.yml') }}
 
       - name: Cache bundled slang-server
         id: cache-slang
@@ -401,7 +403,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: src-tauri/vendor/yosys
-          key: source-yosys-${{ runner.os }}-${{ runner.arch }}-${{ steps.yosys-source.outputs.image }}-${{ steps.yosys-source.outputs.commit }}-${{ hashFiles('scripts/prepare-yosys-bundle.mjs', 'scripts/lib/portable-executable.mjs', '.github/actions/setup-yosys-build/action.yml') }}
+          key: source-yosys-${{ runner.os }}-${{ runner.arch }}-${{ steps.yosys-source.outputs.image }}-${{ steps.yosys-source.outputs.commit }}-${{ hashFiles('scripts/prepare-yosys-bundle.mjs', 'scripts/lib/portable-executable.mjs', 'scripts/yosys/**', '.github/actions/setup-yosys-build/action.yml') }}
 
       - name: Cache bundled slang-server
         id: cache-slang
@@ -413,6 +415,10 @@ jobs:
       - name: Setup Yosys source build
         if: steps.cache-yosys.outputs.cache-hit != 'true'
         uses: ./.github/actions/setup-yosys-build
+
+      - name: Verify Windows UTF-8 runtime manifests
+        if: steps.cache-yosys.outputs.cache-hit != 'true'
+        run: node scripts/yosys/test-windows-runtime.mjs
 
       - name: Build bundled Yosys from source
         if: steps.cache-yosys.outputs.cache-hit != 'true'
