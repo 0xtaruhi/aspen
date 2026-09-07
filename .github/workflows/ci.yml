@@ -44,6 +44,7 @@ jobs:
       rust: ${{ steps.filter.outputs.rust }}
       toolchain: ${{ steps.filter.outputs.toolchain }}
       desktop: ${{ steps.filter.outputs.desktop }}
+      driver_installer: ${{ steps.filter.outputs.driver_installer }}
       force_full: ${{ steps.flags.outputs.force_full }}
       run_frontend: ${{ steps.flags.outputs.run_frontend }}
       run_rust: ${{ steps.flags.outputs.run_rust }}
@@ -53,7 +54,7 @@ jobs:
       run_toolchain_windows: ${{ steps.flags.outputs.run_toolchain_windows }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -63,6 +64,9 @@ jobs:
         uses: dorny/paths-filter@v4
         with:
           filters: |
+            driver_installer:
+              - '.github/workflows/ci.yml'
+              - 'tools/aspen-driver-installer/**'
             frontend:
               - '.github/workflows/ci.yml'
               - 'src/**'
@@ -200,7 +204,7 @@ jobs:
     if: needs.changes.outputs.run_frontend == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -208,7 +212,7 @@ jobs:
           version: 10
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -245,7 +249,7 @@ jobs:
     if: needs.changes.outputs.run_toolchain_linux == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -253,7 +257,7 @@ jobs:
           version: 10
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -266,14 +270,14 @@ jobs:
 
       - name: Cache bundled Yosys toolchain
         id: cache-yosys
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: src-tauri/vendor/yosys
           key: source-yosys-${{ runner.os }}-${{ runner.arch }}-${{ steps.yosys-source.outputs.image }}-${{ steps.yosys-source.outputs.commit }}-${{ hashFiles('scripts/prepare-yosys-bundle.mjs', 'scripts/lib/portable-executable.mjs', 'scripts/yosys/**', '.github/actions/setup-yosys-build/action.yml') }}
 
       - name: Cache bundled slang-server
         id: cache-slang
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: src-tauri/vendor/slang-server
           key: bundled-slang-server-${{ runner.os }}-ubuntu-22.04-${{ env.SLANG_SERVER_VERSION }}-${{ hashFiles('scripts/prepare-slang-server-bundle.mjs') }}
@@ -314,7 +318,7 @@ jobs:
     if: needs.changes.outputs.run_toolchain_macos == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -322,7 +326,7 @@ jobs:
           version: 10
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -335,14 +339,14 @@ jobs:
 
       - name: Cache bundled Yosys toolchain
         id: cache-yosys
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: src-tauri/vendor/yosys
           key: source-yosys-${{ runner.os }}-${{ runner.arch }}-${{ steps.yosys-source.outputs.image }}-${{ steps.yosys-source.outputs.commit }}-${{ hashFiles('scripts/prepare-yosys-bundle.mjs', 'scripts/lib/portable-executable.mjs', 'scripts/yosys/**', '.github/actions/setup-yosys-build/action.yml') }}
 
       - name: Cache bundled slang-server
         id: cache-slang
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: src-tauri/vendor/slang-server
           key: bundled-slang-server-${{ runner.os }}-${{ env.SLANG_SERVER_VERSION }}-${{ hashFiles('scripts/prepare-slang-server-bundle.mjs') }}
@@ -382,7 +386,7 @@ jobs:
     if: needs.changes.outputs.run_toolchain_windows == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -390,7 +394,7 @@ jobs:
           version: 10
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -403,14 +407,14 @@ jobs:
 
       - name: Cache bundled Yosys toolchain
         id: cache-yosys
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: src-tauri/vendor/yosys
           key: source-yosys-${{ runner.os }}-${{ runner.arch }}-${{ steps.yosys-source.outputs.image }}-${{ steps.yosys-source.outputs.commit }}-${{ hashFiles('scripts/prepare-yosys-bundle.mjs', 'scripts/lib/portable-executable.mjs', 'scripts/yosys/**', '.github/actions/setup-yosys-build/action.yml') }}
 
       - name: Cache bundled slang-server
         id: cache-slang
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: src-tauri/vendor/slang-server
           key: bundled-slang-server-${{ runner.os }}-${{ env.SLANG_SERVER_VERSION }}-${{ hashFiles('scripts/prepare-slang-server-bundle.mjs') }}
@@ -457,7 +461,7 @@ jobs:
     if: needs.changes.outputs.run_rust == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install Linux desktop dependencies
         run: |
@@ -484,7 +488,7 @@ jobs:
           version: 10
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -507,6 +511,19 @@ jobs:
       - name: Rust clippy
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 
+  driver-installer-checks:
+    name: Windows Driver Installer
+    runs-on: windows-latest
+    needs:
+      - changes
+    if: needs.changes.outputs.force_full == 'true' || needs.changes.outputs.driver_installer == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Build bundled driver installer
+        run: cargo build --locked --release --manifest-path tools/aspen-driver-installer/Cargo.toml
+
   pipeline:
     name: Pipeline
     runs-on: ubuntu-latest
@@ -517,6 +534,7 @@ jobs:
       - toolchain-linux
       - toolchain-macos
       - toolchain-windows
+      - driver-installer-checks
     if: always()
     steps:
       - name: Verify required jobs
@@ -531,7 +549,8 @@ jobs:
           for result in "$changes_result" "$frontend_result" "$rust_result" \
             "${{ needs.toolchain-linux.result }}" \
             "${{ needs.toolchain-macos.result }}" \
-            "${{ needs.toolchain-windows.result }}"; do
+            "${{ needs.toolchain-windows.result }}" \
+            "${{ needs.driver-installer-checks.result }}"; do
             case "$result" in
               success|skipped)
                 ;;
@@ -552,7 +571,7 @@ jobs:
     if: needs.changes.outputs.run_packages == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -560,7 +579,7 @@ jobs:
           version: 10
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -674,7 +693,7 @@ jobs:
     if: needs.changes.outputs.run_packages == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -682,7 +701,7 @@ jobs:
           version: 10
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -792,7 +811,7 @@ jobs:
     if: needs.changes.outputs.run_packages == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -800,7 +819,7 @@ jobs:
           version: 10
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -912,7 +931,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Download Aspen package artifacts
         uses: actions/download-artifact@v8
