@@ -1,0 +1,87 @@
+// Exercise the real CMake manifest hook before the much larger Yosys build.
+import { spawnSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+import { buildConfiguration } from '../prepare-yosys-bundle.mjs'
+
+if (process.platform !== 'win32') throw new Error('This native runtime probe requires Windows.')
+const temporary = mkdtempSync(join(tmpdir(), 'aspen-utf8-probe-'))
+
+function run(command, args, options = {}) {
+  const result = spawnSync(command, args, { encoding: 'utf8', ...options })
+  if (result.error || result.status !== 0) {
+    throw new Error(
+      `${command} failed (exit ${result.status}): ${result.error?.message || ''}\n${result.stdout || ''}${result.stderr || ''}`,
+    )
+  }
+  if (result.stdout) process.stdout.write(result.stdout)
+}
+
+try {
+  const source = join(temporary, 'source')
+  const build = join(temporary, 'build')
+  const compiled = join(temporary, 'bin')
+  const work = join(temporary, 'project 测试')
+  const binaries = join(temporary, 'toolchain moved 测试')
+  mkdirSync(source)
+  mkdirSync(work)
+  writeFileSync(join(work, '文件.v'), 'module top; endmodule\n')
+  writeFileSync(
+    join(source, 'CMakeLists.txt'),
+    `
+cmake_minimum_required(VERSION 3.28)
+project(yosys LANGUAGES C CXX)
+add_executable(yosys probe.c)
+add_executable(yosys-abc probe.c)
+`,
+  )
+  writeFileSync(
+    join(source, 'probe.c'),
+    `
+#include <windows.h>
+#include <stdio.h>
+
+int main(void) {
+  char path[MAX_PATH + 1];
+  char short_path[MAX_PATH + 1];
+  printf("Process code page: %u\\n", GetACP());
+  if (GetACP() != CP_UTF8) return 1;
+  if (!GetModuleFileNameA(NULL, path, sizeof(path))) return 2;
+  if (!GetShortPathNameA(path, short_path, sizeof(short_path))) return 3;
+  if (!GetTempPathA(sizeof(path), path)) return 4;
+  if (!GetShortPathNameA(path, short_path, sizeof(short_path))) return 5;
+  FILE *source = fopen("\\xE6\\x96\\x87\\xE4\\xBB\\xB6.v", "r");
+  if (!source) return 6;
+  fclose(source);
+  return 0;
+}
+`,
+  )
+  // Use the production tool discovery and every production CMake option so the
+  // probe catches configuration failures as well as runtime manifest failures.
+  const config = buildConfiguration()
+  run(config.cmake, [
+    '-S',
+    source,
+    '-B',
+    build,
+    '-G',
+    'Ninja',
+    ...Object.entries(config.options).map(([key, value]) => `-D${key}=${value}`),
+    `-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=${compiled}`,
+  ])
+  run(config.cmake, ['--build', build])
+  // Match bundle publication: GCC links in the build directory, then we relocate
+  // the executables to test their UTF-8 runtime without testing the linker's encoding.
+  renameSync(compiled, binaries)
+  // Both the executable path and the temp directory exercise the ANSI APIs in Yosys.
+  const env = { ...process.env, TMP: work, TEMP: work }
+  for (const executable of ['yosys.exe', 'yosys-abc.exe']) {
+    run(join(binaries, executable), [], { cwd: work, env })
+  }
+  console.log('Both runtime manifests passed Unicode installation, temp, and source paths.')
+} finally {
+  rmSync(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+}
