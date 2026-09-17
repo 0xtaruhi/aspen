@@ -75,6 +75,8 @@ jobs:
               - 'pnpm-lock.yaml'
               - 'scripts/generate-zh-tw-locale.mjs'
               - 'scripts/prepare-release*.mjs'
+              - 'scripts/linux-package-hooks.test.mjs'
+              - 'src-tauri/linux/**'
               - 'src-tauri/Cargo.lock'
               - 'src-tauri/Cargo.toml'
               - 'src-tauri/tauri.conf.json'

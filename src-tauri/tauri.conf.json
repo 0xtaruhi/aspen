@@ -34,6 +34,22 @@
   "bundle": {
     "active": true,
     "targets": ["deb", "rpm", "appimage", "app", "dmg", "nsis"],
+    "linux": {
+      "deb": {
+        "postInstallScript": "linux/post-install.sh",
+        "postRemoveScript": "linux/post-remove.sh",
+        "files": {
+          "/usr/lib/udev/rules.d/70-aspen.rules": "linux/70-aspen.rules"
+        }
+      },
+      "rpm": {
+        "postInstallScript": "linux/post-install.sh",
+        "postRemoveScript": "linux/post-remove.sh",
+        "files": {
+          "/usr/lib/udev/rules.d/70-aspen.rules": "linux/70-aspen.rules"
+        }
+      }
+    },
     "macOS": {
       "signingIdentity": "-",
       "infoPlist": "Info.plist"
