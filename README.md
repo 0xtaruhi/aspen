@@ -217,6 +217,20 @@ Aspen uses a protected `main` branch:
 - The helper installs Aspen's WinUSB driver package for `VID=0x2200`, `PID=0x2008`, interface `0`.
 - The NSIS installer invokes the helper during install so first-time hardware setup is part of the normal app installation flow.
 
+### Linux USB permissions
+
+- Run Aspen as your normal desktop user. The VLFD board uses raw USB access; membership in `dialout` alone does not grant access.
+- Debian and RPM packages install `70-aspen.rules` for `VID=0x2200`, `PID=0x2008`. Their post-install hooks reload udev rules and refresh permissions for connected VLFD boards, granting the active local desktop user access through systemd's `uaccess` mechanism. No manual setup is needed during a normal desktop install or upgrade.
+- Uninstalling removes the package-owned rule and reloads udev. Offline/chroot installs without a running udev daemon can still complete; reconnect the board after booting into the desktop if needed.
+- For AppImage, development builds, or older packages, install the rule once from the repository root:
+
+  ```bash
+  sudo install -m 0644 src-tauri/linux/70-aspen.rules /etc/udev/rules.d/70-aspen.rules
+  sudo udevadm control --reload-rules
+  ```
+
+  Unplug and reconnect the board, then launch Aspen without `sudo`. This rule targets local desktop sessions; remote or headless users need their own device-access policy.
+
 ## Examples
 
 [`examples/`](examples) contains complete, ready-to-open Aspen projects:
