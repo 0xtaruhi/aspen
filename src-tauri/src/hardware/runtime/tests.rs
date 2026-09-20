@@ -5,9 +5,10 @@ use std::{
 
 use crate::hardware::types::{
     CanvasDeviceBindingSnapshot, CanvasDeviceConfigSnapshot, CanvasDeviceDataSnapshot,
-    CanvasDeviceSnapshot, CanvasDeviceStateSnapshot, CanvasDeviceType, CanvasUartMode,
-    CanvasVgaColorMode, HardwareCanvasDeviceTelemetryEntry, HardwareCanvasDeviceTelemetryPayload,
-    HardwareDataStreamConfigV1, HardwareSignalAggregateByIdV1, HardwareWaveformBatchBinaryV1,
+    CanvasDeviceSnapshot, CanvasDeviceStateSnapshot, CanvasDeviceType, CanvasHd44780BusMode,
+    CanvasUartMode, CanvasVgaColorMode, HardwareCanvasDeviceTelemetryEntry,
+    HardwareCanvasDeviceTelemetryPayload, HardwareDataStreamConfigV1,
+    HardwareSignalAggregateByIdV1, HardwareWaveformBatchBinaryV1,
 };
 
 use super::telemetry::BinaryBatchHeader;
@@ -806,8 +807,8 @@ fn uart_input_encoder_sends_each_generation_once_without_recompiling() {
                     mode: CanvasUartMode::Rx,
                 },
                 data: CanvasDeviceDataSnapshot::QueuedBytes {
-                    bytes: Vec::new(),
-                    generation: 0,
+                    bytes: vec![b'A'],
+                    generation: 1,
                 },
             },
         }],
@@ -816,15 +817,6 @@ fn uart_input_encoder_sends_each_generation_once_without_recompiling() {
     let signal_order = vec!["rx".to_string()];
     let signature = HardwareRuntime::input_encoder_signature(&state, &signal_order);
     let encoders = HardwareRuntime::compile_input_encoders(&state, &signal_order);
-
-    state.canvas_devices[0].state.data = CanvasDeviceDataSnapshot::QueuedBytes {
-        bytes: vec![b'A'],
-        generation: 1,
-    };
-    assert_eq!(
-        HardwareRuntime::input_encoder_signature(&state, &signal_order),
-        signature
-    );
 
     let mut first_send = vec![0_u16; 11];
     HardwareRuntime::fill_write_buffer(&state, &encoders, &mut first_send, 1, 11);
@@ -838,9 +830,33 @@ fn uart_input_encoder_sends_each_generation_once_without_recompiling() {
         bytes: vec![b'A'],
         generation: 2,
     };
+    assert_eq!(
+        HardwareRuntime::input_encoder_signature(&state, &signal_order),
+        signature
+    );
     let mut second_send = vec![0_u16; 11];
     HardwareRuntime::fill_write_buffer(&state, &encoders, &mut second_send, 1, 11);
     assert_eq!(second_send, first_send);
+}
+
+#[test]
+fn hd44780_config_limits_four_row_displays_to_single_controller_geometry() {
+    let state = CanvasDeviceStateSnapshot {
+        is_on: false,
+        color: None,
+        binding: slot_bindings(&[]),
+        config: CanvasDeviceConfigSnapshot::Hd44780Lcd {
+            columns: 40,
+            rows: 4,
+            bus_mode: CanvasHd44780BusMode::FourBit,
+        },
+        data: no_data(),
+    };
+
+    assert_eq!(
+        state.hd44780_config(),
+        Some((20, 4, CanvasHd44780BusMode::FourBit))
+    );
 }
 
 #[test]

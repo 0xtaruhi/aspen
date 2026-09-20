@@ -21,6 +21,10 @@ const { t } = useI18n()
 const config = computed(() => getCanvasHd44780LcdConfig(props.device))
 const columnsInput = ref('16')
 const rowsInput = ref('2')
+const maximumColumns = computed(() => {
+  const rows = Number.parseInt(rowsInput.value, 10)
+  return Number.isFinite(rows) && rows > 2 ? 20 : 40
+})
 
 watch(
   () => ({ columns: config.value?.columns ?? 16, rows: config.value?.rows ?? 2 }),
@@ -32,8 +36,13 @@ watch(
 )
 
 function commitHd44780Size() {
-  const columns = clampInspectorInt(columnsInput.value, config.value?.columns ?? 16, 8, 40)
   const rows = clampInspectorInt(rowsInput.value, config.value?.rows ?? 2, 1, 4)
+  const columns = clampInspectorInt(
+    columnsInput.value,
+    config.value?.columns ?? 16,
+    8,
+    rows > 2 ? 20 : 40,
+  )
   columnsInput.value = String(columns)
   rowsInput.value = String(rows)
 
@@ -81,7 +90,7 @@ function commitHd44780BusMode(value: string) {
         v-model="columnsInput"
         type="number"
         min="8"
-        max="40"
+        :max="maximumColumns"
         @blur="commitHd44780Size"
         @keydown.enter.prevent="commitHd44780Size"
       />
