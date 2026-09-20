@@ -1,202 +1,267 @@
-module hd44780_hello (
+// HD44780-compatible 16x2 LCD controller for Aspen's 8-bit LCD device.
+//
+// The controller initializes the LCD, writes two complete 16-character rows,
+// and alternates between two generic demo pages. Character data uses ordinary
+// ASCII bytes.
+//
+// CLK_HZ must be equal to or greater than the actual runtime clock frequency.
+// The 1.6 MHz default matches Aspen's current VLFD operating range; running
+// the design at a lower frequency only lengthens the LCD timing margins.
+module hd44780_hello #(
+    parameter integer CLK_HZ       = 1_600_000,
+    parameter integer PAGE_HOLD_MS = 2_000
+) (
     input  wire       clk,
     input  wire       reset,
     output reg        lcd_rs,
     output wire       lcd_rw,
     output reg        lcd_e,
-    output reg  [3:0] lcd_data
+    output reg  [7:0] lcd_data
 );
-    localparam POWER_WAIT = 4'd0;
-    localparam INIT_SETUP = 4'd1;
-    localparam INIT_HIGH = 4'd2;
-    localparam INIT_LOW = 4'd3;
-    localparam INIT_GAP = 4'd4;
-    localparam BYTE_SETUP = 4'd5;
-    localparam BYTE_HIGH = 4'd6;
-    localparam BYTE_LOW = 4'd7;
-    localparam BYTE_GAP = 4'd8;
-    localparam DONE = 4'd9;
+    localparam integer CYCLES_PER_US = (CLK_HZ + 999_999) / 1_000_000;
+    localparam integer CYCLES_PER_MS = (CLK_HZ + 999) / 1_000;
 
-    localparam [5:0] LAST_BYTE = 6'd35;
+    localparam integer POWER_WAIT_CYCLES = 20_000 * CYCLES_PER_US;
+    localparam integer SETUP_CYCLES      = CYCLES_PER_US;
+    localparam integer ENABLE_CYCLES     = CYCLES_PER_US;
+    localparam integer COMMAND_CYCLES    = 50 * CYCLES_PER_US;
+    localparam integer CLEAR_CYCLES      = 2_000 * CYCLES_PER_US;
+    localparam integer PAGE_HOLD_CYCLES  = PAGE_HOLD_MS * CYCLES_PER_MS;
 
-    reg [3:0] state = POWER_WAIT;
-    reg [3:0] phase_count = 0;
-    reg [19:0] wait_count = 0;
-    reg [19:0] wait_limit = 0;
-    reg [1:0] init_index = 0;
-    reg [5:0] byte_index = 0;
-    reg low_nibble = 1'b0;
+    localparam [3:0] ST_POWER_WAIT  = 4'd0;
+    localparam [3:0] ST_LOAD        = 4'd1;
+    localparam [3:0] ST_SETUP       = 4'd2;
+    localparam [3:0] ST_ENABLE      = 4'd3;
+    localparam [3:0] ST_COMMAND_GAP = 4'd4;
+    localparam [3:0] ST_PAGE_HOLD   = 4'd5;
 
-    wire [7:0] current_byte = text_byte(byte_index);
+    localparam MODE_INIT = 1'b0;
+    localparam MODE_PAGE = 1'b1;
 
+    reg [3:0]  state;
+    reg        mode;
+    reg        page_select;
+    reg [2:0]  init_index;
+    reg [5:0]  page_index;
+    reg [31:0] timer;
+    reg [31:0] command_wait_cycles;
+
+    // Aspen's HD44780 observer models write transactions only.
     assign lcd_rw = 1'b0;
 
-    function byte_is_data;
-        input [5:0] index;
+    function [7:0] page_char;
+        input       selected_page;
+        input [4:0] char_index;
         begin
-            byte_is_data = (index >= 6'd5 && index <= 6'd20) || index >= 6'd22;
+            if (!selected_page) begin
+                case (char_index)
+                    5'd0:  page_char = "*";
+                    5'd1:  page_char = "*";
+                    5'd2:  page_char = " ";
+                    5'd3:  page_char = "W";
+                    5'd4:  page_char = "e";
+                    5'd5:  page_char = "l";
+                    5'd6:  page_char = "c";
+                    5'd7:  page_char = "o";
+                    5'd8:  page_char = "m";
+                    5'd9:  page_char = "e";
+                    5'd10: page_char = " ";
+                    5'd11: page_char = "T";
+                    5'd12: page_char = "o";
+                    5'd13: page_char = " ";
+                    5'd14: page_char = "*";
+                    5'd15: page_char = "*";
+                    5'd16: page_char = "A";
+                    5'd17: page_char = "s";
+                    5'd18: page_char = "p";
+                    5'd19: page_char = "e";
+                    5'd20: page_char = "n";
+                    5'd21: page_char = " ";
+                    5'd22: page_char = "H";
+                    5'd23: page_char = "D";
+                    5'd24: page_char = "4";
+                    5'd25: page_char = "4";
+                    5'd26: page_char = "7";
+                    5'd27: page_char = "8";
+                    5'd28: page_char = "0";
+                    5'd29, 5'd30, 5'd31: page_char = " ";
+                    default: page_char = " ";
+                endcase
+            end else begin
+                case (char_index)
+                    5'd0:  page_char = " ";
+                    5'd1:  page_char = "E";
+                    5'd2:  page_char = "x";
+                    5'd3:  page_char = "a";
+                    5'd4:  page_char = "m";
+                    5'd5:  page_char = "p";
+                    5'd6:  page_char = "l";
+                    5'd7:  page_char = "e";
+                    5'd8:  page_char = " ";
+                    5'd9:  page_char = "P";
+                    5'd10: page_char = "r";
+                    5'd11: page_char = "o";
+                    5'd12: page_char = "j";
+                    5'd13: page_char = "e";
+                    5'd14: page_char = "c";
+                    5'd15: page_char = "t";
+                    5'd16, 5'd17, 5'd18: page_char = " ";
+                    5'd19: page_char = "D";
+                    5'd20: page_char = "e";
+                    5'd21: page_char = "m";
+                    5'd22: page_char = "o";
+                    5'd23: page_char = " ";
+                    5'd24: page_char = "R";
+                    5'd25: page_char = "e";
+                    5'd26: page_char = "a";
+                    5'd27: page_char = "d";
+                    5'd28: page_char = "y";
+                    5'd29, 5'd30, 5'd31: page_char = " ";
+                    default: page_char = " ";
+                endcase
+            end
         end
     endfunction
 
-    function [7:0] text_byte;
-        input [5:0] index;
-        begin
-            case (index)
-                0: text_byte = 8'h28; // 4-bit, 2-line function set
-                1: text_byte = 8'h0c; // display on, cursor off
-                2: text_byte = 8'h06; // increment cursor
-                3: text_byte = 8'h01; // clear display
-                4: text_byte = 8'h80; // first line
-                5: text_byte = "A";  6: text_byte = "S";
-                7: text_byte = "P";  8: text_byte = "E";
-                9: text_byte = "N"; 10: text_byte = " ";
-                11: text_byte = "D"; 12: text_byte = "E";
-                13: text_byte = "V"; 14: text_byte = "I";
-                15: text_byte = "C"; 16: text_byte = "E";
-                17: text_byte = " "; 18: text_byte = "L";
-                19: text_byte = "A"; 20: text_byte = "B";
-                21: text_byte = 8'hc0; // second line
-                22: text_byte = "V"; 23: text_byte = "I";
-                24: text_byte = "R"; 25: text_byte = "T";
-                26: text_byte = "U"; 27: text_byte = "A";
-                28: text_byte = "L"; 29: text_byte = " ";
-                30: text_byte = "L"; 31: text_byte = "C";
-                32: text_byte = "D"; 33: text_byte = " ";
-                34: text_byte = "O"; 35: text_byte = "K";
-                default: text_byte = " ";
-            endcase
-        end
-    endfunction
-
-    always @(posedge clk) begin
+    always @(posedge clk or posedge reset) begin
         if (reset) begin
-            state <= POWER_WAIT;
-            phase_count <= 0;
-            wait_count <= 0;
-            wait_limit <= 0;
-            init_index <= 0;
-            byte_index <= 0;
-            low_nibble <= 1'b0;
-            lcd_rs <= 1'b0;
-            lcd_e <= 1'b0;
-            lcd_data <= 4'h0;
+            state               <= ST_POWER_WAIT;
+            mode                <= MODE_INIT;
+            page_select         <= 1'b0;
+            init_index          <= 3'd0;
+            page_index          <= 6'd0;
+            timer               <= 32'd0;
+            command_wait_cycles <= COMMAND_CYCLES;
+            lcd_e               <= 1'b0;
+            lcd_rs              <= 1'b0;
+            lcd_data            <= 8'h00;
         end else begin
             case (state)
-                POWER_WAIT: begin
-                    // Wait 15 ms after power-up at the 30 MHz fabric clock.
-                    if (wait_count == 20'd449_999) begin
-                        wait_count <= 0;
-                        phase_count <= 0;
-                        lcd_data <= 4'h3;
-                        state <= INIT_SETUP;
-                    end else begin
-                        wait_count <= wait_count + 1'b1;
-                    end
-                end
-                INIT_SETUP: begin
-                    if (phase_count == 4'd15) begin
-                        phase_count <= 0;
-                        lcd_e <= 1'b1;
-                        state <= INIT_HIGH;
-                    end else begin
-                        phase_count <= phase_count + 1'b1;
-                    end
-                end
-                INIT_HIGH: begin
-                    if (phase_count == 4'd15) begin
-                        phase_count <= 0;
-                        lcd_e <= 1'b0;
-                        state <= INIT_LOW;
-                    end else begin
-                        phase_count <= phase_count + 1'b1;
-                    end
-                end
-                INIT_LOW: begin
-                    if (phase_count == 4'd15) begin
-                        phase_count <= 0;
-                        wait_count <= 0;
-                        if (init_index == 0)
-                            wait_limit <= 20'd122_999; // 4.1 ms
-                        else if (init_index == 3)
-                            wait_limit <= 20'd1_199; // 40 us
-                        else
-                            wait_limit <= 20'd2_999; // 100 us
-                        state <= INIT_GAP;
-                    end else begin
-                        phase_count <= phase_count + 1'b1;
-                    end
-                end
-                INIT_GAP: begin
-                    if (wait_count == wait_limit) begin
-                        wait_count <= 0;
-                        if (init_index == 3) begin
-                            byte_index <= 0;
-                            low_nibble <= 1'b0;
-                            lcd_rs <= 1'b0;
-                            lcd_data <= text_byte(0) >> 4;
-                            state <= BYTE_SETUP;
-                        end else begin
-                            init_index <= init_index + 1'b1;
-                            lcd_data <= (init_index == 2) ? 4'h2 : 4'h3;
-                            state <= INIT_SETUP;
-                        end
-                    end else begin
-                        wait_count <= wait_count + 1'b1;
-                    end
-                end
-                BYTE_SETUP: begin
-                    if (phase_count == 4'd15) begin
-                        phase_count <= 0;
-                        lcd_e <= 1'b1;
-                        state <= BYTE_HIGH;
-                    end else begin
-                        phase_count <= phase_count + 1'b1;
-                    end
-                end
-                BYTE_HIGH: begin
-                    if (phase_count == 4'd15) begin
-                        phase_count <= 0;
-                        lcd_e <= 1'b0;
-                        state <= BYTE_LOW;
-                    end else begin
-                        phase_count <= phase_count + 1'b1;
-                    end
-                end
-                BYTE_LOW: begin
-                    if (phase_count == 4'd15) begin
-                        phase_count <= 0;
-                        if (!low_nibble) begin
-                            low_nibble <= 1'b1;
-                            lcd_data <= current_byte[3:0];
-                            state <= BYTE_SETUP;
-                        end else begin
-                            low_nibble <= 1'b0;
-                            wait_count <= 0;
-                            wait_limit <= (byte_index == 3) ? 20'd59_999 : 20'd1_199;
-                            state <= BYTE_GAP;
-                        end
-                    end else begin
-                        phase_count <= phase_count + 1'b1;
-                    end
-                end
-                BYTE_GAP: begin
-                    if (wait_count == wait_limit) begin
-                        wait_count <= 0;
-                        if (byte_index == LAST_BYTE) begin
-                            state <= DONE;
-                        end else begin
-                            byte_index <= byte_index + 1'b1;
-                            lcd_rs <= byte_is_data(byte_index + 1'b1);
-                            lcd_data <= text_byte(byte_index + 1'b1) >> 4;
-                            state <= BYTE_SETUP;
-                        end
-                    end else begin
-                        wait_count <= wait_count + 1'b1;
-                    end
-                end
-                default: begin
+                ST_POWER_WAIT: begin
                     lcd_e <= 1'b0;
-                    state <= DONE;
+                    if (timer >= POWER_WAIT_CYCLES - 1) begin
+                        timer <= 32'd0;
+                        state <= ST_LOAD;
+                    end else begin
+                        timer <= timer + 1'b1;
+                    end
+                end
+
+                ST_LOAD: begin
+                    lcd_e <= 1'b0;
+                    timer <= 32'd0;
+
+                    if (mode == MODE_INIT) begin
+                        lcd_rs <= 1'b0;
+                        case (init_index)
+                            3'd0: begin
+                                lcd_data <= 8'h38; // 8-bit, 2-line, 5x8 font
+                                command_wait_cycles <= COMMAND_CYCLES;
+                            end
+                            3'd1: begin
+                                lcd_data <= 8'h08; // display off during setup
+                                command_wait_cycles <= COMMAND_CYCLES;
+                            end
+                            3'd2: begin
+                                lcd_data <= 8'h01; // clear display
+                                command_wait_cycles <= CLEAR_CYCLES;
+                            end
+                            default: begin
+                                lcd_data <= 8'h06; // increment cursor, no shift
+                                command_wait_cycles <= COMMAND_CYCLES;
+                            end
+                        endcase
+                    end else begin
+                        command_wait_cycles <= COMMAND_CYCLES;
+                        case (page_index)
+                            6'd0: begin
+                                lcd_rs <= 1'b0;
+                                lcd_data <= 8'h08; // hide partial page update
+                            end
+                            6'd1: begin
+                                lcd_rs <= 1'b0;
+                                lcd_data <= 8'h80; // first-row DDRAM address
+                            end
+                            6'd18: begin
+                                lcd_rs <= 1'b0;
+                                lcd_data <= 8'hc0; // second-row DDRAM address
+                            end
+                            6'd35: begin
+                                lcd_rs <= 1'b0;
+                                lcd_data <= 8'h0c; // display on, cursor off
+                            end
+                            default: begin
+                                lcd_rs <= 1'b1;
+                                if (page_index >= 6'd2 && page_index <= 6'd17)
+                                    lcd_data <= page_char(page_select, page_index[4:0] - 5'd2);
+                                else
+                                    lcd_data <= page_char(page_select, page_index[4:0] - 5'd3);
+                            end
+                        endcase
+                    end
+
+                    state <= ST_SETUP;
+                end
+
+                ST_SETUP: begin
+                    if (timer >= SETUP_CYCLES - 1) begin
+                        timer <= 32'd0;
+                        lcd_e <= 1'b1;
+                        state <= ST_ENABLE;
+                    end else begin
+                        timer <= timer + 1'b1;
+                    end
+                end
+
+                ST_ENABLE: begin
+                    if (timer >= ENABLE_CYCLES - 1) begin
+                        timer <= 32'd0;
+                        lcd_e <= 1'b0;
+                        state <= ST_COMMAND_GAP;
+                    end else begin
+                        timer <= timer + 1'b1;
+                    end
+                end
+
+                ST_COMMAND_GAP: begin
+                    if (timer >= command_wait_cycles - 1) begin
+                        timer <= 32'd0;
+                        if (mode == MODE_INIT) begin
+                            if (init_index == 3'd3) begin
+                                mode <= MODE_PAGE;
+                                page_index <= 6'd0;
+                            end else begin
+                                init_index <= init_index + 1'b1;
+                            end
+                            state <= ST_LOAD;
+                        end else if (page_index == 6'd35) begin
+                            state <= ST_PAGE_HOLD;
+                        end else begin
+                            page_index <= page_index + 1'b1;
+                            state <= ST_LOAD;
+                        end
+                    end else begin
+                        timer <= timer + 1'b1;
+                    end
+                end
+
+                ST_PAGE_HOLD: begin
+                    if (timer >= PAGE_HOLD_CYCLES - 1) begin
+                        timer <= 32'd0;
+                        page_select <= ~page_select;
+                        page_index <= 6'd0;
+                        state <= ST_LOAD;
+                    end else begin
+                        timer <= timer + 1'b1;
+                    end
+                end
+
+                default: begin
+                    state <= ST_POWER_WAIT;
+                    timer <= 32'd0;
+                    lcd_e <= 1'b0;
+                    lcd_rs <= 1'b0;
+                    lcd_data <= 8'h00;
                 end
             endcase
         end

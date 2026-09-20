@@ -20,7 +20,7 @@
       "version": 1,
       "topFileId": "top",
       "assignments": [
-        { "portName": "clk", "pinId": "P77", "clockPeriodNs": 33.333333, "boardFunction": "CLK" },
+        { "portName": "clk", "pinId": "P77", "clockPeriodNs": 625, "boardFunction": "CLK" },
         { "portName": "reset", "pinId": "P151" },
         { "portName": "lcd_rs", "pinId": "P7" },
         { "portName": "lcd_e", "pinId": "P6" },
@@ -28,7 +28,11 @@
         { "portName": "lcd_data[0]", "pinId": "P4" },
         { "portName": "lcd_data[1]", "pinId": "P9" },
         { "portName": "lcd_data[2]", "pinId": "P8" },
-        { "portName": "lcd_data[3]", "pinId": "P16" }
+        { "portName": "lcd_data[3]", "pinId": "P16" },
+        { "portName": "lcd_data[4]", "pinId": "P15" },
+        { "portName": "lcd_data[5]", "pinId": "P11" },
+        { "portName": "lcd_data[6]", "pinId": "P10" },
+        { "portName": "lcd_data[7]", "pinId": "P20" }
       ]
     },
     "implementationSettings": { "version": 1, "placeMode": "timing_driven" },
@@ -40,7 +44,7 @@
         "type": "button",
         "x": 80,
         "y": 180,
-        "label": "Restart Message",
+        "label": "Restart Demo",
         "state": {
           "is_on": false,
           "color": null,
@@ -67,10 +71,14 @@
               "lcd_data[0]",
               "lcd_data[1]",
               "lcd_data[2]",
-              "lcd_data[3]"
+              "lcd_data[3]",
+              "lcd_data[4]",
+              "lcd_data[5]",
+              "lcd_data[6]",
+              "lcd_data[7]"
             ]
           },
-          "config": { "kind": "hd44780_lcd", "columns": 16, "rows": 2, "bus_mode": "4bit" },
+          "config": { "kind": "hd44780_lcd", "columns": 16, "rows": 2, "bus_mode": "8bit" },
           "data": { "kind": "none" }
         }
       }
