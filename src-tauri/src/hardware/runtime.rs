@@ -88,6 +88,7 @@ enum StreamDecodeMessage {
 
 #[derive(Default)]
 struct OutputDecoderCache {
+    board_identity: Option<HardwareBoardSelectorV1>,
     signature: u64,
     decoders: Vec<Box<dyn OutputDeviceDecoder>>,
 }
@@ -227,10 +228,30 @@ impl HardwareRuntime {
     pub fn selected_board_available(&self) -> Result<bool, String> {
         let selector = self.access_config()?.selector;
         let boards = self.list_boards()?;
-        Ok(match selector {
-            HardwareBoardSelectorV1::Only => boards.len() == 1,
-            selector => boards.iter().any(|board| board.selector == selector),
-        })
+        Ok(Self::selected_board_identity_from(&boards, &selector).is_some())
+    }
+
+    fn selected_board_identity_from(
+        boards: &[HardwareBoardInfoV1],
+        selector: &HardwareBoardSelectorV1,
+    ) -> Option<HardwareBoardSelectorV1> {
+        match selector {
+            HardwareBoardSelectorV1::Only if boards.len() == 1 => Some(boards[0].selector.clone()),
+            HardwareBoardSelectorV1::Only => None,
+            selector => boards
+                .iter()
+                .find(|board| &board.selector == selector)
+                .map(|board| board.selector.clone()),
+        }
+    }
+
+    fn selected_board_identity(
+        &self,
+        selector: &HardwareBoardSelectorV1,
+    ) -> Result<HardwareBoardSelectorV1, String> {
+        let boards = self.list_boards()?;
+        Self::selected_board_identity_from(&boards, selector)
+            .ok_or_else(|| "selected hardware board is unavailable or ambiguous".to_string())
     }
 
     pub fn configure_access(
@@ -316,20 +337,30 @@ impl HardwareRuntime {
         self.clear_waveform_snapshot()
     }
 
-    fn cached_output_decoder_signature(&self) -> u64 {
-        self.output_decoder_cache
+    fn cached_output_decoder_signature(&self, board_identity: &HardwareBoardSelectorV1) -> u64 {
+        let cache = self
+            .output_decoder_cache
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .signature
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if cache.board_identity.as_ref() == Some(board_identity) {
+            cache.signature
+        } else {
+            0
+        }
     }
 
-    fn take_output_decoder_cache(&self) -> OutputDecoderCache {
-        std::mem::take(
-            &mut *self
-                .output_decoder_cache
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner()),
-        )
+    fn take_output_decoder_cache(
+        &self,
+        board_identity: &HardwareBoardSelectorV1,
+    ) -> OutputDecoderCache {
+        let mut cache = self
+            .output_decoder_cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if cache.board_identity.as_ref() != Some(board_identity) {
+            *cache = OutputDecoderCache::default();
+        }
+        std::mem::take(&mut *cache)
     }
 
     fn store_output_decoder_cache(&self, cache: OutputDecoderCache) {
