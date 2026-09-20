@@ -132,6 +132,29 @@ fn hardware_access_preserves_board_selection() {
 }
 
 #[test]
+fn only_board_selection_resolves_to_the_physical_board_identity() {
+    let board_identity = HardwareBoardSelectorV1::SerialNumber {
+        serial_number: "board-1".to_string(),
+    };
+    let board = HardwareBoardInfoV1 {
+        selector: board_identity.clone(),
+        address: 1,
+        serial_number: Some("board-1".to_string()),
+        vendor_id: 0x1209,
+        product_id: 0x0001,
+    };
+
+    assert_eq!(
+        HardwareRuntime::selected_board_identity_from(&[board], &HardwareBoardSelectorV1::Only),
+        Some(board_identity)
+    );
+    assert_eq!(
+        HardwareRuntime::selected_board_identity_from(&[], &HardwareBoardSelectorV1::Only),
+        None
+    );
+}
+
+#[test]
 fn board_selection_errors_distinguish_missing_and_ambiguous_devices() {
     assert_eq!(
         HardwareRuntime::probe_failure_phase("device selection matched no boards"),

@@ -19,12 +19,13 @@ impl DecodeWorker {
         app: AppHandle,
         stop_flag: Arc<AtomicBool>,
         free_buffer_tx: mpsc::SyncSender<Vec<u16>>,
+        board_identity: HardwareBoardSelectorV1,
     ) -> Result<Self, String> {
         let (sender, receiver) = mpsc::sync_channel(STREAM_DECODE_QUEUE_CAPACITY);
         let handle = thread::Builder::new()
             .name("aspen-hardware-decode".to_string())
             .spawn(move || {
-                runtime.run_decode_loop(app, stop_flag, receiver, free_buffer_tx);
+                runtime.run_decode_loop(app, stop_flag, receiver, free_buffer_tx, board_identity);
             })
             .map_err(|err| format!("failed to start decode thread: {err}"))?;
 
@@ -160,11 +161,15 @@ mod tests {
         HardwareRuntime::ingest_output_batch(&initial_writes, 1, &mut decoders);
 
         let runtime = HardwareRuntime::default();
+        let board_identity = HardwareBoardSelectorV1::SerialNumber {
+            serial_number: "board-a".to_string(),
+        };
         runtime.store_output_decoder_cache(OutputDecoderCache {
+            board_identity: Some(board_identity.clone()),
             signature,
             decoders,
         });
-        let mut resumed = runtime.take_output_decoder_cache();
+        let mut resumed = runtime.take_output_decoder_cache(&board_identity);
         assert_eq!(resumed.signature, signature);
 
         HardwareRuntime::ingest_output_batch(&[0; 32], 1, &mut resumed.decoders);
@@ -176,5 +181,17 @@ mod tests {
         };
 
         assert_eq!(lines[0], "A               ");
+
+        runtime.store_output_decoder_cache(OutputDecoderCache {
+            board_identity: Some(board_identity),
+            signature: resumed.signature,
+            decoders: resumed.decoders,
+        });
+        let replacement_board = HardwareBoardSelectorV1::SerialNumber {
+            serial_number: "board-b".to_string(),
+        };
+        let replacement_cache = runtime.take_output_decoder_cache(&replacement_board);
+        assert_eq!(replacement_cache.signature, 0);
+        assert!(replacement_cache.decoders.is_empty());
     }
 }
