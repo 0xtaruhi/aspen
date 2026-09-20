@@ -4974,9 +4974,8 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vlfd-rs"
-version = "4.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "029a7111f4a39b5b1cc3a7738b329e5af39cd920617bcc6db119b863f4c55187"
+version = "4.0.1"
+source = "git+https://github.com/0xtaruhi/vlfd-rs?rev=b73978a808d0f6a0855c51376577e4787e68861f#b73978a808d0f6a0855c51376577e4787e68861f"
 dependencies = [
  "nusb",
 ]
