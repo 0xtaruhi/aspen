@@ -41,7 +41,7 @@ pub(super) fn resolve_yosys_binary(app: &AppHandle) -> Result<PathBuf, String> {
         }
     }
 
-    if cfg!(debug_assertions) {
+    if tauri::is_dev() {
         let bundle_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(BUNDLED_YOSYS_DIR);
         if let Some(candidate) = resolve_bundled_yosys_binary_from_root(&bundle_root) {
             return Ok(candidate);
@@ -181,7 +181,7 @@ pub(super) fn resolve_fde_support_file(
         return Ok(candidate);
     }
 
-    if cfg!(debug_assertions) {
+    if tauri::is_dev() {
         let bundled_dev_candidate = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join(FDE_RESOURCE_DIR)
             .join(file_name);

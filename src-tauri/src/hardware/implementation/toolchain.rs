@@ -48,7 +48,7 @@ fn resolve_resource_file(
         return Ok(candidate);
     }
 
-    if cfg!(debug_assertions) {
+    if tauri::is_dev() {
         let bundled_dev_candidate = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join(root_dir)
             .join(file_name);
