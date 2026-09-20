@@ -450,6 +450,30 @@ export function sanitizeCanvasDeviceSnapshotForProject(
   const cloned = JSON.parse(JSON.stringify(device)) as CanvasDeviceSnapshot
   const persistence = getCanvasDeviceDefinition(cloned.type).projectPersistence
 
+  if (cloned.type === 'segment_display' && cloned.state.config.kind === 'segment_display') {
+    const config = getCanvasSegmentDisplayConfig(cloned)
+    if (config) {
+      cloned.state.config = {
+        kind: 'segment_display',
+        digits: config.digits,
+        active_low: config.activeLow,
+        digit_active_low: config.digitActiveLow,
+      }
+    }
+  }
+
+  if (cloned.type === 'hd44780_lcd' && cloned.state.config.kind === 'hd44780_lcd') {
+    const config = getCanvasHd44780LcdConfig(cloned)
+    if (config) {
+      cloned.state.config = {
+        kind: 'hd44780_lcd',
+        columns: config.columns,
+        rows: config.rows,
+        bus_mode: config.busMode,
+      }
+    }
+  }
+
   if (!persistence?.persistIsOn) {
     cloned.state.is_on = false
   }
