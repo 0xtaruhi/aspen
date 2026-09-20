@@ -12,8 +12,8 @@ import { syncHardwareAccess } from '@/lib/hardware-access'
 import { isTauriUnavailable } from './hardware-runtime-errors'
 import {
   applyDataStreamStatus,
-  clearStoppedDataStreamTelemetry,
   configuredSignalOrder,
+  preserveStoppedDataStreamTelemetry,
   resetRuntimeViewState,
 } from './hardware-runtime-telemetry'
 import {
@@ -167,7 +167,7 @@ export async function stopDataStream() {
     }
   }
 
-  clearStoppedDataStreamTelemetry()
+  preserveStoppedDataStreamTelemetry()
 
   applyDataStreamStatus({
     ...dataStreamStatus.value,

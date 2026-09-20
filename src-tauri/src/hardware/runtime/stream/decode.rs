@@ -9,6 +9,7 @@ impl HardwareRuntime {
         stop_flag: Arc<AtomicBool>,
         decode_rx: Receiver<StreamDecodeMessage>,
         free_buffer_tx: SyncSender<Vec<u16>>,
+        board_identity: HardwareBoardSelectorV1,
     ) {
         let mut signal_ids = Vec::new();
         let mut last_latest_by_signal: HashMap<u16, bool> = HashMap::new();
@@ -17,7 +18,11 @@ impl HardwareRuntime {
         let mut last_signal_publish_at = Instant::now();
         let mut waveform_generation = self.waveform_config_generation();
         let mut pending_waveform = PendingWaveformBatch::default();
-        let mut output_decoders: Vec<Box<dyn OutputDeviceDecoder>> = Vec::new();
+        let OutputDecoderCache {
+            signature: mut output_decoder_signature,
+            decoders: mut output_decoders,
+            ..
+        } = self.take_output_decoder_cache(&board_identity);
         let mut device_snapshot_interval = DEVICE_SNAPSHOT_INTERVAL;
         let mut last_device_snapshot_at = Instant::now();
         let mut output_dirty = false;
@@ -37,8 +42,12 @@ impl HardwareRuntime {
                 Ok(StreamDecodeMessage::DeviceSnapshotInterval(next_interval)) => {
                     device_snapshot_interval = next_interval;
                 }
-                Ok(StreamDecodeMessage::OutputDecoders(next_decoders)) => {
-                    output_decoders = next_decoders;
+                Ok(StreamDecodeMessage::OutputDecoders {
+                    signature,
+                    decoders,
+                }) => {
+                    output_decoder_signature = signature;
+                    output_decoders = decoders;
                     output_dirty = false;
                 }
                 Ok(StreamDecodeMessage::Batch(batch)) => {
@@ -210,6 +219,12 @@ impl HardwareRuntime {
                 Err(RecvTimeoutError::Disconnected) => break,
             }
         }
+
+        self.store_output_decoder_cache(OutputDecoderCache {
+            board_identity: Some(board_identity),
+            signature: output_decoder_signature,
+            decoders: output_decoders,
+        });
     }
 
     fn emit_device_snapshot(app: &AppHandle, snapshot: HardwareCanvasDeviceTelemetry) {

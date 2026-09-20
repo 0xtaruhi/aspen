@@ -6,6 +6,7 @@ import { dataStreamStatus, signalTelemetry } from './hardware-runtime-state'
 import {
   onDataBatchBinary,
   onDataCatalog,
+  preserveStoppedDataStreamTelemetry,
   resetRuntimeViewState,
 } from './hardware-runtime-telemetry'
 
@@ -141,5 +142,32 @@ describe('hardware runtime telemetry', () => {
 
     expect(signalTelemetry.value['row[0]']?.latest).toBe(true)
     expect(dataStreamStatus.value.sequence).toBe(3)
+  })
+
+  it('retains and flushes the most recent telemetry when the stream stops', () => {
+    vi.useFakeTimers()
+    dataStreamStatus.value.running = true
+    onDataCatalog({
+      version: 1,
+      generated_at_ms: 1,
+      entries: [{ signal_id: 7, signal: 'led' }],
+    })
+    onDataBatchBinary({
+      version: 1,
+      payload: createLegacyBinaryBatchPayload({
+        sequence: 4n,
+        generatedAtMs: 100n,
+        droppedSamples: 0n,
+        queueFill: 0,
+        queueCapacity: 8,
+        batchCycles: 16,
+        updates: [{ signalId: 7, latest: true, highRatio: 1, edgeCount: 0 }],
+      }),
+    } as HardwareDataBatchBinaryV1)
+
+    preserveStoppedDataStreamTelemetry()
+
+    expect(signalTelemetry.value.led?.latest).toBe(true)
+    expect(dataStreamStatus.value.sequence).toBe(4)
   })
 })

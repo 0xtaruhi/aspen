@@ -244,10 +244,6 @@ export function applyDataStreamStatus(status: HardwareDataStreamStatusV1) {
     pendingDataBatchMeta = null
   }
 
-  if (!status.running) {
-    clearTelemetryState()
-  }
-
   dataStreamStatus.value = {
     ...status,
     last_error: status.last_error ?? null,
@@ -258,8 +254,7 @@ export function configuredSignalOrder(signalNames: readonly string[]) {
   return trimSignalNames(signalNames)
 }
 
-export function clearStoppedDataStreamTelemetry() {
-  clearTelemetryFlushHandle()
-  clearTelemetryState()
+export function preserveStoppedDataStreamTelemetry() {
+  flushTelemetry()
   pendingDataBatchMeta = null
 }
