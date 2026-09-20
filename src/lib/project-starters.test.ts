@@ -33,9 +33,9 @@ function collectFiles(nodes: ProjectNode[]): ProjectNode[] {
 describe('bundled project starters', () => {
   const exampleEntries = projectStarterCatalog.filter((entry) => entry.starter.kind === 'example')
 
-  it('keeps three lightweight templates and nine complete examples', () => {
+  it('keeps three lightweight templates and seven complete examples', () => {
     expect(projectStarterCatalog.filter((entry) => entry.category === 'template')).toHaveLength(3)
-    expect(exampleEntries).toHaveLength(9)
+    expect(exampleEntries).toHaveLength(7)
   })
 
   it.each(exampleEntries)('hydrates $id into an editable project snapshot', (entry) => {
@@ -90,10 +90,7 @@ describe('bundled project starters', () => {
   })
 
   it('keeps bundled VGA timing and virtual display geometry aligned', () => {
-    for (const exampleId of [
-      'device-labs/vga-display',
-      'showcases/vga-pong',
-    ] as const satisfies readonly ProjectExampleId[]) {
+    for (const exampleId of ['showcases/vga-pong'] as const satisfies readonly ProjectExampleId[]) {
       const snapshot = createBundledExampleSnapshot(exampleId, 'VgaExample')
       const source = collectFiles(snapshot.content.files)[0]?.content ?? ''
       const display = snapshot.content.canvasDevices.find((device) => device.type === 'vga_display')
@@ -110,7 +107,6 @@ describe('bundled project starters', () => {
 
   it('uses the default virtual fabric clock for time-sensitive examples', () => {
     for (const exampleId of [
-      'device-labs/segment-counter',
       'device-labs/audio-pwm',
       'showcases/vga-pong',
     ] as const satisfies readonly ProjectExampleId[]) {

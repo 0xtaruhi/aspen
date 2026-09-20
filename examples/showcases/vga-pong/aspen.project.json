@@ -75,7 +75,14 @@
               "vga_rgb[1]"
             ]
           },
-          "config": { "kind": "vga_display", "columns": 640, "rows": 480, "color_mode": "rgb332" },
+          "config": {
+            "kind": "vga_display",
+            "columns": 640,
+            "rows": 480,
+            "color_mode": "rgb332",
+            "hsync_active_low": true,
+            "vsync_active_low": true
+          },
           "data": { "kind": "none" }
         }
       },
@@ -145,7 +152,12 @@
               "score_digit_select[1]"
             ]
           },
-          "config": { "kind": "segment_display", "digits": 2, "active_low": false },
+          "config": {
+            "kind": "segment_display",
+            "digits": 2,
+            "active_low": false,
+            "digit_active_low": false
+          },
           "data": { "kind": "none" }
         }
       },

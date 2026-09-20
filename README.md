@@ -54,7 +54,7 @@ Aspen ships with a built-in virtual lab bench so you can drive and observe desig
 
 Current device set includes:
 
-- Inputs: switch, push button, dip switch bank, quadrature encoder, matrix keypad
+- Inputs: switch, push button, dip switch bank, quadrature encoder
 - Displays: LED, LED bar, LED matrix, seven-segment display, HD44780 text LCD, VGA display
 - Debug and I/O: UART terminal, audio PWM monitor
 
@@ -235,9 +235,8 @@ Aspen uses a protected `main` branch:
 
 [`examples/`](examples) contains complete, ready-to-open Aspen projects:
 
-- Device labs cover every supported virtual-device type with focused HDL designs.
-- Showcase projects combine several devices into a calculator, synthesizer, and VGA game.
-- Loose HDL smoke tests remain available for scripts and quick synthesis checks.
+- Focused device labs cover the main input, display, serial, and audio workflows.
+- The VGA Pong showcase combines video, buttons, a scanned score display, and audio feedback.
 
 See the [example project catalog](examples/README.md) for controls and usage.
 

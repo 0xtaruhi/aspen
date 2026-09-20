@@ -7,13 +7,11 @@ import { projectStore } from '@/stores/project'
 
 export type ProjectExampleId =
   | 'device-labs/gpio-controls'
-  | 'device-labs/segment-counter'
   | 'device-labs/led-matrix'
   | 'device-labs/uart-terminal'
   | 'device-labs/hd44780-lcd'
   | 'device-labs/quadrature-encoder'
   | 'device-labs/audio-pwm'
-  | 'device-labs/vga-display'
   | 'showcases/vga-pong'
 
 export type ProjectStarter =
@@ -75,14 +73,6 @@ export const projectStarterCatalog: ProjectStarterCatalogEntry[] = [
     starter: { kind: 'example', exampleId: 'device-labs/gpio-controls' },
   },
   {
-    id: 'example-segment-counter',
-    category: 'device-lab',
-    titleKey: 'segmentCounterLab',
-    descriptionKey: 'segmentCounterLabDescription',
-    suggestedName: 'SegmentCounterLab',
-    starter: { kind: 'example', exampleId: 'device-labs/segment-counter' },
-  },
-  {
     id: 'example-led-matrix',
     category: 'device-lab',
     titleKey: 'ledMatrixLab',
@@ -121,14 +111,6 @@ export const projectStarterCatalog: ProjectStarterCatalogEntry[] = [
     descriptionKey: 'audioPwmLabDescription',
     suggestedName: 'AudioPwmLab',
     starter: { kind: 'example', exampleId: 'device-labs/audio-pwm' },
-  },
-  {
-    id: 'example-vga-display',
-    category: 'device-lab',
-    titleKey: 'vgaDisplayLab',
-    descriptionKey: 'vgaDisplayLabDescription',
-    suggestedName: 'VgaDisplayLab',
-    starter: { kind: 'example', exampleId: 'device-labs/vga-display' },
   },
   {
     id: 'example-vga-pong',
