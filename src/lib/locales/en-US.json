@@ -80,7 +80,7 @@
   "uartTerminalLab": "UART Terminal",
   "uartTerminalLabDescription": "A full-duplex serial echo connected to the terminal.",
   "hd44780LcdLab": "HD44780 LCD",
-  "hd44780LcdLabDescription": "A 4-bit LCD controller that writes two lines of text.",
+  "hd44780LcdLabDescription": "An 8-bit LCD controller that alternates between two demo pages.",
   "quadratureEncoderLab": "Quadrature Encoder",
   "quadratureEncoderLabDescription": "Decode rotation and display the current position.",
   "audioPwmLab": "Audio PWM",

@@ -80,7 +80,7 @@
   "uartTerminalLab": "UART 終端",
   "uartTerminalLabDescription": "連線虛擬終端的全雙工序列埠回顯。",
   "hd44780LcdLab": "HD44780 LCD",
-  "hd44780LcdLabDescription": "使用 4 位匯流排寫入兩行文字的 LCD 控制器。",
+  "hd44780LcdLabDescription": "使用 8 位匯流排交替顯示兩頁範例文字的 LCD 控制器。",
   "quadratureEncoderLab": "旋轉編碼器",
   "quadratureEncoderLabDescription": "解碼旋轉方向並顯示當前位置。",
   "audioPwmLab": "音訊 PWM",

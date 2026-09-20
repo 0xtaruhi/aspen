@@ -80,7 +80,7 @@
   "uartTerminalLab": "UART 终端",
   "uartTerminalLabDescription": "连接虚拟终端的全双工串口回显。",
   "hd44780LcdLab": "HD44780 LCD",
-  "hd44780LcdLabDescription": "使用 4 位总线写入两行文字的 LCD 控制器。",
+  "hd44780LcdLabDescription": "使用 8 位总线交替显示两页示例文本的 LCD 控制器。",
   "quadratureEncoderLab": "旋转编码器",
   "quadratureEncoderLabDescription": "解码旋转方向并显示当前位置。",
   "audioPwmLab": "音频 PWM",
