@@ -278,7 +278,10 @@ export function getCanvasSegmentDisplayConfig(
   return {
     digits: clampInt(device.state.config.digits, defaults.digits, 1, 16),
     activeLow: device.state.config.active_low ?? defaults.activeLow,
-    digitActiveLow: device.state.config.digit_active_low ?? defaults.digitActiveLow,
+    digitActiveLow:
+      device.state.config.digit_active_low ??
+      device.state.config.active_low ??
+      defaults.digitActiveLow,
   }
 }
 
@@ -400,9 +403,10 @@ export function getCanvasHd44780LcdConfig(
     return defaults
   }
 
+  const rows = clampInt(device.state.config.rows, defaults.rows, 1, 4)
   return {
-    columns: clampInt(device.state.config.columns, defaults.columns, 8, 40),
-    rows: clampInt(device.state.config.rows, defaults.rows, 1, 4),
+    columns: clampInt(device.state.config.columns, defaults.columns, 8, rows > 2 ? 20 : 40),
+    rows,
     busMode: device.state.config.bus_mode,
   }
 }

@@ -9,6 +9,7 @@ impl HardwareRuntime {
         stop_flag: Arc<AtomicBool>,
         decode_rx: Receiver<StreamDecodeMessage>,
         free_buffer_tx: SyncSender<Vec<u16>>,
+        board_identity: HardwareBoardSelectorV1,
     ) {
         let mut signal_ids = Vec::new();
         let mut last_latest_by_signal: HashMap<u16, bool> = HashMap::new();
@@ -20,7 +21,8 @@ impl HardwareRuntime {
         let OutputDecoderCache {
             signature: mut output_decoder_signature,
             decoders: mut output_decoders,
-        } = self.take_output_decoder_cache();
+            ..
+        } = self.take_output_decoder_cache(&board_identity);
         let mut device_snapshot_interval = DEVICE_SNAPSHOT_INTERVAL;
         let mut last_device_snapshot_at = Instant::now();
         let mut output_dirty = false;
@@ -219,6 +221,7 @@ impl HardwareRuntime {
         }
 
         self.store_output_decoder_cache(OutputDecoderCache {
+            board_identity: Some(board_identity),
             signature: output_decoder_signature,
             decoders: output_decoders,
         });

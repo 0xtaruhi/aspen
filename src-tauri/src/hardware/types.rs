@@ -386,11 +386,15 @@ impl CanvasDeviceStateSnapshot {
                 columns,
                 rows,
                 bus_mode,
-            } => Some((
-                usize::from(columns.max(1)),
-                usize::from(rows.max(1)),
-                bus_mode,
-            )),
+            } => {
+                let rows = rows.clamp(1, 4);
+                let max_columns = if rows > 2 { 20 } else { 40 };
+                Some((
+                    usize::from(columns.clamp(1, max_columns)),
+                    usize::from(rows),
+                    bus_mode,
+                ))
+            }
             _ => None,
         }
     }

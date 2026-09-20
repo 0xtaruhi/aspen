@@ -207,7 +207,7 @@ pub(super) fn compile_uart_terminal_input(
         cycles_per_bit: cycles_per_bit.max(1),
         state: Mutex::new(SerialLineInputState {
             generation: device.state.queued_bytes_generation(),
-            waveform: VecDeque::new(),
+            waveform: build_uart_waveform(device.state.queued_bytes(), cycles_per_bit.max(1)),
         }),
     }))
 }

@@ -60,28 +60,18 @@ impl HardwareRuntime {
         data_stream_config: Arc<Mutex<HardwareDataStreamConfigV1>>,
         access: HardwareAccessConfigV1,
     ) {
-        let (free_buffer_tx, free_buffer_rx) = mpsc::sync_channel(STREAM_BUFFER_POOL_CAPACITY);
-        let mut output_decoder_signature = self.cached_output_decoder_signature();
-        let decode_worker = match DecodeWorker::spawn(
-            Arc::clone(&self),
-            app.clone(),
-            Arc::clone(&stop_flag),
-            free_buffer_tx.clone(),
-        ) {
-            Ok(worker) => worker,
-            Err(err) => {
-                self.record_data_stream_error(err);
-                return;
-            }
-        };
-
         let initial_stream_config = match data_stream_config.lock() {
             Ok(guard) => guard.clone(),
             Err(_) => {
                 self.record_data_stream_error("failed to acquire data stream config mutex");
-                if let Err(err) = decode_worker.shutdown() {
-                    self.record_data_stream_error(err);
-                }
+                return;
+            }
+        };
+
+        let board_identity = match self.selected_board_identity(&access.selector) {
+            Ok(identity) => identity,
+            Err(err) => {
+                self.record_data_stream_error(err);
                 return;
             }
         };
@@ -90,9 +80,21 @@ impl HardwareRuntime {
             Ok(selector) => selector,
             Err(err) => {
                 self.record_data_stream_error(err);
-                if let Err(err) = decode_worker.shutdown() {
-                    self.record_data_stream_error(err);
-                }
+                return;
+            }
+        };
+        let (free_buffer_tx, free_buffer_rx) = mpsc::sync_channel(STREAM_BUFFER_POOL_CAPACITY);
+        let mut output_decoder_signature = self.cached_output_decoder_signature(&board_identity);
+        let decode_worker = match DecodeWorker::spawn(
+            Arc::clone(&self),
+            app.clone(),
+            Arc::clone(&stop_flag),
+            free_buffer_tx.clone(),
+            board_identity,
+        ) {
+            Ok(worker) => worker,
+            Err(err) => {
+                self.record_data_stream_error(err);
                 return;
             }
         };

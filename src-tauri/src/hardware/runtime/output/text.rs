@@ -133,7 +133,10 @@ pub(in crate::hardware::runtime) fn compile_hd44780_lcd_output(
         ddram: vec![b' '; 0x68],
         cursor_addr: 0,
         increment_cursor: true,
-        display_on: false,
+        // Existing projects and simple controllers often omit an explicit
+        // display-on command, so preserve the historical visible-by-default
+        // observation behavior until the bus explicitly changes it.
+        display_on: true,
     }))
 }
 
@@ -318,7 +321,7 @@ fn hd44780_ddram_index(address: u8) -> Option<usize> {
 }
 
 fn hd44780_text_lines(ddram: &[u8], columns: usize, rows: usize) -> Vec<String> {
-    let split_offset = u8::try_from(columns.min(0x27)).unwrap_or(0x27);
+    let split_offset = u8::try_from(columns.min(20)).unwrap_or(20);
     let row_starts = [
         0x00_u8,
         0x40_u8,
@@ -407,5 +410,39 @@ mod tests {
             panic!("expected LCD text lines");
         };
         assert_eq!(lines[0], "A B             ");
+    }
+
+    #[test]
+    fn hd44780_legacy_observer_starts_visible_until_commanded_off() {
+        let mut decoder = Hd44780LcdOutputDecoder {
+            device_id: "lcd".to_string(),
+            columns: 16,
+            rows: 2,
+            bus_mode: CanvasHd44780BusMode::EightBit,
+            rs_index: 0,
+            e_index: 1,
+            rw_index: None,
+            data_indices: Vec::new(),
+            prev_enable: false,
+            pending_high_nibble: None,
+            ddram: vec![b' '; 0x68],
+            cursor_addr: 0,
+            increment_cursor: true,
+            display_on: true,
+        };
+
+        decoder.write_char(b'A');
+        let visible = decoder.flush_snapshot();
+        let HardwareCanvasDeviceTelemetryPayload::TextLines { lines } = visible.payload else {
+            panic!("expected LCD text lines");
+        };
+        assert_eq!(lines[0], "A               ");
+
+        decoder.execute_command(0x08);
+        let hidden = decoder.flush_snapshot();
+        let HardwareCanvasDeviceTelemetryPayload::TextLines { lines } = hidden.payload else {
+            panic!("expected LCD text lines");
+        };
+        assert_eq!(lines, vec![" ".repeat(16); 2]);
     }
 }

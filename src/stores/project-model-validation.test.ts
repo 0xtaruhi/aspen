@@ -51,4 +51,38 @@ describe('project model validation', () => {
 
     expect(normalizeProjectCanvasDevices([invalidSwitches])).toEqual([])
   })
+
+  it('migrates legacy segment polarity and unsupported LCD geometry', () => {
+    const segment = createCanvasDeviceSnapshot('segment_display', 'segment', 0, 0, 0)
+    segment.state.config = {
+      kind: 'segment_display',
+      digits: 4,
+      active_low: true,
+      digit_active_low: true,
+    }
+    delete (segment.state.config as Partial<typeof segment.state.config>).digit_active_low
+
+    const lcd = createCanvasDeviceSnapshot('hd44780_lcd', 'lcd', 0, 0, 1)
+    lcd.state.config = {
+      kind: 'hd44780_lcd',
+      columns: 40,
+      rows: 4,
+      bus_mode: '4bit',
+    }
+
+    const normalized = normalizeProjectCanvasDevices([segment, lcd])
+
+    expect(normalized[0]?.state.config).toEqual({
+      kind: 'segment_display',
+      digits: 4,
+      active_low: true,
+      digit_active_low: true,
+    })
+    expect(normalized[1]?.state.config).toEqual({
+      kind: 'hd44780_lcd',
+      columns: 20,
+      rows: 4,
+      bus_mode: '4bit',
+    })
+  })
 })
