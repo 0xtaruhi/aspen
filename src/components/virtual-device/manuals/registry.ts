@@ -807,6 +807,20 @@ const canvasDeviceManualDefinitions: Record<CanvasDeviceType, CanvasDeviceManual
           txt('Expected RGB bus width and packing.', '期望的 RGB 总线位宽与颜色打包方式。'),
           language,
         ),
+        parameter(
+          'HSYNC active level',
+          activeLevelValue(config?.hsyncActiveLow ?? true, language),
+          resolveText(txt('Active low', '低电平有效'), language),
+          txt('Polarity used to detect horizontal sync pulses.', '用于检测行同步脉冲的有效电平。'),
+          language,
+        ),
+        parameter(
+          'VSYNC active level',
+          activeLevelValue(config?.vsyncActiveLow ?? true, language),
+          resolveText(txt('Active low', '低电平有效'), language),
+          txt('Polarity used to detect vertical sync pulses.', '用于检测场同步脉冲的有效电平。'),
+          language,
+        ),
       ]
     },
     resolveWaveforms: (_device, _language) => [
@@ -874,6 +888,20 @@ const canvasDeviceManualDefinitions: Record<CanvasDeviceType, CanvasDeviceManual
           txt('Choose whether a lit segment is driven high or low.', '选择点亮段时的有效电平。'),
           language,
         ),
+        ...(config?.digits && config.digits > 1
+          ? [
+              parameter(
+                'Digit-select level',
+                activeLevelValue(config.digitActiveLow, language),
+                resolveText(txt('Active high', '高电平有效'), language),
+                txt(
+                  'Choose which logic level selects a digit during multiplexed scanning.',
+                  '选择动态扫描时哪个逻辑电平会选中当前位。',
+                ),
+                language,
+              ),
+            ]
+          : []),
       ]
     },
     resolveWaveforms: (device, _language) => {
@@ -951,6 +979,23 @@ const canvasDeviceManualDefinitions: Record<CanvasDeviceType, CanvasDeviceManual
           dimensions?.columns ?? 8,
           8,
           txt('Number of matrix columns.', '点阵列数。'),
+          language,
+        ),
+        parameter(
+          'Row-select level',
+          activeLevelValue(dimensions?.rowActiveLow ?? false, language),
+          resolveText(txt('Active high', '高电平有效'), language),
+          txt('Logic level that selects a scanned row.', '扫描时选中一行所使用的逻辑电平。'),
+          language,
+        ),
+        parameter(
+          'Column lit level',
+          activeLevelValue(dimensions?.columnActiveLow ?? false, language),
+          resolveText(txt('Active high', '高电平有效'), language),
+          txt(
+            'Logic level that lights a column in the selected row.',
+            '在选中行内点亮一列所使用的逻辑电平。',
+          ),
           language,
         ),
         parameter(

@@ -13,7 +13,7 @@ import { getCanvasHd44780LcdConfig } from '@/lib/canvas-devices'
 import type { CanvasDeviceSnapshot, CanvasHd44780BusMode } from '@/lib/hardware-client'
 import { useI18n } from '@/lib/i18n'
 import { hardwareStore } from '@/stores/hardware'
-import { clampInspectorInt, hd44780SlotCount, resizeCanvasSlotBindings } from './shared'
+import { clampInspectorInt, remapCanvasSlotBindings } from './shared'
 
 const props = defineProps<{ device: CanvasDeviceSnapshot }>()
 const { t } = useI18n()
@@ -56,20 +56,18 @@ function commitHd44780BusMode(value: string) {
     return
   }
 
+  const nextConfig = {
+    kind: 'hd44780_lcd' as const,
+    columns: config.value?.columns ?? 16,
+    rows: config.value?.rows ?? 2,
+    bus_mode: value as CanvasHd44780BusMode,
+  }
   void hardwareStore.upsertCanvasDevice({
     ...props.device,
     state: {
       ...props.device.state,
-      binding: resizeCanvasSlotBindings(
-        props.device,
-        hd44780SlotCount(value as CanvasHd44780BusMode),
-      ),
-      config: {
-        kind: 'hd44780_lcd',
-        columns: config.value?.columns ?? 16,
-        rows: config.value?.rows ?? 2,
-        bus_mode: value as CanvasHd44780BusMode,
-      },
+      binding: remapCanvasSlotBindings(props.device, nextConfig),
+      config: nextConfig,
     },
   })
 }

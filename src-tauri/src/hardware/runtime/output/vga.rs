@@ -9,6 +9,8 @@ struct VgaDisplayOutputDecoder {
     blue_indices: Vec<Option<usize>>,
     target_columns: usize,
     target_rows: usize,
+    hsync_active_low: bool,
+    vsync_active_low: bool,
     prev_hsync_active: bool,
     prev_vsync_active: bool,
     current_line: Vec<u8>,
@@ -25,7 +27,8 @@ pub(in crate::hardware::runtime) fn compile_vga_display_output(
     device: &CanvasDeviceSnapshot,
     signal_indices: &SignalIndexLookup<'_>,
 ) -> Option<Box<dyn OutputDeviceDecoder>> {
-    let (target_columns, target_rows, color_mode) = HardwareRuntime::vga_display_config(device);
+    let (target_columns, target_rows, color_mode, hsync_active_low, vsync_active_low) =
+        HardwareRuntime::vga_display_config(device);
     let (red_bits, green_bits, blue_bits) =
         VgaDisplayOutputDecoder::color_mode_bit_counts(color_mode);
     let slot_signals = device.state.slot_signals();
@@ -82,6 +85,8 @@ pub(in crate::hardware::runtime) fn compile_vga_display_output(
         blue_indices,
         target_columns,
         target_rows,
+        hsync_active_low,
+        vsync_active_low,
         prev_hsync_active: false,
         prev_vsync_active: false,
         current_line: Vec::new(),
@@ -314,8 +319,10 @@ impl VgaDisplayOutputDecoder {
 
 impl OutputDeviceDecoder for VgaDisplayOutputDecoder {
     fn ingest_cycle(&mut self, cycle: &[u16]) {
-        let hsync_active = !read_signal_value(cycle, self.hsync_index);
-        let vsync_active = !read_signal_value(cycle, self.vsync_index);
+        let hsync_level = read_signal_value(cycle, self.hsync_index);
+        let vsync_level = read_signal_value(cycle, self.vsync_index);
+        let hsync_active = hsync_level != self.hsync_active_low;
+        let vsync_active = vsync_level != self.vsync_active_low;
 
         if vsync_active && !self.prev_vsync_active {
             self.finalize_frame();

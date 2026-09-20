@@ -1,10 +1,9 @@
 import type {
   CanvasDeviceBindingSnapshot,
+  CanvasDeviceConfigSnapshot,
   CanvasDeviceSnapshot,
-  CanvasHd44780BusMode,
-  CanvasVgaColorMode,
 } from '@/lib/hardware-client'
-import { vgaColorModeBitCounts } from '@/lib/canvas-devices'
+import { getCanvasDeviceBindingSlots } from '@/lib/canvas-devices'
 
 export function clampInspectorInt(
   value: string | number | null | undefined,
@@ -38,6 +37,35 @@ export function resizeCanvasSlotBindings(
   }
 }
 
+export function remapCanvasSlotBindings(
+  device: CanvasDeviceSnapshot,
+  nextConfig: CanvasDeviceConfigSnapshot,
+): CanvasDeviceBindingSnapshot {
+  if (device.state.binding.kind !== 'slots') {
+    return { kind: 'slots', signals: [] }
+  }
+
+  const currentSignals = device.state.binding.signals
+  const currentSlots = getCanvasDeviceBindingSlots(device)
+  const currentSignalsByKey = new Map(
+    currentSlots.map((slot, index) => [slot.key, currentSignals[index] ?? null]),
+  )
+  const nextDevice: CanvasDeviceSnapshot = {
+    ...device,
+    state: {
+      ...device.state,
+      config: nextConfig,
+    },
+  }
+
+  return {
+    kind: 'slots',
+    signals: getCanvasDeviceBindingSlots(nextDevice).map(
+      (slot) => currentSignalsByKey.get(slot.key) ?? null,
+    ),
+  }
+}
+
 export function replaceCanvasSlotBindings(
   device: CanvasDeviceSnapshot,
   signals: readonly (string | null)[],
@@ -56,15 +84,6 @@ export function replaceCanvasSlotBindings(
       },
     },
   }
-}
-
-export function vgaSlotCount(mode: CanvasVgaColorMode) {
-  const { redBits, greenBits, blueBits } = vgaColorModeBitCounts(mode)
-  return 2 + redBits + greenBits + blueBits
-}
-
-export function hd44780SlotCount(mode: CanvasHd44780BusMode) {
-  return 3 + (mode === '8bit' ? 8 : 4)
 }
 
 export function basenameFromPath(path: string | null | undefined) {

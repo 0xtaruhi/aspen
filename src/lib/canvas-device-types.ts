@@ -17,11 +17,14 @@ export type CanvasDeviceBindingSlot = {
 export type CanvasMatrixDimensions = {
   rows: number
   columns: number
+  rowActiveLow: boolean
+  columnActiveLow: boolean
 }
 
 export type CanvasSegmentDisplayConfig = {
   digits: number
   activeLow: boolean
+  digitActiveLow: boolean
 }
 
 export type CanvasButtonConfig = {
@@ -32,6 +35,8 @@ export type CanvasVgaDisplayConfig = {
   columns: number
   rows: number
   colorMode: CanvasVgaColorMode
+  hsyncActiveLow: boolean
+  vsyncActiveLow: boolean
 }
 
 export type CanvasDipSwitchBankConfig = {

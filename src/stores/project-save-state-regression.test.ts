@@ -409,6 +409,8 @@ describe('project save-state regression', () => {
       kind: 'led_matrix',
       rows: 8,
       columns: 8,
+      row_active_low: false,
+      column_active_low: true,
     }
     matrix.state.binding = {
       kind: 'slots',
@@ -422,6 +424,8 @@ describe('project save-state regression', () => {
       rows: 240,
       columns: 320,
       color_mode: 'rgb565',
+      hsync_active_low: true,
+      vsync_active_low: false,
     }
     vga.state.binding = {
       kind: 'slots',
@@ -452,6 +456,7 @@ describe('project save-state regression', () => {
     uart.state.data = {
       kind: 'queued_bytes',
       bytes: [0x41, 0x42, 0x43],
+      generation: 1,
     }
 
     projectCanvasStore.setCanvasDevices([led, switchDevice, button, dip, matrix, vga, uart])
@@ -470,12 +475,16 @@ describe('project save-state regression', () => {
       kind: 'led_matrix',
       rows: 8,
       columns: 8,
+      row_active_low: false,
+      column_active_low: true,
     })
     expect(snapshot.content.canvasDevices[5]?.state.config).toEqual({
       kind: 'vga_display',
       rows: 240,
       columns: 320,
       color_mode: 'rgb565',
+      hsync_active_low: true,
+      vsync_active_low: false,
     })
     expect(snapshot.content.canvasDevices[6]?.state.data).toEqual({
       kind: 'none',
@@ -503,6 +512,8 @@ describe('project save-state regression', () => {
       rows: 240,
       columns: 320,
       color_mode: 'rgb565',
+      hsync_active_low: true,
+      vsync_active_low: false,
     })
     expect(projectCanvasStore.canvasDevices.value[6]?.state.data).toEqual({
       kind: 'none',

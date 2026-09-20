@@ -56,7 +56,13 @@ function createMatrixDeviceDefinition(
         binding: createSlotBindings(
           Array.from({ length: defaults.rows + defaults.columns }, () => null),
         ),
-        config: { kind: 'led_matrix', rows: defaults.rows, columns: defaults.columns },
+        config: {
+          kind: 'led_matrix',
+          rows: defaults.rows,
+          columns: defaults.columns,
+          row_active_low: defaults.rowActiveLow,
+          column_active_low: defaults.columnActiveLow,
+        },
       }),
     toRendererProps: (device) => {
       const dimensions = getCanvasMatrixDimensions(device) ?? defaults
@@ -95,6 +101,7 @@ function createSegmentDisplayDefinition(): CanvasDeviceDefinition {
           kind: 'segment_display',
           digits: defaults.digits,
           active_low: defaults.activeLow,
+          digit_active_low: defaults.digitActiveLow,
         },
       }),
     toRendererProps: (device) => {
@@ -130,6 +137,8 @@ function createVgaDisplayDefinition(): CanvasDeviceDefinition {
           columns: defaults.columns,
           rows: defaults.rows,
           color_mode: defaults.colorMode,
+          hsync_active_low: defaults.hsyncActiveLow,
+          vsync_active_low: defaults.vsyncActiveLow,
         },
       }),
     toRendererProps: (device) => {
@@ -262,7 +271,7 @@ function createUartTerminalDefinition(): CanvasDeviceDefinition {
           cycles_per_bit: defaults.cyclesPerBit,
           mode: defaults.mode,
         },
-        data: { kind: 'queued_bytes', bytes: [] },
+        data: { kind: 'queued_bytes', bytes: [], generation: 0 },
       }),
     toRendererProps: () => ({}),
     getShellSize: () => ({ width: 360, height: 260 }),

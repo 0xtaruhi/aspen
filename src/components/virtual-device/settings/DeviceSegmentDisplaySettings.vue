@@ -44,6 +44,7 @@ function commitSegmentConfig() {
           props.device.state.config.kind === 'segment_display'
             ? (props.device.state.config.active_low ?? false)
             : false,
+        digit_active_low: config.value?.digitActiveLow ?? false,
       },
     },
   })
@@ -59,6 +60,23 @@ function commitSegmentPolarity(value: string) {
         kind: 'segment_display',
         digits,
         active_low: value === 'low',
+        digit_active_low: config.value?.digitActiveLow ?? false,
+      },
+    },
+  })
+}
+
+function commitDigitPolarity(value: string) {
+  const digits = config.value?.digits ?? 1
+  void hardwareStore.upsertCanvasDevice({
+    ...props.device,
+    state: {
+      ...props.device.state,
+      config: {
+        kind: 'segment_display',
+        digits,
+        active_low: config.value?.activeLow ?? false,
+        digit_active_low: value === 'low',
       },
     },
   })
@@ -84,6 +102,20 @@ function commitSegmentPolarity(value: string) {
       <SelectContent>
         <SelectItem value="high">{{ t('activeHigh') }}</SelectItem>
         <SelectItem value="low">{{ t('activeLow') }}</SelectItem>
+      </SelectContent>
+    </Select>
+    <p v-if="(config?.digits ?? 1) > 1" class="text-sm font-medium">
+      {{ t('digitSelectLevel') }}
+    </p>
+    <Select
+      v-if="(config?.digits ?? 1) > 1"
+      :model-value="(config?.digitActiveLow ?? false) ? 'low' : 'high'"
+      @update:model-value="(value) => commitDigitPolarity(String(value))"
+    >
+      <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value="high">{{ t('activeHighScan') }}</SelectItem>
+        <SelectItem value="low">{{ t('activeLowScan') }}</SelectItem>
       </SelectContent>
     </Select>
   </section>

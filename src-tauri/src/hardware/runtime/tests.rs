@@ -5,8 +5,8 @@ use std::{
 
 use crate::hardware::types::{
     CanvasDeviceBindingSnapshot, CanvasDeviceConfigSnapshot, CanvasDeviceDataSnapshot,
-    CanvasDeviceSnapshot, CanvasDeviceStateSnapshot, CanvasDeviceType, CanvasVgaColorMode,
-    HardwareCanvasDeviceTelemetryEntry, HardwareCanvasDeviceTelemetryPayload,
+    CanvasDeviceSnapshot, CanvasDeviceStateSnapshot, CanvasDeviceType, CanvasUartMode,
+    CanvasVgaColorMode, HardwareCanvasDeviceTelemetryEntry, HardwareCanvasDeviceTelemetryPayload,
     HardwareDataStreamConfigV1, HardwareSignalAggregateByIdV1, HardwareWaveformBatchBinaryV1,
 };
 
@@ -55,6 +55,8 @@ fn vga_display_config(
         columns,
         rows,
         color_mode,
+        hsync_active_low: true,
+        vsync_active_low: true,
     }
 }
 
@@ -764,6 +766,61 @@ fn input_encoders_follow_live_device_state_without_recompiling() {
 }
 
 #[test]
+fn uart_input_encoder_sends_each_generation_once_without_recompiling() {
+    let mut state = HardwareStateV1 {
+        canvas_devices: vec![CanvasDeviceSnapshot {
+            id: "uart0".to_string(),
+            r#type: CanvasDeviceType::UartTerminal,
+            x: 0.0,
+            y: 0.0,
+            label: "UART".to_string(),
+            state: CanvasDeviceStateSnapshot {
+                is_on: false,
+                color: None,
+                binding: slot_bindings(&[Some("rx")]),
+                config: CanvasDeviceConfigSnapshot::UartTerminal {
+                    cycles_per_bit: 1,
+                    mode: CanvasUartMode::Rx,
+                },
+                data: CanvasDeviceDataSnapshot::QueuedBytes {
+                    bytes: Vec::new(),
+                    generation: 0,
+                },
+            },
+        }],
+        ..HardwareStateV1::default()
+    };
+    let signal_order = vec!["rx".to_string()];
+    let signature = HardwareRuntime::input_encoder_signature(&state, &signal_order);
+    let encoders = HardwareRuntime::compile_input_encoders(&state, &signal_order);
+
+    state.canvas_devices[0].state.data = CanvasDeviceDataSnapshot::QueuedBytes {
+        bytes: vec![b'A'],
+        generation: 1,
+    };
+    assert_eq!(
+        HardwareRuntime::input_encoder_signature(&state, &signal_order),
+        signature
+    );
+
+    let mut first_send = vec![0_u16; 11];
+    HardwareRuntime::fill_write_buffer(&state, &encoders, &mut first_send, 1, 11);
+    assert_eq!(first_send, [0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 1]);
+
+    let mut idle = vec![0_u16; 11];
+    HardwareRuntime::fill_write_buffer(&state, &encoders, &mut idle, 1, 11);
+    assert_eq!(idle, [1; 11]);
+
+    state.canvas_devices[0].state.data = CanvasDeviceDataSnapshot::QueuedBytes {
+        bytes: vec![b'A'],
+        generation: 2,
+    };
+    let mut second_send = vec![0_u16; 11];
+    HardwareRuntime::fill_write_buffer(&state, &encoders, &mut second_send, 1, 11);
+    assert_eq!(second_send, first_send);
+}
+
+#[test]
 fn button_input_encoder_honors_active_low_polarity() {
     let state = HardwareStateV1 {
         canvas_devices: vec![CanvasDeviceSnapshot {
@@ -817,6 +874,7 @@ fn segment_display_decoder_uses_dynamic_digit_count() {
                 config: CanvasDeviceConfigSnapshot::SegmentDisplay {
                     digits: 6,
                     active_low: false,
+                    digit_active_low: false,
                 },
                 data: no_data(),
             },
@@ -856,6 +914,7 @@ fn segment_display_decoder_honors_active_low_polarity() {
                 config: CanvasDeviceConfigSnapshot::SegmentDisplay {
                     digits: 1,
                     active_low: true,
+                    digit_active_low: false,
                 },
                 data: no_data(),
             },
@@ -875,6 +934,53 @@ fn segment_display_decoder_honors_active_low_polarity() {
     let segment = &snapshot.devices[0];
     let (segment_mask, _) = expect_segment_display(segment);
     assert_eq!(segment_mask, 1);
+}
+
+#[test]
+fn segment_display_decoder_uses_separate_digit_polarity() {
+    let state = HardwareStateV1 {
+        canvas_devices: vec![CanvasDeviceSnapshot {
+            id: "seg_mixed_polarity".to_string(),
+            r#type: CanvasDeviceType::SegmentDisplay,
+            x: 0.0,
+            y: 0.0,
+            label: "SEG".to_string(),
+            state: CanvasDeviceStateSnapshot {
+                is_on: false,
+                color: None,
+                binding: slot_bindings(&[
+                    Some("seg_a"),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some("digit_0"),
+                    Some("digit_1"),
+                ]),
+                config: CanvasDeviceConfigSnapshot::SegmentDisplay {
+                    digits: 2,
+                    active_low: false,
+                    digit_active_low: true,
+                },
+                data: no_data(),
+            },
+        }],
+        ..HardwareStateV1::default()
+    };
+    let signal_order = vec![
+        "seg_a".to_string(),
+        "digit_0".to_string(),
+        "digit_1".to_string(),
+    ];
+    let mut decoders = HardwareRuntime::compile_output_decoders(&state, &signal_order);
+
+    HardwareRuntime::ingest_output_batch(&[packed_cycle(&[0, 2])], 1, &mut decoders);
+    let snapshot = HardwareRuntime::flush_output_decoders(&mut decoders, 1);
+
+    assert_eq!(expect_segment_display(&snapshot.devices[0]).1, &[1, 0]);
 }
 
 #[test]
@@ -904,6 +1010,7 @@ fn segment_display_decoder_retains_digits_between_sparse_scan_windows() {
                 config: CanvasDeviceConfigSnapshot::SegmentDisplay {
                     digits: 2,
                     active_low: false,
+                    digit_active_low: false,
                 },
                 data: no_data(),
             },
@@ -947,6 +1054,8 @@ fn matrix_decoder_normalizes_scanned_pixels_by_row_activity() {
                 config: CanvasDeviceConfigSnapshot::LedMatrix {
                     rows: 2,
                     columns: 2,
+                    row_active_low: false,
+                    column_active_low: false,
                 },
                 data: no_data(),
             },
@@ -978,6 +1087,49 @@ fn matrix_decoder_normalizes_scanned_pixels_by_row_activity() {
     assert_eq!(rows, 2);
     assert_eq!(pixels, &[128, 128, 128, 128]);
     assert!(matrix.latest);
+}
+
+#[test]
+fn matrix_decoder_honors_independent_row_and_column_polarity() {
+    let state = HardwareStateV1 {
+        canvas_devices: vec![CanvasDeviceSnapshot {
+            id: "matrix_polarity".to_string(),
+            r#type: CanvasDeviceType::LedMatrix,
+            x: 0.0,
+            y: 0.0,
+            label: "Matrix".to_string(),
+            state: CanvasDeviceStateSnapshot {
+                is_on: false,
+                color: None,
+                binding: slot_bindings(&[
+                    Some("row_0"),
+                    Some("row_1"),
+                    Some("col_0"),
+                    Some("col_1"),
+                ]),
+                config: CanvasDeviceConfigSnapshot::LedMatrix {
+                    rows: 2,
+                    columns: 2,
+                    row_active_low: true,
+                    column_active_low: false,
+                },
+                data: no_data(),
+            },
+        }],
+        ..HardwareStateV1::default()
+    };
+    let signal_order = vec![
+        "row_0".to_string(),
+        "row_1".to_string(),
+        "col_0".to_string(),
+        "col_1".to_string(),
+    ];
+    let mut decoders = HardwareRuntime::compile_output_decoders(&state, &signal_order);
+
+    HardwareRuntime::ingest_output_batch(&[packed_cycle(&[1, 2])], 1, &mut decoders);
+    let snapshot = HardwareRuntime::flush_output_decoders(&mut decoders, 1);
+
+    assert_eq!(expect_framebuffer(&snapshot.devices[0]).2, &[255, 0, 0, 0]);
 }
 
 #[test]
@@ -1095,6 +1247,44 @@ fn vga_display_decoder_honors_resolution_and_mono_mode() {
     assert_eq!(columns, 2);
     assert_eq!(rows, 2);
     assert_eq!(pixels, &[255, 0, 0, 255]);
+}
+
+#[test]
+fn vga_display_decoder_honors_active_high_sync() {
+    let state = HardwareStateV1 {
+        canvas_devices: vec![CanvasDeviceSnapshot {
+            id: "vga-high-sync".to_string(),
+            r#type: CanvasDeviceType::VgaDisplay,
+            x: 0.0,
+            y: 0.0,
+            label: "VGA".to_string(),
+            state: CanvasDeviceStateSnapshot {
+                is_on: false,
+                color: None,
+                binding: slot_bindings(&[Some("hsync"), Some("vsync"), Some("mono")]),
+                config: CanvasDeviceConfigSnapshot::VgaDisplay {
+                    columns: 1,
+                    rows: 1,
+                    color_mode: CanvasVgaColorMode::Mono,
+                    hsync_active_low: false,
+                    vsync_active_low: false,
+                },
+                data: no_data(),
+            },
+        }],
+        ..HardwareStateV1::default()
+    };
+    let signal_order = vec!["hsync".to_string(), "vsync".to_string(), "mono".to_string()];
+    let mut decoders = HardwareRuntime::compile_output_decoders(&state, &signal_order);
+
+    HardwareRuntime::ingest_output_batch(
+        &[packed_cycle(&[2]), packed_cycle(&[0]), packed_cycle(&[1])],
+        1,
+        &mut decoders,
+    );
+    let snapshot = HardwareRuntime::flush_output_decoders(&mut decoders, 1);
+
+    assert_eq!(expect_framebuffer(&snapshot.devices[0]).2, &[255]);
 }
 
 #[test]
@@ -1257,11 +1447,13 @@ fn uart_terminal_decoder_waits_for_stop_bit_before_rearming() {
     append_uart_byte(&mut read_buffer, 0, cycles_per_bit, b'P');
     append_uart_byte(&mut read_buffer, 0, cycles_per_bit, b' ');
     append_uart_byte(&mut read_buffer, 0, cycles_per_bit, b'0');
+    append_uart_byte(&mut read_buffer, 0, cycles_per_bit, b'\r');
+    append_uart_byte(&mut read_buffer, 0, cycles_per_bit, b'\n');
     read_buffer.extend(std::iter::repeat_n(packed_cycle(&[0]), cycles_per_bit * 2));
 
     HardwareRuntime::ingest_output_batch(&read_buffer, 1, &mut decoders);
     let snapshot = HardwareRuntime::flush_output_decoders(&mut decoders, 1);
 
     assert_eq!(snapshot.devices.len(), 1);
-    assert_eq!(expect_text_log(&snapshot.devices[0]), "P 0");
+    assert_eq!(expect_text_log(&snapshot.devices[0]), "P 0\n");
 }

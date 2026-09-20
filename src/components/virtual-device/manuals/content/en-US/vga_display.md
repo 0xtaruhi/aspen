@@ -16,3 +16,4 @@ Use this device to observe VGA-style video timing and pixel buses and reconstruc
 
 - The resolution parameter defines the target pixel array used during reconstruction.
 - The color-mode parameter defines how RGB bus bits map into color channels.
+- The active levels for `HSYNC` and `VSYNC` are configured independently and must match the generated timing.

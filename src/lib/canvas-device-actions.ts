@@ -23,10 +23,14 @@ export function appendCanvasDeviceText(
   value: string,
 ): CanvasDeviceSnapshot {
   const bytes = Array.from(new TextEncoder().encode(value))
-  const existing = device.state.data.kind === 'queued_bytes' ? device.state.data.bytes : []
+  const generation =
+    device.state.data.kind === 'queued_bytes'
+      ? ((device.state.data.generation ?? 0) + 1) % 0x1_0000_0000
+      : 1
   return updateDeviceData(device, {
     kind: 'queued_bytes',
-    bytes: [...existing, ...bytes],
+    bytes,
+    generation,
   })
 }
 

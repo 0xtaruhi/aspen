@@ -7,10 +7,11 @@ Use this device to observe segment-select and digit-select signals on seven-segm
 
 When the digit count changes, the binding slots change with it.
 
-## Lit polarity
+## Segment and digit polarity
 
 - The lit-level parameter specifies whether a lit segment is active-high or active-low.
-- This usually matches whether the physical driver uses common-cathode or common-anode wiring.
+- The digit-select level independently specifies the active level for multiplexed digit enables.
+- The two settings support common-cathode, common-anode, and inverted driver circuits.
 
 ## How the display is reconstructed
 

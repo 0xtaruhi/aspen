@@ -157,16 +157,23 @@ function isCanvasDeviceConfigSnapshot(value: unknown): value is CanvasDeviceConf
       return (
         typeof value.digits === 'number' &&
         Number.isFinite(value.digits) &&
-        (value.active_low === undefined || typeof value.active_low === 'boolean')
+        (value.active_low === undefined || typeof value.active_low === 'boolean') &&
+        (value.digit_active_low === undefined || typeof value.digit_active_low === 'boolean')
       )
     case 'led_matrix':
-      return hasFiniteDimensions(value)
+      return (
+        hasFiniteDimensions(value) &&
+        (value.row_active_low === undefined || typeof value.row_active_low === 'boolean') &&
+        (value.column_active_low === undefined || typeof value.column_active_low === 'boolean')
+      )
     case 'vga_display':
       return (
         hasFiniteDimensions(value) &&
         ['mono', 'rgb111', 'rgb332', 'rgb444', 'rgb565', 'rgb888'].includes(
           String(value.color_mode),
-        )
+        ) &&
+        (value.hsync_active_low === undefined || typeof value.hsync_active_low === 'boolean') &&
+        (value.vsync_active_low === undefined || typeof value.vsync_active_low === 'boolean')
       )
     case 'dip_switch_bank':
       return typeof value.width === 'number' && Number.isFinite(value.width)
@@ -211,7 +218,11 @@ function isCanvasDeviceDataSnapshot(value: unknown): boolean {
     case 'queued_bytes':
       return (
         Array.isArray(value.bytes) &&
-        value.bytes.every((byte) => isFiniteInteger(byte) && byte >= 0 && byte <= 255)
+        value.bytes.every((byte) => isFiniteInteger(byte) && byte >= 0 && byte <= 255) &&
+        (value.generation === undefined ||
+          (isFiniteInteger(value.generation) &&
+            value.generation >= 0 &&
+            value.generation <= 0xffff_ffff))
       )
     default:
       return false

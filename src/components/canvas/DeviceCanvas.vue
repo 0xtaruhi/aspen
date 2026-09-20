@@ -25,7 +25,6 @@ import { snapToGrid } from '@/lib/canvas-selection'
 import {
   canvasDeviceEmitsToggle,
   createCanvasDeviceSnapshot,
-  deviceDrivesSignal,
   deviceReceivesSignal,
   getCanvasDeviceBoundSignal,
   getCanvasDeviceBoundSignalCount,
@@ -58,7 +57,6 @@ const wires = ref<
 >([])
 
 const devices = computed(() => hardwareStore.canvasDevices.value)
-const streamRunning = computed(() => hardwareStore.dataStreamStatus.value.running)
 const sampleRateHz = computed(() => {
   return (
     hardwareStore.dataStreamStatus.value.actual_hz || hardwareStore.dataStreamStatus.value.target_hz
@@ -273,20 +271,6 @@ function setEncoderButton(device: CanvasDeviceSnapshot, value: boolean) {
 }
 
 function renderedDevice(device: CanvasDeviceSnapshot): CanvasDeviceSnapshot {
-  if (!streamRunning.value) {
-    if (!deviceReceivesSignal(device.type) || deviceDrivesSignal(device.type)) {
-      return device
-    }
-
-    return {
-      ...device,
-      state: {
-        ...device.state,
-        is_on: false,
-      },
-    }
-  }
-
   const boundSignal = getCanvasDeviceBoundSignal(device)
   if (!boundSignal || !deviceReceivesSignal(device.type)) {
     return device
@@ -309,8 +293,7 @@ function renderedDevice(device: CanvasDeviceSnapshot): CanvasDeviceSnapshot {
 function rendererProps(device: CanvasDeviceSnapshot) {
   const resolvedDevice = renderedDevice(device)
   return buildCanvasDeviceRendererProps(resolvedDevice, {
-    streamRunning: streamRunning.value,
-    telemetry: streamRunning.value ? hardwareStore.deviceTelemetry.value[device.id] : undefined,
+    telemetry: hardwareStore.deviceTelemetry.value[device.id],
     signalTelemetry: hardwareStore.signalTelemetry.value,
     sampleRateHz: sampleRateHz.value,
   })
