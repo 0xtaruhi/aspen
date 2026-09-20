@@ -55,7 +55,7 @@
           "color": null,
           "binding": { "kind": "slots", "signals": ["uart_rx", "uart_tx"] },
           "config": { "kind": "uart_terminal", "cycles_per_bit": 16, "mode": "tx_rx" },
-          "data": { "kind": "queued_bytes", "bytes": [] }
+          "data": { "kind": "queued_bytes", "bytes": [], "generation": 0 }
         }
       }
     ],

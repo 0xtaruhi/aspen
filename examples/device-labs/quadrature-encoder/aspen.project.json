@@ -74,7 +74,12 @@
               "segments[7]"
             ]
           },
-          "config": { "kind": "segment_display", "digits": 1, "active_low": false },
+          "config": {
+            "kind": "segment_display",
+            "digits": 1,
+            "active_low": false,
+            "digit_active_low": false
+          },
           "data": { "kind": "none" }
         }
       }
