@@ -9,15 +9,17 @@ import {
 import { createCanvasDeviceSnapshot } from '@/lib/canvas-devices'
 
 describe('canvas device actions', () => {
-  it('appends UTF-8 terminal input without mutating the source snapshot', () => {
+  it('replaces transmitted bytes and advances the send generation', () => {
     const device = createCanvasDeviceSnapshot('uart_terminal', 'uart', 0, 0, 0)
     const first = appendCanvasDeviceText(device, 'A')
     const second = appendCanvasDeviceText(first, '中')
 
-    expect(device.state.data).toEqual({ kind: 'queued_bytes', bytes: [] })
+    expect(device.state.data).toEqual({ kind: 'queued_bytes', bytes: [], generation: 0 })
+    expect(first.state.data).toEqual({ kind: 'queued_bytes', bytes: [65], generation: 1 })
     expect(second.state.data).toEqual({
       kind: 'queued_bytes',
-      bytes: [65, 0xe4, 0xb8, 0xad],
+      bytes: [0xe4, 0xb8, 0xad],
+      generation: 2,
     })
   })
 

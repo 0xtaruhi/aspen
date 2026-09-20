@@ -12,7 +12,7 @@ import { VGA_DISPLAY_RESOLUTION_PRESETS, getCanvasVgaDisplayConfig } from '@/lib
 import type { CanvasDeviceSnapshot, CanvasVgaColorMode } from '@/lib/hardware-client'
 import { useI18n } from '@/lib/i18n'
 import { hardwareStore } from '@/stores/hardware'
-import { clampInspectorInt, resizeCanvasSlotBindings, vgaSlotCount } from './shared'
+import { clampInspectorInt, remapCanvasSlotBindings } from './shared'
 
 const props = defineProps<{ device: CanvasDeviceSnapshot }>()
 const { t } = useI18n()
@@ -33,6 +33,8 @@ function commitVgaResolution(value: string) {
         columns,
         rows,
         color_mode: config.value?.colorMode ?? 'rgb332',
+        hsync_active_low: config.value?.hsyncActiveLow ?? true,
+        vsync_active_low: config.value?.vsyncActiveLow ?? true,
       },
     },
   })
@@ -43,16 +45,41 @@ function commitVgaColorMode(value: string) {
     return
   }
 
+  const nextConfig = {
+    kind: 'vga_display' as const,
+    columns: config.value?.columns ?? 320,
+    rows: config.value?.rows ?? 240,
+    color_mode: value as CanvasVgaColorMode,
+    hsync_active_low: config.value?.hsyncActiveLow ?? true,
+    vsync_active_low: config.value?.vsyncActiveLow ?? true,
+  }
   void hardwareStore.upsertCanvasDevice({
     ...props.device,
     state: {
       ...props.device.state,
-      binding: resizeCanvasSlotBindings(props.device, vgaSlotCount(value as CanvasVgaColorMode)),
+      binding: remapCanvasSlotBindings(props.device, nextConfig),
+      config: nextConfig,
+    },
+  })
+}
+
+function commitSyncPolarity(target: 'hsync' | 'vsync', value: string) {
+  const current = config.value
+  if (!current) {
+    return
+  }
+
+  void hardwareStore.upsertCanvasDevice({
+    ...props.device,
+    state: {
+      ...props.device.state,
       config: {
         kind: 'vga_display',
-        columns: config.value?.columns ?? 320,
-        rows: config.value?.rows ?? 240,
-        color_mode: value as CanvasVgaColorMode,
+        columns: current.columns,
+        rows: current.rows,
+        color_mode: current.colorMode,
+        hsync_active_low: target === 'hsync' ? value === 'low' : current.hsyncActiveLow,
+        vsync_active_low: target === 'vsync' ? value === 'low' : current.vsyncActiveLow,
       },
     },
   })
@@ -89,6 +116,28 @@ function commitVgaColorMode(value: string) {
         <SelectItem value="rgb444">{{ t('vgaColorModeRgb444') }}</SelectItem>
         <SelectItem value="rgb565">{{ t('vgaColorModeRgb565') }}</SelectItem>
         <SelectItem value="rgb888">{{ t('vgaColorModeRgb888') }}</SelectItem>
+      </SelectContent>
+    </Select>
+    <p class="text-sm font-medium">{{ t('hsyncPolarity') }}</p>
+    <Select
+      :model-value="(config?.hsyncActiveLow ?? true) ? 'low' : 'high'"
+      @update:model-value="(value) => commitSyncPolarity('hsync', String(value))"
+    >
+      <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value="low">{{ t('activeLow') }}</SelectItem>
+        <SelectItem value="high">{{ t('activeHigh') }}</SelectItem>
+      </SelectContent>
+    </Select>
+    <p class="text-sm font-medium">{{ t('vsyncPolarity') }}</p>
+    <Select
+      :model-value="(config?.vsyncActiveLow ?? true) ? 'low' : 'high'"
+      @update:model-value="(value) => commitSyncPolarity('vsync', String(value))"
+    >
+      <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value="low">{{ t('activeLow') }}</SelectItem>
+        <SelectItem value="high">{{ t('activeHigh') }}</SelectItem>
       </SelectContent>
     </Select>
   </section>

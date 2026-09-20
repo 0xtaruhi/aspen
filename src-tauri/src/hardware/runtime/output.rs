@@ -35,7 +35,8 @@ struct LedOutputDecoder {
 struct SegmentDisplayOutputDecoder {
     device_id: String,
     digit_count: usize,
-    active_low: bool,
+    segment_active_low: bool,
+    digit_active_low: bool,
     segment_indices: [Option<usize>; 8],
     digit_indices: Vec<Option<usize>>,
     sample_counts: Vec<u32>,
@@ -73,6 +74,8 @@ struct LedMatrixOutputDecoder {
     columns: usize,
     row_indices: Vec<Option<usize>>,
     column_indices: Vec<Option<usize>>,
+    row_active_low: bool,
+    column_active_low: bool,
     active_rows: Vec<usize>,
     active_columns: Vec<usize>,
     row_samples: Vec<u32>,
@@ -84,7 +87,7 @@ impl HardwareRuntime {
         let mut interval = DEVICE_SNAPSHOT_INTERVAL;
 
         for device in &state.canvas_devices {
-            let Some((columns, rows, _)) = device.state.vga_display_config() else {
+            let Some((columns, rows, _, _, _)) = device.state.vga_display_config() else {
                 continue;
             };
 
@@ -117,7 +120,6 @@ impl HardwareRuntime {
             device.r#type.hash(&mut hasher);
             device.state.binding.hash(&mut hasher);
             device.state.config.hash(&mut hasher);
-            device.state.data.hash(&mut hasher);
         }
         hasher.finish()
     }
@@ -188,29 +190,40 @@ impl HardwareRuntime {
         device.state.segment_digits().unwrap_or(1).max(1)
     }
 
-    fn matrix_dimensions(device: &CanvasDeviceSnapshot) -> (usize, usize) {
+    fn matrix_config(device: &CanvasDeviceSnapshot) -> (usize, usize, bool, bool) {
         let default_rows = 8;
         let default_columns = default_rows;
-        let (rows, columns) = device
+        let (rows, columns, row_active_low, column_active_low) = device
             .state
-            .matrix_dimensions()
-            .unwrap_or((default_rows, default_columns));
+            .matrix_config()
+            .unwrap_or((default_rows, default_columns, false, false));
         let rows = rows.max(1);
         let columns = columns.max(1);
 
-        (rows, columns)
+        (rows, columns, row_active_low, column_active_low)
     }
 
-    fn vga_display_config(device: &CanvasDeviceSnapshot) -> (usize, usize, CanvasVgaColorMode) {
+    fn vga_display_config(
+        device: &CanvasDeviceSnapshot,
+    ) -> (usize, usize, CanvasVgaColorMode, bool, bool) {
         let default_columns = 320;
         let default_rows = 240;
         let default_color_mode = CanvasVgaColorMode::Rgb332;
-        let (columns, rows, color_mode) = device.state.vga_display_config().unwrap_or((
-            default_columns,
-            default_rows,
-            default_color_mode,
-        ));
-        (columns.max(1), rows.max(1), color_mode)
+        let (columns, rows, color_mode, hsync_active_low, vsync_active_low) =
+            device.state.vga_display_config().unwrap_or((
+                default_columns,
+                default_rows,
+                default_color_mode,
+                true,
+                true,
+            ));
+        (
+            columns.max(1),
+            rows.max(1),
+            color_mode,
+            hsync_active_low,
+            vsync_active_low,
+        )
     }
 }
 
@@ -339,7 +352,8 @@ pub(super) fn compile_segment_display_output(
     Some(Box::new(SegmentDisplayOutputDecoder {
         device_id: device.id.clone(),
         digit_count,
-        active_low: device.state.segment_active_low(),
+        segment_active_low: device.state.segment_active_low(),
+        digit_active_low: device.state.segment_digit_active_low(),
         segment_indices,
         digit_indices,
         sample_counts: vec![0; digit_count],
@@ -352,7 +366,7 @@ pub(super) fn compile_led_matrix_output(
     device: &CanvasDeviceSnapshot,
     signal_indices: &SignalIndexLookup<'_>,
 ) -> Option<Box<dyn OutputDeviceDecoder>> {
-    let (rows, columns) = HardwareRuntime::matrix_dimensions(device);
+    let (rows, columns, row_active_low, column_active_low) = HardwareRuntime::matrix_config(device);
     let slot_signals = device.state.slot_signals();
     let row_indices = (0..rows)
         .map(|row_index| {
@@ -381,6 +395,8 @@ pub(super) fn compile_led_matrix_output(
         columns,
         row_indices,
         column_indices,
+        row_active_low,
+        column_active_low,
         active_rows: Vec::with_capacity(rows),
         active_columns: Vec::with_capacity(columns),
         row_samples: vec![0; rows],
@@ -529,7 +545,7 @@ impl OutputDeviceDecoder for SegmentDisplayOutputDecoder {
                 continue;
             };
             let signal_value = read_signal_value(cycle, *signal_index);
-            let segment_is_on = if self.active_low {
+            let segment_is_on = if self.segment_active_low {
                 !signal_value
             } else {
                 signal_value
@@ -555,7 +571,7 @@ impl OutputDeviceDecoder for SegmentDisplayOutputDecoder {
             let Some(signal_index) = self.digit_indices.get(digit_index).copied().flatten() else {
                 continue;
             };
-            let digit_selected = if self.active_low {
+            let digit_selected = if self.digit_active_low {
                 !read_signal_value(cycle, signal_index)
             } else {
                 read_signal_value(cycle, signal_index)
@@ -632,7 +648,8 @@ impl OutputDeviceDecoder for LedMatrixOutputDecoder {
             let Some(signal_index) = signal_index else {
                 continue;
             };
-            if read_signal_value(cycle, *signal_index) {
+            let raw_value = read_signal_value(cycle, *signal_index);
+            if raw_value != self.row_active_low {
                 self.active_rows.push(row_index);
             }
         }
@@ -641,7 +658,8 @@ impl OutputDeviceDecoder for LedMatrixOutputDecoder {
             let Some(signal_index) = signal_index else {
                 continue;
             };
-            if read_signal_value(cycle, *signal_index) {
+            let raw_value = read_signal_value(cycle, *signal_index);
+            if raw_value != self.column_active_low {
                 self.active_columns.push(column_index);
             }
         }

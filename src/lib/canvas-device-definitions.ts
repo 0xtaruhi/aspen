@@ -56,7 +56,13 @@ function createMatrixDeviceDefinition(
         binding: createSlotBindings(
           Array.from({ length: defaults.rows + defaults.columns }, () => null),
         ),
-        config: { kind: 'led_matrix', rows: defaults.rows, columns: defaults.columns },
+        config: {
+          kind: 'led_matrix',
+          rows: defaults.rows,
+          columns: defaults.columns,
+          row_active_low: defaults.rowActiveLow,
+          column_active_low: defaults.columnActiveLow,
+        },
       }),
     toRendererProps: (device) => {
       const dimensions = getCanvasMatrixDimensions(device) ?? defaults
@@ -95,6 +101,7 @@ function createSegmentDisplayDefinition(): CanvasDeviceDefinition {
           kind: 'segment_display',
           digits: defaults.digits,
           active_low: defaults.activeLow,
+          digit_active_low: defaults.digitActiveLow,
         },
       }),
     toRendererProps: (device) => {
@@ -130,6 +137,8 @@ function createVgaDisplayDefinition(): CanvasDeviceDefinition {
           columns: defaults.columns,
           rows: defaults.rows,
           color_mode: defaults.colorMode,
+          hsync_active_low: defaults.hsyncActiveLow,
+          vsync_active_low: defaults.vsyncActiveLow,
         },
       }),
     toRendererProps: (device) => {
@@ -262,7 +271,7 @@ function createUartTerminalDefinition(): CanvasDeviceDefinition {
           cycles_per_bit: defaults.cyclesPerBit,
           mode: defaults.mode,
         },
-        data: { kind: 'queued_bytes', bytes: [] },
+        data: { kind: 'queued_bytes', bytes: [], generation: 0 },
       }),
     toRendererProps: () => ({}),
     getShellSize: () => ({ width: 360, height: 260 }),
@@ -440,6 +449,30 @@ export function sanitizeCanvasDeviceSnapshotForProject(
 ): CanvasDeviceSnapshot {
   const cloned = JSON.parse(JSON.stringify(device)) as CanvasDeviceSnapshot
   const persistence = getCanvasDeviceDefinition(cloned.type).projectPersistence
+
+  if (cloned.type === 'segment_display' && cloned.state.config.kind === 'segment_display') {
+    const config = getCanvasSegmentDisplayConfig(cloned)
+    if (config) {
+      cloned.state.config = {
+        kind: 'segment_display',
+        digits: config.digits,
+        active_low: config.activeLow,
+        digit_active_low: config.digitActiveLow,
+      }
+    }
+  }
+
+  if (cloned.type === 'hd44780_lcd' && cloned.state.config.kind === 'hd44780_lcd') {
+    const config = getCanvasHd44780LcdConfig(cloned)
+    if (config) {
+      cloned.state.config = {
+        kind: 'hd44780_lcd',
+        columns: config.columns,
+        rows: config.rows,
+        bus_mode: config.busMode,
+      }
+    }
+  }
 
   if (!persistence?.persistIsOn) {
     cloned.state.is_on = false

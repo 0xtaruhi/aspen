@@ -199,9 +199,22 @@ export type CanvasDeviceBindingSnapshot =
 export type CanvasDeviceConfigSnapshot =
   | { kind: 'none' }
   | { kind: 'button'; active_low: boolean }
-  | { kind: 'segment_display'; digits: number; active_low: boolean }
-  | { kind: 'led_matrix'; rows: number; columns: number }
-  | { kind: 'vga_display'; columns: number; rows: number; color_mode: CanvasVgaColorMode }
+  | { kind: 'segment_display'; digits: number; active_low: boolean; digit_active_low: boolean }
+  | {
+      kind: 'led_matrix'
+      rows: number
+      columns: number
+      row_active_low: boolean
+      column_active_low: boolean
+    }
+  | {
+      kind: 'vga_display'
+      columns: number
+      rows: number
+      color_mode: CanvasVgaColorMode
+      hsync_active_low: boolean
+      vsync_active_low: boolean
+    }
   | { kind: 'dip_switch_bank'; width: number }
   | { kind: 'led_bar'; width: number; active_low: boolean }
   | { kind: 'quadrature_encoder'; has_button: boolean }
@@ -212,7 +225,7 @@ export type CanvasDeviceDataSnapshot =
   | { kind: 'none' }
   | { kind: 'bitset'; bits: Array<boolean> }
   | { kind: 'quadrature_encoder'; phase: number; button_pressed: boolean }
-  | { kind: 'queued_bytes'; bytes: Array<number> }
+  | { kind: 'queued_bytes'; bytes: Array<number>; generation: number }
 
 export type CanvasDeviceStateSnapshot = {
   is_on: boolean

@@ -29,6 +29,7 @@ struct UartDecodeState {
     countdown: usize,
     bit_index: usize,
     byte: u8,
+    previous_was_cr: bool,
 }
 
 struct Hd44780LcdOutputDecoder {
@@ -44,6 +45,8 @@ struct Hd44780LcdOutputDecoder {
     pending_high_nibble: Option<u8>,
     ddram: Vec<u8>,
     cursor_addr: u8,
+    increment_cursor: bool,
+    display_on: bool,
 }
 
 pub(in crate::hardware::runtime) fn compile_uart_terminal_output(
@@ -75,6 +78,7 @@ pub(in crate::hardware::runtime) fn compile_uart_terminal_output(
             countdown: 0,
             bit_index: 0,
             byte: 0,
+            previous_was_cr: false,
         },
         text_log: String::new(),
     }))
@@ -128,6 +132,11 @@ pub(in crate::hardware::runtime) fn compile_hd44780_lcd_output(
         pending_high_nibble: None,
         ddram: vec![b' '; 0x68],
         cursor_addr: 0,
+        increment_cursor: true,
+        // Existing projects and simple controllers often omit an explicit
+        // display-on command, so preserve the historical visible-by-default
+        // observation behavior until the bus explicitly changes it.
+        display_on: true,
     }))
 }
 
@@ -158,14 +167,26 @@ impl OutputDeviceDecoder for UartTerminalOutputDecoder {
         }
         self.state.bit_index += 1;
         if self.state.bit_index >= 8 {
-            let next_char = if self.state.byte.is_ascii_graphic() || self.state.byte == b' ' {
-                self.state.byte as char
-            } else if self.state.byte == b'\n' || self.state.byte == b'\r' {
-                '\n'
-            } else {
-                '·'
-            };
-            self.text_log.push(next_char);
+            match self.state.byte {
+                b'\r' => {
+                    self.text_log.push('\n');
+                    self.state.previous_was_cr = true;
+                }
+                b'\n' => {
+                    if !self.state.previous_was_cr {
+                        self.text_log.push('\n');
+                    }
+                    self.state.previous_was_cr = false;
+                }
+                byte if byte.is_ascii_graphic() || byte == b' ' => {
+                    self.text_log.push(byte as char);
+                    self.state.previous_was_cr = false;
+                }
+                _ => {
+                    self.text_log.push('·');
+                    self.state.previous_was_cr = false;
+                }
+            }
             trim_text_log(&mut self.text_log);
             self.state.receiving = false;
             self.state.countdown = self.cycles_per_bit.saturating_sub(1);
@@ -230,7 +251,11 @@ impl OutputDeviceDecoder for Hd44780LcdOutputDecoder {
     }
 
     fn flush_snapshot(&mut self) -> HardwareCanvasDeviceTelemetryEntry {
-        let text_lines = hd44780_text_lines(&self.ddram, self.columns, self.rows);
+        let text_lines = if self.display_on {
+            hd44780_text_lines(&self.ddram, self.columns, self.rows)
+        } else {
+            vec![" ".repeat(self.columns); self.rows]
+        };
         device_snapshot(
             &self.device_id,
             text_lines.iter().any(|line| !line.trim_end().is_empty()),
@@ -250,6 +275,18 @@ impl Hd44780LcdOutputDecoder {
             0x02 => {
                 self.cursor_addr = 0;
             }
+            0x04..=0x07 => {
+                self.increment_cursor = command & 0x02 != 0;
+            }
+            0x08..=0x0f => {
+                self.display_on = command & 0x04 != 0;
+            }
+            0x10..=0x13 => {
+                self.cursor_addr = self.cursor_addr.wrapping_sub(1);
+            }
+            0x14..=0x17 => {
+                self.cursor_addr = self.cursor_addr.wrapping_add(1);
+            }
             0x80..=0xff => {
                 self.cursor_addr = command & 0x7f;
             }
@@ -267,7 +304,11 @@ impl Hd44780LcdOutputDecoder {
                 };
             }
         }
-        self.cursor_addr = self.cursor_addr.wrapping_add(1);
+        self.cursor_addr = if self.increment_cursor {
+            self.cursor_addr.wrapping_add(1)
+        } else {
+            self.cursor_addr.wrapping_sub(1)
+        };
     }
 }
 
@@ -280,7 +321,13 @@ fn hd44780_ddram_index(address: u8) -> Option<usize> {
 }
 
 fn hd44780_text_lines(ddram: &[u8], columns: usize, rows: usize) -> Vec<String> {
-    let row_starts = [0x00_u8, 0x40_u8, 0x14_u8, 0x54_u8];
+    let split_offset = u8::try_from(columns.min(20)).unwrap_or(20);
+    let row_starts = [
+        0x00_u8,
+        0x40_u8,
+        split_offset,
+        0x40_u8.saturating_add(split_offset),
+    ];
     (0..rows)
         .map(|row| {
             let Some(start) = row_starts.get(row).copied() else {
@@ -318,6 +365,84 @@ mod tests {
             ddram[index] = byte;
         }
 
-        assert_eq!(hd44780_text_lines(&ddram, 1, 5), ["A", "B", "C", "D", " "]);
+        let lines = hd44780_text_lines(&ddram, 20, 5);
+        assert_eq!(lines[0].chars().next(), Some('A'));
+        assert_eq!(lines[1].chars().next(), Some('B'));
+        assert_eq!(lines[2].chars().next(), Some('C'));
+        assert_eq!(lines[3].chars().next(), Some('D'));
+        assert_eq!(lines[4], " ".repeat(20));
+    }
+
+    #[test]
+    fn hd44780_display_and_entry_mode_commands_affect_rendering() {
+        let mut decoder = Hd44780LcdOutputDecoder {
+            device_id: "lcd".to_string(),
+            columns: 16,
+            rows: 2,
+            bus_mode: CanvasHd44780BusMode::EightBit,
+            rs_index: 0,
+            e_index: 1,
+            rw_index: None,
+            data_indices: Vec::new(),
+            prev_enable: false,
+            pending_high_nibble: None,
+            ddram: vec![b' '; 0x68],
+            cursor_addr: 0,
+            increment_cursor: true,
+            display_on: false,
+        };
+
+        decoder.write_char(b'A');
+        let hidden = decoder.flush_snapshot();
+        let HardwareCanvasDeviceTelemetryPayload::TextLines { lines } = hidden.payload else {
+            panic!("expected LCD text lines");
+        };
+        assert_eq!(lines, vec![" ".repeat(16); 2]);
+
+        decoder.execute_command(0x0c);
+        decoder.execute_command(0x05);
+        decoder.execute_command(0x82);
+        decoder.write_char(b'B');
+        assert_eq!(decoder.cursor_addr, 1);
+
+        let visible = decoder.flush_snapshot();
+        let HardwareCanvasDeviceTelemetryPayload::TextLines { lines } = visible.payload else {
+            panic!("expected LCD text lines");
+        };
+        assert_eq!(lines[0], "A B             ");
+    }
+
+    #[test]
+    fn hd44780_legacy_observer_starts_visible_until_commanded_off() {
+        let mut decoder = Hd44780LcdOutputDecoder {
+            device_id: "lcd".to_string(),
+            columns: 16,
+            rows: 2,
+            bus_mode: CanvasHd44780BusMode::EightBit,
+            rs_index: 0,
+            e_index: 1,
+            rw_index: None,
+            data_indices: Vec::new(),
+            prev_enable: false,
+            pending_high_nibble: None,
+            ddram: vec![b' '; 0x68],
+            cursor_addr: 0,
+            increment_cursor: true,
+            display_on: true,
+        };
+
+        decoder.write_char(b'A');
+        let visible = decoder.flush_snapshot();
+        let HardwareCanvasDeviceTelemetryPayload::TextLines { lines } = visible.payload else {
+            panic!("expected LCD text lines");
+        };
+        assert_eq!(lines[0], "A               ");
+
+        decoder.execute_command(0x08);
+        let hidden = decoder.flush_snapshot();
+        let HardwareCanvasDeviceTelemetryPayload::TextLines { lines } = hidden.payload else {
+            panic!("expected LCD text lines");
+        };
+        assert_eq!(lines, vec![" ".repeat(16); 2]);
     }
 }

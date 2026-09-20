@@ -29,8 +29,15 @@ struct QuadratureEncoderInputEncoder {
 }
 
 struct SerialLineInputEncoder {
+    device_index: usize,
     signal_index: usize,
-    waveform: Mutex<VecDeque<bool>>,
+    cycles_per_bit: usize,
+    state: Mutex<SerialLineInputState>,
+}
+
+struct SerialLineInputState {
+    generation: u32,
+    waveform: VecDeque<bool>,
 }
 
 impl HardwareRuntime {
@@ -43,7 +50,6 @@ impl HardwareRuntime {
             device.r#type.hash(&mut hasher);
             device.state.binding.hash(&mut hasher);
             device.state.config.hash(&mut hasher);
-            device.state.data.hash(&mut hasher);
         }
         hasher.finish()
     }
@@ -180,7 +186,7 @@ pub(super) fn compile_quadrature_encoder_input(
 
 pub(super) fn compile_uart_terminal_input(
     device: &CanvasDeviceSnapshot,
-    _device_index: usize,
+    device_index: usize,
     signal_indices: &SignalIndexLookup<'_>,
 ) -> Option<Box<dyn InputDeviceEncoder>> {
     let (cycles_per_bit, mode) = device.state.uart_config()?;
@@ -195,10 +201,14 @@ pub(super) fn compile_uart_terminal_input(
         .and_then(|signal| signal.as_deref())
         .and_then(|signal| signal_indices.get(signal).copied())?;
 
-    let waveform = build_uart_waveform(device.state.queued_bytes(), cycles_per_bit.max(1));
     Some(Box::new(SerialLineInputEncoder {
+        device_index,
         signal_index,
-        waveform: Mutex::new(waveform),
+        cycles_per_bit: cycles_per_bit.max(1),
+        state: Mutex::new(SerialLineInputState {
+            generation: device.state.queued_bytes_generation(),
+            waveform: build_uart_waveform(device.state.queued_bytes(), cycles_per_bit.max(1)),
+        }),
     }))
 }
 
@@ -256,13 +266,20 @@ impl InputDeviceEncoder for QuadratureEncoderInputEncoder {
 }
 
 impl InputDeviceEncoder for SerialLineInputEncoder {
-    fn encode_cycle(&self, _state: &HardwareStateV1, _cycle_index: usize, frame_words: &mut [u16]) {
-        let value = self
-            .waveform
-            .lock()
-            .ok()
-            .and_then(|mut waveform| waveform.pop_front())
-            .unwrap_or(true);
+    fn encode_cycle(&self, state: &HardwareStateV1, _cycle_index: usize, frame_words: &mut [u16]) {
+        let Some(device) = state.canvas_devices.get(self.device_index) else {
+            set_signal_value(frame_words, self.signal_index, true);
+            return;
+        };
+        let generation = device.state.queued_bytes_generation();
+        let value = self.state.lock().map_or(true, |mut serial| {
+            if serial.generation != generation {
+                serial.generation = generation;
+                serial.waveform =
+                    build_uart_waveform(device.state.queued_bytes(), self.cycles_per_bit);
+            }
+            serial.waveform.pop_front().unwrap_or(true)
+        });
         set_signal_value(frame_words, self.signal_index, value);
     }
 }

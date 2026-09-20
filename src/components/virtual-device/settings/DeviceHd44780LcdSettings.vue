@@ -13,7 +13,7 @@ import { getCanvasHd44780LcdConfig } from '@/lib/canvas-devices'
 import type { CanvasDeviceSnapshot, CanvasHd44780BusMode } from '@/lib/hardware-client'
 import { useI18n } from '@/lib/i18n'
 import { hardwareStore } from '@/stores/hardware'
-import { clampInspectorInt, hd44780SlotCount, resizeCanvasSlotBindings } from './shared'
+import { clampInspectorInt, remapCanvasSlotBindings } from './shared'
 
 const props = defineProps<{ device: CanvasDeviceSnapshot }>()
 const { t } = useI18n()
@@ -21,6 +21,10 @@ const { t } = useI18n()
 const config = computed(() => getCanvasHd44780LcdConfig(props.device))
 const columnsInput = ref('16')
 const rowsInput = ref('2')
+const maximumColumns = computed(() => {
+  const rows = Number.parseInt(rowsInput.value, 10)
+  return Number.isFinite(rows) && rows > 2 ? 20 : 40
+})
 
 watch(
   () => ({ columns: config.value?.columns ?? 16, rows: config.value?.rows ?? 2 }),
@@ -32,8 +36,13 @@ watch(
 )
 
 function commitHd44780Size() {
-  const columns = clampInspectorInt(columnsInput.value, config.value?.columns ?? 16, 8, 40)
   const rows = clampInspectorInt(rowsInput.value, config.value?.rows ?? 2, 1, 4)
+  const columns = clampInspectorInt(
+    columnsInput.value,
+    config.value?.columns ?? 16,
+    8,
+    rows > 2 ? 20 : 40,
+  )
   columnsInput.value = String(columns)
   rowsInput.value = String(rows)
 
@@ -56,20 +65,18 @@ function commitHd44780BusMode(value: string) {
     return
   }
 
+  const nextConfig = {
+    kind: 'hd44780_lcd' as const,
+    columns: config.value?.columns ?? 16,
+    rows: config.value?.rows ?? 2,
+    bus_mode: value as CanvasHd44780BusMode,
+  }
   void hardwareStore.upsertCanvasDevice({
     ...props.device,
     state: {
       ...props.device.state,
-      binding: resizeCanvasSlotBindings(
-        props.device,
-        hd44780SlotCount(value as CanvasHd44780BusMode),
-      ),
-      config: {
-        kind: 'hd44780_lcd',
-        columns: config.value?.columns ?? 16,
-        rows: config.value?.rows ?? 2,
-        bus_mode: value as CanvasHd44780BusMode,
-      },
+      binding: remapCanvasSlotBindings(props.device, nextConfig),
+      config: nextConfig,
     },
   })
 }
@@ -83,7 +90,7 @@ function commitHd44780BusMode(value: string) {
         v-model="columnsInput"
         type="number"
         min="8"
-        max="40"
+        :max="maximumColumns"
         @blur="commitHd44780Size"
         @keydown.enter.prevent="commitHd44780Size"
       />

@@ -177,15 +177,25 @@ pub enum CanvasDeviceConfigSnapshot {
         digits: u16,
         #[serde(default)]
         active_low: bool,
+        #[serde(default)]
+        digit_active_low: bool,
     },
     LedMatrix {
         rows: u16,
         columns: u16,
+        #[serde(default)]
+        row_active_low: bool,
+        #[serde(default)]
+        column_active_low: bool,
     },
     VgaDisplay {
         columns: u16,
         rows: u16,
         color_mode: CanvasVgaColorMode,
+        #[serde(default = "default_true")]
+        hsync_active_low: bool,
+        #[serde(default = "default_true")]
+        vsync_active_low: bool,
     },
     DipSwitchBank {
         width: u16,
@@ -226,6 +236,8 @@ pub enum CanvasDeviceDataSnapshot {
     QueuedBytes {
         #[serde(default)]
         bytes: Vec<u8>,
+        #[serde(default)]
+        generation: u32,
     },
 }
 
@@ -296,6 +308,16 @@ impl CanvasDeviceStateSnapshot {
         )
     }
 
+    pub fn segment_digit_active_low(&self) -> bool {
+        matches!(
+            self.config,
+            CanvasDeviceConfigSnapshot::SegmentDisplay {
+                digit_active_low: true,
+                ..
+            }
+        )
+    }
+
     pub fn driven_signal_level(&self) -> bool {
         if self.button_active_low() {
             !self.is_on
@@ -304,22 +326,38 @@ impl CanvasDeviceStateSnapshot {
         }
     }
 
-    pub fn matrix_dimensions(&self) -> Option<(usize, usize)> {
+    pub fn matrix_config(&self) -> Option<(usize, usize, bool, bool)> {
         match self.config {
-            CanvasDeviceConfigSnapshot::LedMatrix { rows, columns } => {
-                Some((usize::from(rows), usize::from(columns)))
-            }
+            CanvasDeviceConfigSnapshot::LedMatrix {
+                rows,
+                columns,
+                row_active_low,
+                column_active_low,
+            } => Some((
+                usize::from(rows),
+                usize::from(columns),
+                row_active_low,
+                column_active_low,
+            )),
             _ => None,
         }
     }
 
-    pub fn vga_display_config(&self) -> Option<(usize, usize, CanvasVgaColorMode)> {
+    pub fn vga_display_config(&self) -> Option<(usize, usize, CanvasVgaColorMode, bool, bool)> {
         match self.config {
             CanvasDeviceConfigSnapshot::VgaDisplay {
                 columns,
                 rows,
                 color_mode,
-            } => Some((usize::from(columns), usize::from(rows), color_mode)),
+                hsync_active_low,
+                vsync_active_low,
+            } => Some((
+                usize::from(columns),
+                usize::from(rows),
+                color_mode,
+                hsync_active_low,
+                vsync_active_low,
+            )),
             _ => None,
         }
     }
@@ -348,11 +386,15 @@ impl CanvasDeviceStateSnapshot {
                 columns,
                 rows,
                 bus_mode,
-            } => Some((
-                usize::from(columns.max(1)),
-                usize::from(rows.max(1)),
-                bus_mode,
-            )),
+            } => {
+                let rows = rows.clamp(1, 4);
+                let max_columns = if rows > 2 { 20 } else { 40 };
+                Some((
+                    usize::from(columns.clamp(1, max_columns)),
+                    usize::from(rows),
+                    bus_mode,
+                ))
+            }
             _ => None,
         }
     }
@@ -366,8 +408,15 @@ impl CanvasDeviceStateSnapshot {
 
     pub fn queued_bytes(&self) -> &[u8] {
         match &self.data {
-            CanvasDeviceDataSnapshot::QueuedBytes { bytes } => bytes,
+            CanvasDeviceDataSnapshot::QueuedBytes { bytes, .. } => bytes,
             _ => &[],
+        }
+    }
+
+    pub fn queued_bytes_generation(&self) -> u32 {
+        match self.data {
+            CanvasDeviceDataSnapshot::QueuedBytes { generation, .. } => generation,
+            _ => 0,
         }
     }
 

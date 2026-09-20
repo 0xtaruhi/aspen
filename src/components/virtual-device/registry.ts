@@ -66,7 +66,6 @@ type CanvasDeviceGalleryItem = {
 }
 
 type CanvasDeviceRuntimeContext = {
-  streamRunning: boolean
   telemetry: HardwareCanvasDeviceTelemetryEntry | undefined
   signalTelemetry: Record<string, { latest: boolean } | undefined>
   sampleRateHz: number
@@ -160,12 +159,6 @@ const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefiniti
     bindingAssistantComponent: LedBarBindingAssistant,
     buildRuntimeProps: (device, context) => {
       const config = getCanvasLedBarConfig(device)
-      if (!context.streamRunning) {
-        return {
-          bits: Array.from({ length: config?.width ?? 8 }, () => false),
-        }
-      }
-
       const telemetryBits =
         getBitsetTelemetry(context.telemetry)?.map((value) => Boolean(value)) ?? null
       const fallbackBits = getCanvasDeviceBoundSignals(device).map((signal) => {
@@ -188,9 +181,7 @@ const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefiniti
       const audioTelemetry = getAudioTelemetry(context.telemetry)
       const periodSamples = audioTelemetry?.period_samples ?? 0
       const frequencyHz =
-        context.streamRunning && context.sampleRateHz > 0 && periodSamples > 0
-          ? context.sampleRateHz / periodSamples
-          : 0
+        context.sampleRateHz > 0 && periodSamples > 0 ? context.sampleRateHz / periodSamples : 0
 
       return {
         frequencyHz,
@@ -251,10 +242,10 @@ const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefiniti
       const config = getCanvasVgaDisplayConfig(device)
       const framebufferTelemetry = getFramebufferTelemetry(context.telemetry)
       return {
-        isOn: context.streamRunning ? Boolean(context.telemetry?.latest) : false,
+        isOn: Boolean(context.telemetry?.latest),
         columns: framebufferTelemetry?.columns || config?.columns || 320,
         rows: framebufferTelemetry?.rows || config?.rows || 240,
-        pixels: context.streamRunning ? (framebufferTelemetry?.pixels ?? []) : [],
+        pixels: framebufferTelemetry?.pixels ?? [],
       }
     },
   },
@@ -268,13 +259,12 @@ const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefiniti
       const digits = config?.digits || 1
       const segmentTelemetry = getSegmentTelemetry(context.telemetry)
       return {
-        digitSegmentMasks: context.streamRunning
-          ? (segmentTelemetry?.digit_segment_masks ??
-            Array.from({ length: digits }, (_, index) => {
-              return index === 0 ? (segmentTelemetry?.segment_mask ?? 0) : 0
-            }))
-          : Array.from({ length: digits }, () => 0),
-        segmentMask: context.streamRunning ? (segmentTelemetry?.segment_mask ?? 0) : 0,
+        digitSegmentMasks:
+          segmentTelemetry?.digit_segment_masks ??
+          Array.from({ length: digits }, (_, index) => {
+            return index === 0 ? (segmentTelemetry?.segment_mask ?? 0) : 0
+          }),
+        segmentMask: segmentTelemetry?.segment_mask ?? 0,
       }
     },
   },
@@ -290,7 +280,7 @@ const canvasDeviceUiDefinitions: Record<CanvasDeviceType, CanvasDeviceUiDefiniti
       return {
         columns: framebufferTelemetry?.columns || dimensions?.columns || 8,
         rows: framebufferTelemetry?.rows || dimensions?.rows || 8,
-        pixels: context.streamRunning ? (framebufferTelemetry?.pixels ?? []) : [],
+        pixels: framebufferTelemetry?.pixels ?? [],
       }
     },
   },

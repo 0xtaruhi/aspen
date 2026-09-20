@@ -78,11 +78,11 @@ function clampInt(value: number | null | undefined, fallback: number, min = 1, m
 }
 
 export function defaultMatrixDimensions(): CanvasMatrixDimensions {
-  return { rows: 8, columns: 8 }
+  return { rows: 8, columns: 8, rowActiveLow: false, columnActiveLow: false }
 }
 
 export function defaultSegmentDisplayConfig(): CanvasSegmentDisplayConfig {
-  return { digits: 1, activeLow: false }
+  return { digits: 1, activeLow: false, digitActiveLow: false }
 }
 
 export function defaultButtonConfig(): CanvasButtonConfig {
@@ -110,7 +110,13 @@ export function defaultHd44780Config(): CanvasHd44780LcdConfig {
 }
 
 export function defaultVgaDisplayConfig(): CanvasVgaDisplayConfig {
-  return { columns: 320, rows: 240, colorMode: 'rgb332' }
+  return {
+    columns: 320,
+    rows: 240,
+    colorMode: 'rgb332',
+    hsyncActiveLow: true,
+    vsyncActiveLow: true,
+  }
 }
 
 function normalizeVgaColorMode(value: string | null | undefined, fallback: CanvasVgaColorMode) {
@@ -252,6 +258,8 @@ export function getCanvasMatrixDimensions(
   return {
     rows: clampInt(device.state.config.rows, defaults.rows, 1, 64),
     columns: clampInt(device.state.config.columns, defaults.columns, 1, 64),
+    rowActiveLow: device.state.config.row_active_low ?? defaults.rowActiveLow,
+    columnActiveLow: device.state.config.column_active_low ?? defaults.columnActiveLow,
   }
 }
 
@@ -270,6 +278,10 @@ export function getCanvasSegmentDisplayConfig(
   return {
     digits: clampInt(device.state.config.digits, defaults.digits, 1, 16),
     activeLow: device.state.config.active_low ?? defaults.activeLow,
+    digitActiveLow:
+      device.state.config.digit_active_low ??
+      device.state.config.active_low ??
+      defaults.digitActiveLow,
   }
 }
 
@@ -306,6 +318,8 @@ export function getCanvasVgaDisplayConfig(
     columns: clampInt(device.state.config.columns, defaults.columns, 1, 2048),
     rows: clampInt(device.state.config.rows, defaults.rows, 1, 2048),
     colorMode: normalizeVgaColorMode(device.state.config.color_mode, defaults.colorMode),
+    hsyncActiveLow: device.state.config.hsync_active_low ?? defaults.hsyncActiveLow,
+    vsyncActiveLow: device.state.config.vsync_active_low ?? defaults.vsyncActiveLow,
   }
 }
 
@@ -389,9 +403,10 @@ export function getCanvasHd44780LcdConfig(
     return defaults
   }
 
+  const rows = clampInt(device.state.config.rows, defaults.rows, 1, 4)
   return {
-    columns: clampInt(device.state.config.columns, defaults.columns, 8, 40),
-    rows: clampInt(device.state.config.rows, defaults.rows, 1, 4),
+    columns: clampInt(device.state.config.columns, defaults.columns, 8, rows > 2 ? 20 : 40),
+    rows,
     busMode: device.state.config.bus_mode,
   }
 }
