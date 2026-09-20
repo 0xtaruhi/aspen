@@ -86,6 +86,11 @@ impl HardwareRuntime {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hardware::types::{
+        CanvasDeviceBindingSnapshot, CanvasDeviceConfigSnapshot, CanvasDeviceDataSnapshot,
+        CanvasDeviceSnapshot, CanvasDeviceStateSnapshot, CanvasDeviceType, CanvasHd44780BusMode,
+        HardwareCanvasDeviceTelemetryPayload, HardwareStateV1,
+    };
 
     #[test]
     fn extracts_string_and_str_panic_messages() {
@@ -94,5 +99,82 @@ mod tests {
             panic_message(Box::new("owned panic".to_string())),
             "owned panic"
         );
+    }
+
+    #[test]
+    fn output_decoder_cache_preserves_lcd_state_across_stream_pause() {
+        fn lcd_cycle(rs: bool, enable: bool, byte: u8) -> u16 {
+            let mut cycle = 0_u16;
+            if rs {
+                cycle |= 1;
+            }
+            if enable {
+                cycle |= 1 << 1;
+            }
+            cycle | u16::from(byte) << 3
+        }
+
+        fn append_lcd_byte(read_buffer: &mut Vec<u16>, rs: bool, byte: u8) {
+            read_buffer.push(lcd_cycle(rs, true, byte));
+            read_buffer.push(lcd_cycle(rs, false, byte));
+        }
+
+        let state = HardwareStateV1 {
+            canvas_devices: vec![CanvasDeviceSnapshot {
+                id: "lcd0".to_string(),
+                r#type: CanvasDeviceType::Hd44780Lcd,
+                x: 0.0,
+                y: 0.0,
+                label: "LCD".to_string(),
+                state: CanvasDeviceStateSnapshot {
+                    is_on: false,
+                    color: None,
+                    binding: CanvasDeviceBindingSnapshot::Slots {
+                        signals: [
+                            "rs", "e", "rw", "d0", "d1", "d2", "d3", "d4", "d5", "d6", "d7",
+                        ]
+                        .map(|signal| Some(signal.to_string()))
+                        .to_vec(),
+                    },
+                    config: CanvasDeviceConfigSnapshot::Hd44780Lcd {
+                        columns: 16,
+                        rows: 2,
+                        bus_mode: CanvasHd44780BusMode::EightBit,
+                    },
+                    data: CanvasDeviceDataSnapshot::None,
+                },
+            }],
+            ..HardwareStateV1::default()
+        };
+        let signal_order = [
+            "rs", "e", "rw", "d0", "d1", "d2", "d3", "d4", "d5", "d6", "d7",
+        ]
+        .map(str::to_string)
+        .to_vec();
+        let signature = HardwareRuntime::output_decoder_signature(&state, &signal_order);
+        let mut decoders = HardwareRuntime::compile_output_decoders(&state, &signal_order);
+        let mut initial_writes = Vec::new();
+        append_lcd_byte(&mut initial_writes, false, 0x0c);
+        append_lcd_byte(&mut initial_writes, false, 0x80);
+        append_lcd_byte(&mut initial_writes, true, b'A');
+        HardwareRuntime::ingest_output_batch(&initial_writes, 1, &mut decoders);
+
+        let runtime = HardwareRuntime::default();
+        runtime.store_output_decoder_cache(OutputDecoderCache {
+            signature,
+            decoders,
+        });
+        let mut resumed = runtime.take_output_decoder_cache();
+        assert_eq!(resumed.signature, signature);
+
+        HardwareRuntime::ingest_output_batch(&[0; 32], 1, &mut resumed.decoders);
+        let snapshot = HardwareRuntime::flush_output_decoders(&mut resumed.decoders, 1);
+        let HardwareCanvasDeviceTelemetryPayload::TextLines { lines } =
+            &snapshot.devices[0].payload
+        else {
+            panic!("expected LCD text lines");
+        };
+
+        assert_eq!(lines[0], "A               ");
     }
 }

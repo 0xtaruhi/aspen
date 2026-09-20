@@ -78,9 +78,18 @@ struct StreamDecodeBatch {
 enum StreamDecodeMessage {
     SignalIds(Vec<u16>, u64),
     DeviceSnapshotInterval(Duration),
-    OutputDecoders(Vec<Box<dyn OutputDeviceDecoder>>),
+    OutputDecoders {
+        signature: u64,
+        decoders: Vec<Box<dyn OutputDeviceDecoder>>,
+    },
     Batch(StreamDecodeBatch),
     Shutdown,
+}
+
+#[derive(Default)]
+struct OutputDecoderCache {
+    signature: u64,
+    decoders: Vec<Box<dyn OutputDeviceDecoder>>,
 }
 
 #[cfg(test)]
@@ -156,6 +165,7 @@ pub struct HardwareRuntime {
     waveform_config_generation: AtomicU64,
     data_stream_status: Mutex<HardwareDataStreamStatusV1>,
     latest_waveform_batch: Mutex<Option<LatestWaveformBatch>>,
+    output_decoder_cache: Mutex<OutputDecoderCache>,
     app_handle: Mutex<Option<AppHandle>>,
 }
 
@@ -187,6 +197,7 @@ impl Default for HardwareRuntime {
                 last_error: None,
             }),
             latest_waveform_batch: Mutex::new(None),
+            output_decoder_cache: Mutex::new(OutputDecoderCache::default()),
             app_handle: Mutex::new(None),
         }
     }
@@ -231,6 +242,7 @@ impl HardwareRuntime {
             return Ok(config);
         }
         self.stop_data_stream()?;
+        self.invalidate_output_decoder_cache();
         *self
             .access_config
             .lock()
@@ -302,6 +314,33 @@ impl HardwareRuntime {
         self.waveform_config_generation
             .fetch_add(1, Ordering::Relaxed);
         self.clear_waveform_snapshot()
+    }
+
+    fn cached_output_decoder_signature(&self) -> u64 {
+        self.output_decoder_cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .signature
+    }
+
+    fn take_output_decoder_cache(&self) -> OutputDecoderCache {
+        std::mem::take(
+            &mut *self
+                .output_decoder_cache
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()),
+        )
+    }
+
+    fn store_output_decoder_cache(&self, cache: OutputDecoderCache) {
+        *self
+            .output_decoder_cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = cache;
+    }
+
+    fn invalidate_output_decoder_cache(&self) {
+        self.store_output_decoder_cache(OutputDecoderCache::default());
     }
 
     pub fn configure_data_stream(
@@ -468,6 +507,7 @@ impl HardwareRuntime {
         reason: HardwareEventReason,
     ) -> Result<HardwareStateV1, String> {
         self.stop_data_stream()?;
+        self.invalidate_output_decoder_cache();
         let state = self.apply_state_update(app, reason, |state| {
             state.phase = HardwarePhase::DeviceDisconnected;
             state.device = None;
@@ -635,6 +675,7 @@ impl HardwareRuntime {
         bitstream_path: Option<String>,
     ) -> Result<HardwareStateV1, String> {
         self.stop_data_stream()?;
+        self.invalidate_output_decoder_cache();
         let selector = self.access_config()?.selector;
         let artifact_path = {
             let guard = self
