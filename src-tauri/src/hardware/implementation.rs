@@ -382,7 +382,7 @@ fn sta_report_meets_constraints(report: &fde::StageReport) -> bool {
         .metrics
         .get("timing_met")
         .and_then(serde_json::Value::as_bool)
-        .unwrap_or(true)
+        .unwrap_or(false)
 }
 
 fn default_zero_io_delays(

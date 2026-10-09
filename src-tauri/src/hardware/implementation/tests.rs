@@ -201,7 +201,7 @@ fn cargo_manifest_uses_semver_rust_fde_dependency() {
     let cargo_toml =
         fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml")).unwrap();
     assert!(
-        cargo_toml.contains("fde = \"1.1.1\""),
+        cargo_toml.contains("fde = \"2.0.0\""),
         "Aspen should require the latest compatible crates.io fde baseline"
     );
 }
@@ -217,7 +217,7 @@ fn sta_timing_success_follows_the_fde_timing_metric() {
     assert!(!sta_report_meets_constraints(&violated));
 
     let unconstrained = fde::StageReport::new("sta");
-    assert!(sta_report_meets_constraints(&unconstrained));
+    assert!(!sta_report_meets_constraints(&unconstrained));
 }
 
 #[test]
@@ -247,12 +247,15 @@ fn sta_defaults_unmodeled_io_to_the_board_clock() {
 }
 
 #[test]
-fn bundled_cell_library_loads_with_fde_1_1_timing_data() {
+fn bundled_cell_library_loads_with_fde_2_timing_data() {
     let resources = test_resource_paths();
     let model = fde::load_cell_timing_model(&resources.pack_cell).expect("cell timing model");
 
     assert!((model.sequential.setup_ns - 0.5).abs() < f64::EPSILON);
     assert!((model.sequential.clock_to_q_ns - 1.0).abs() < f64::EPSILON);
+    let block_ram = model.block_ram.expect("bundled block RAM timing");
+    assert!((block_ram.clock_to_out_ns - 5.0).abs() < f64::EPSILON);
+    assert!(block_ram.setup_ns.abs() < f64::EPSILON);
 }
 
 #[test]
@@ -387,7 +390,8 @@ fn implementation_smoke_test_runs_with_in_process_rust_fde() {
     .unwrap();
 
     assert!(report.success, "{}", report.log);
-    assert!(report.timing_success, "{}", report.log);
+    assert!(!report.timing_success, "unconstrained timing must not pass");
+    assert!(report.timing_report.contains("UNCONSTRAINED"));
     assert!(report.log.contains(">>> starting map"));
     assert!(report.log.contains(">>> starting bitgen"));
     assert!(report
