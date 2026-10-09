@@ -1201,9 +1201,9 @@ checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
 name = "fde"
-version = "1.1.1"
+version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "890e67468748558f3c0f7f9d0fd71aeb0b23194371b03e6d48ca9d4d0a492a37"
+checksum = "52d38d310ca7dcf0153b9d8cd5f62a98fa5436dde0ba9760cc54112098a000ff"
 dependencies = [
  "anyhow",
  "arrayvec",

@@ -20,7 +20,7 @@ The goal is simple: keep the full student and lab workflow in one place without 
 ## Highlights
 
 - Full desktop flow in one app: source editing, synthesis, pin planning, implementation, programming, and live hardware interaction.
-- Native Rust backend: Aspen links `fde = "1.1.1"` directly from crates.io instead of shelling out to a legacy monolith.
+- Native Rust backend: Aspen links `fde = "2.0.0"` directly from crates.io instead of shelling out to a legacy monolith.
 - Virtual device platform: test designs against interactive switches, buttons, displays, UART, VGA, audio PWM, and more.
 - Hardware-aware workflow: board discovery, programming, data streaming, and hotplug handling are built into the app.
 - Signed release updates: official tagged releases publish updater metadata so Aspen can check for updates in-app.
